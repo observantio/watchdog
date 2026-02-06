@@ -75,6 +75,7 @@ export default function LokiPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [lastQuery, setLastQuery] = useState('')
+  const [topTerms, setTopTerms] = useState([])
   
   
   const autoRefreshRef = useRef(null)
@@ -215,6 +216,46 @@ export default function LokiPage() {
     })
   }
 
+  function computeTopTermsFromResult(res, maxTerms = 8){
+    try{
+      if(!res || !res.data || !res.data.result) return []
+      const stopwords = new Set(['the','and','for','with','that','this','from','are','was','but','not','you','your','have','has','will','can','http','https','info','message'])
+      const freq = {}
+      let seen = 0, maxSamples = 2000
+      res.data.result.forEach(stream => {
+        (stream.values || []).forEach(v => {
+          if(seen++ > maxSamples) return
+          const raw = v[1]
+          let text = ''
+          try{ const p = JSON.parse(raw); text = Object.values(p).join(' ') } catch(e){ text = String(raw) }
+          text = text.toLowerCase()
+          const tokens = text.split(/[^a-z0-9_+-]+/).filter(Boolean)
+          tokens.forEach(tok => {
+            if(tok.length < 3) return
+            if(/^[0-9]+$/.test(tok)) return
+            if(stopwords.has(tok)) return
+            const t = tok.replace(/^\W+|\W+$/g, '')
+            if(!t) return
+            freq[t] = (freq[t] || 0) + 1
+          })
+        })
+      })
+      const arr = Object.entries(freq).map(([term,count]) => ({term, count})).sort((a,b)=>b.count - a.count)
+      const top = arr.slice(0, maxTerms).map(item => {
+        let icon = 'search', iconClass = ''
+        if(item.term.includes('error')){ icon='error'; iconClass='text-red-500' }
+        else if(item.term.includes('warn')){ icon='warning'; iconClass='text-yellow-500' }
+        else if(item.term.includes('timeout') || item.term.includes('timedout')){ icon='schedule'; iconClass='text-orange-500' }
+        else if(item.term.includes('exception')){ icon='error_outline'; iconClass='text-red-400' }
+        return {...item, icon, iconClass}
+      })
+      return top
+    }catch(e){
+      console.warn('computeTopTermsFromResult error', e)
+      return []
+    }
+  }
+
   async function runQuery(e){
     if(e && e.preventDefault) e.preventDefault()
     setError(null)
@@ -246,6 +287,14 @@ export default function LokiPage() {
       const res = await queryLogs({query: q, start: Math.round(startNs), end: Math.round(endNs), limit: maxLogs})
       console.log('[LokiPage] queryLogs response:', res)
       setQueryResult(res)
+      // update dynamic quick-search terms based on recent results
+      try {
+        const terms = computeTopTermsFromResult(res, 12)
+        setTopTerms(terms)
+      } catch (err) {
+        console.warn('Failed to compute top terms:', err)
+        setTopTerms([])
+      }
       
       const totalLogs = res.data?.result?.reduce((acc, stream) => acc + (stream.values?.length || 0), 0) || 0
       const streams = res.data?.result?.length || 0
@@ -340,6 +389,14 @@ export default function LokiPage() {
 
       const res = await queryLogs({query: q, start: Math.round(startNs), end: Math.round(endNs), limit: maxLogs})
       setQueryResult(res)
+      // update quick-search suggestions
+      try {
+        const terms = computeTopTermsFromResult(res, 12)
+        setTopTerms(terms)
+      } catch (err) {
+        console.warn('Failed to compute top terms:', err)
+        setTopTerms([])
+      }
       
       const totalLogs = res.data?.result?.reduce((acc, stream) => acc + (stream.values?.length || 0), 0) || 0
       const streams = res.data?.result?.length || 0
@@ -923,33 +980,36 @@ export default function LokiPage() {
                 )
               ))}
               
-              {/* Common Text Patterns */}
+              {/* Dynamic Text Patterns derived from recent query results */}
               {Object.keys(labelValuesCache).length > 0 && (
                 <div>
                   <div className="text-xs text-sre-text-muted mb-2 font-medium">Text Search</div>
                   <div className="space-y-1">
-                    {[
-                      {name: 'error', icon: 'error', color: 'text-red-500'},
-                      {name: 'warn', icon: 'warning', color: 'text-yellow-500'},
-                      {name: 'timeout', icon: 'schedule', color: 'text-orange-500'},
-                      {name: 'exception', icon: 'error_outline', color: 'text-red-400'},
-                    ].map(item => (
-                      <button
-                        key={item.name}
-                        onClick={()=>{
-                          setSelectedFilters([])
-                          setPattern(item.name)
-                          runQueryWithFilters([], item.name)
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-sre-surface border border-sre-border rounded-lg hover:border-sre-primary transition-colors text-left group"
-                      >
-                        <span className="text-sm text-sre-text flex items-center">
-                          <span className={`material-icons text-base mr-2 ${item.color}`}>{item.icon}</span>
-                          "{item.name}"
-                        </span>
-                        <span className="material-icons text-sre-text-muted text-sm group-hover:text-sre-primary transition-colors">arrow_forward</span>
-                      </button>
-                    ))}
+                    {topTerms && topTerms.length > 0 ? (
+                      topTerms.map((t) => (
+                        <button
+                          key={t.term}
+                          onClick={()=>{
+                            setSelectedFilters([])
+                            setPattern(t.term)
+                            runQueryWithFilters([], t.term)
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 bg-sre-surface border border-sre-border rounded-lg hover:border-sre-primary transition-colors text-left group"
+                          title={`Use "${t.term}" as a quick text search (seen ${t.count} times)`}
+                        >
+                          <span className="text-sm text-sre-text flex items-center">
+                            <span className={`material-icons text-base mr-2 ${t.iconClass || 'text-sre-text'}`}>{t.icon || 'search'}</span>
+                            "{t.term}"
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-sre-text-muted">{t.count}</span>
+                            <span className="material-icons text-sre-text-muted text-sm group-hover:text-sre-primary transition-colors">arrow_forward</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-xs text-sre-text-muted">No text examples found from recent results. Run a query to populate suggestions.</div>
+                    )}
                   </div>
                 </div>
               )}
