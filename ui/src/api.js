@@ -141,7 +141,8 @@ export async function getLabelValues(label, { query, start, end } = {}) {
   if (start) params.append('start', start)
   if (end) params.append('end', end)
   const queryString = params.toString()
-  return request(`/api/loki/label/${encodeURIComponent(label)}/values${queryString ? `?${queryString}` : ''}`)
+  const suffix = queryString ? '?' + queryString : ''
+  return request(`/api/loki/label/${encodeURIComponent(label)}/values${suffix}`)
 }
 export async function searchLogs({ pattern, labels, start, end, limit = 100 }) {
   return request('/api/loki/search', {

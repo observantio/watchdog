@@ -492,6 +492,8 @@ export function Modal({
     }
   }
 
+  const contentRef = React.useRef(null)
+
   React.useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
@@ -506,6 +508,10 @@ export function Modal({
       document.addEventListener('keydown', handleEscape)
       document.body.style.overflow = 'hidden'
       document.documentElement.style.overflow = 'hidden'
+      // focus modal content to avoid focus landing on backdrop
+      setTimeout(() => {
+        contentRef.current?.focus()
+      }, 0)
     }
 
     return () => {
@@ -520,14 +526,17 @@ export function Modal({
   return (
     <dialog
       open
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-fade-in"
-      onClick={handleOverlayClick}
-      onCancel={(e) => { e.preventDefault(); if (closeOnOverlayClick) onClose?.() }}
-      onKeyDown={(e) => { if (e.key === 'Escape' && closeOnOverlayClick) { e.preventDefault(); onClose?.() } }}
-      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       aria-modal="true"
       aria-labelledby={title ? "modal-title" : undefined}
     >
+      {/* backdrop/button captures overlay clicks on an interactive element */}
+      <button
+        type="button"
+        aria-label="Close dialog"
+        onClick={handleOverlayClick}
+        className="absolute inset-0  z-40 border-0 p-0 m-0"
+      />
       <div 
         className={clsx(
           'bg-sre-bg-card rounded-xl shadow-2xl w-full max-h-[90vh] flex flex-col',
@@ -536,6 +545,9 @@ export function Modal({
           sizes[size],
           className
         )}
+        ref={contentRef}
+        tabIndex={-1}
+        style={{zIndex: 50}}
       >
         {/* Header */}
         {(title || showCloseButton) && (

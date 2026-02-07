@@ -1,452 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import PropTypes from 'prop-types'
+import { useState, useEffect, useMemo } from 'react'
+
 import {
   getAlerts, getSilences, createSilence, deleteSilence,
   getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule,
   getNotificationChannels, createNotificationChannel, updateNotificationChannel,
   deleteNotificationChannel, testNotificationChannel, testAlertRule
 } from '../api'
-import { Card, Button, Input, Select, Alert, Badge, Spinner, ConfirmDialog } from '../components/ui'
+import { Card, Button, Select, Alert, Badge, Spinner, ConfirmDialog } from '../components/ui'
+import RuleEditor from '../components/alertmanager/RuleEditor'
+import ChannelEditor from '../components/alertmanager/ChannelEditor'
+import SilenceForm from '../components/alertmanager/SilenceForm'
 
-const RuleEditor = ({ rule, channels, onSave, onCancel }) => {
-  const [formData, setFormData] = useState(rule || {
-    name: '',
-    expr: '',
-    duration: '1m',
-    severity: 'warning',
-    labels: {},
-    annotations: { summary: '', description: '' },
-    enabled: true,
-    group: 'default',
-    notificationChannels: []
-  })
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onSave(formData)
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input
-          label="Rule Name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
-          placeholder="e.g., HighCPUUsage"
-        />
-        <Select
-          label="Severity"
-          value={formData.severity}
-          onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
-        >
-          <option value="info">Info</option>
-          <option value="warning">Warning</option>
-          <option value="critical">Critical</option>
-        </Select>
-      </div>
-
-      <Input
-        label="PromQL Expression"
-        value={formData.expr}
-        onChange={(e) => setFormData({ ...formData, expr: e.target.value })}
-        required
-        placeholder="e.g., rate(requests_total[5m]) > 100"
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input
-          label="Duration"
-          value={formData.duration}
-          onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-          placeholder="e.g., 5m, 1h"
-        />
-        <Input
-          label="Group"
-          value={formData.group}
-          onChange={(e) => setFormData({ ...formData, group: e.target.value })}
-          placeholder="default"
-        />
-      </div>
-
-      <Input
-        label="Summary"
-        value={formData.annotations.summary}
-        onChange={(e) => setFormData({ ...formData, annotations: { ...formData.annotations, summary: e.target.value }})}
-        placeholder="Brief alert summary"
-      />
-
-      <Input
-        label="Description"
-        value={formData.annotations.description}
-        onChange={(e) => setFormData({ ...formData, annotations: { ...formData.annotations, description: e.target.value }})}
-        placeholder="Detailed description"
-      />
-
-      <div>
-        <label className="block text-sm font-medium text-sre-text mb-2">
-          Notification Channels {formData.notificationChannels?.length > 0 ? `(${formData.notificationChannels.length} selected)` : '(All channels)'}
-        </label>
-        <div className="space-y-2 max-h-48 overflow-y-auto border border-sre-border rounded p-3 bg-sre-surface">
-          {channels && channels.length > 0 ? (
-            <>
-              <div className="flex items-center gap-2 pb-2 border-b border-sre-border">
-                <input
-                  type="checkbox"
-                  id="channel-all"
-                  checked={!formData.notificationChannels || formData.notificationChannels.length === 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setFormData({ ...formData, notificationChannels: [] })
-                    }
-                  }}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="channel-all" className="text-sm text-sre-text font-medium">
-                  All Channels (default)
-                </label>
-              </div>
-              {channels.map((channel) => (
-                <div key={channel.id} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id={`channel-${channel.id}`}
-                    checked={formData.notificationChannels?.includes(channel.id)}
-                    onChange={(e) => {
-                      const currentChannels = formData.notificationChannels || []
-                      if (e.target.checked) {
-                        setFormData({ ...formData, notificationChannels: [...currentChannels, channel.id] })
-                      } else {
-                        setFormData({ ...formData, notificationChannels: currentChannels.filter(id => id !== channel.id) })
-                      }
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <label htmlFor={`channel-${channel.id}`} className="text-sm text-sre-text flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-xs ${channel.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
-                      {channel.type}
-                    </span>
-                    {channel.name}
-                    {!channel.enabled && <span className="text-xs text-gray-500">(disabled)</span>}
-                  </label>
-                </div>
-              ))}
-            </>
-          ) : (
-            <p className="text-sm text-gray-500">No channels configured. Create channels first to assign them to alerts.</p>
-          )}
-        </div>
-        <p className="text-xs text-gray-500 mt-1">
-          Select specific channels to notify, or leave empty to notify all channels
-        </p>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="enabled"
-          checked={formData.enabled}
-          onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-          className="w-4 h-4"
-        />
-        <label htmlFor="enabled" className="text-sm text-sre-text">Enable this rule</label>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">
-          <span className="material-icons text-sm mr-2">save</span>
-          Save Rule
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-RuleEditor.propTypes = {
-  rule: PropTypes.object,
-  channels: PropTypes.array,
-  onSave: PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
-}
-
-const ChannelEditor = ({ channel, onSave, onCancel }) => {
-  const [formData, setFormData] = useState(channel || {
-    name: '',
-    type: 'webhook',
-    enabled: true,
-    config: {}
-  })
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onSave(formData)
-  }
-
-  const renderConfigFields = () => {
-    switch (formData.type) {
-      case 'email':
-        return (
-          <>
-            <Input
-              label="SMTP Host"
-              value={formData.config.smtp_host || ''}
-              onChange={(e) => setFormData({ ...formData, config: { ...formData.config, smtp_host: e.target.value }})}
-              placeholder="smtp.gmail.com"
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="SMTP Port"
-                type="number"
-                value={formData.config.smtp_port || '587'}
-                onChange={(e) => setFormData({ ...formData, config: { ...formData.config, smtp_port: e.target.value }})}
-              />
-              <Input
-                label="From Email"
-                value={formData.config.from || ''}
-                onChange={(e) => setFormData({ ...formData, config: { ...formData.config, from: e.target.value }})}
-                placeholder="alerts@example.com"
-              />
-            </div>
-            <Input
-              label="To Email"
-              value={formData.config.to || ''}
-              onChange={(e) => setFormData({ ...formData, config: { ...formData.config, to: e.target.value }})}
-              placeholder="team@example.com"
-              required
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Username"
-                value={formData.config.username || ''}
-                onChange={(e) => setFormData({ ...formData, config: { ...formData.config, username: e.target.value }})}
-              />
-              <Input
-                label="Password"
-                type="password"
-                value={formData.config.password || ''}
-                onChange={(e) => setFormData({ ...formData, config: { ...formData.config, password: e.target.value }})}
-              />
-            </div>
-          </>
-        )
-      case 'slack':
-        return (
-          <>
-            <Input
-              label="Webhook URL"
-              value={formData.config.webhook_url || ''}
-              onChange={(e) => setFormData({ ...formData, config: { ...formData.config, webhook_url: e.target.value }})}
-              placeholder="https://hooks.slack.com/services/..."
-              required
-            />
-            <Input
-              label="Channel"
-              value={formData.config.channel || ''}
-              onChange={(e) => setFormData({ ...formData, config: { ...formData.config, channel: e.target.value }})}
-              placeholder="#alerts"
-            />
-          </>
-        )
-      case 'teams':
-        return (
-          <Input
-            label="Webhook URL"
-            value={formData.config.webhook_url || ''}
-            onChange={(e) => setFormData({ ...formData, config: { ...formData.config, webhook_url: e.target.value }})}
-            placeholder="https://outlook.office.com/webhook/..."
-            required
-          />
-        )
-      case 'webhook':
-        return (
-          <Input
-            label="Webhook URL"
-            value={formData.config.url || ''}
-            onChange={(e) => setFormData({ ...formData, config: { ...formData.config, url: e.target.value }})}
-            placeholder="https://example.com/webhook"
-            required
-          />
-        )
-      case 'pagerduty':
-        return (
-          <Input
-            label="Routing Key"
-            value={formData.config.routing_key || ''}
-            onChange={(e) => setFormData({ ...formData, config: { ...formData.config, routing_key: e.target.value }})}
-            placeholder="Your PagerDuty routing key"
-            required
-          />
-        )
-      case 'opsgenie':
-        return (
-          <Input
-            label="API Key"
-            value={formData.config.api_key || ''}
-            onChange={(e) => setFormData({ ...formData, config: { ...formData.config, api_key: e.target.value }})}
-            placeholder="Your Opsgenie API key"
-            required
-          />
-        )
-      default:
-        return null
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input
-          label="Channel Name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
-          placeholder="e.g., Team Slack Channel"
-        />
-        <Select
-          label="Channel Type"
-          value={formData.type}
-          onChange={(e) => setFormData({ ...formData, type: e.target.value, config: {} })}
-        >
-          <option value="email">Email</option>
-          <option value="slack">Slack</option>
-          <option value="teams">Microsoft Teams</option>
-          <option value="webhook">Webhook</option>
-          <option value="pagerduty">PagerDuty</option>
-          <option value="opsgenie">Opsgenie</option>
-        </Select>
-      </div>
-
-      {renderConfigFields()}
-
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="channel-enabled"
-          checked={formData.enabled}
-          onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-          className="w-4 h-4"
-        />
-        <label htmlFor="channel-enabled" className="text-sm text-sre-text">Enable this channel</label>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">
-          <span className="material-icons text-sm mr-2">save</span>
-          Save Channel
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-ChannelEditor.propTypes = {
-  channel: PropTypes.object,
-  onSave: PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
-}
-
-const SilenceForm = ({ onSave, onCancel }) => {
-  const [matchers, setMatchers] = useState([{ name: 'alertname', value: '', isRegex: false, isEqual: true }])
-  const [duration, setDuration] = useState('1')
-  const [comment, setComment] = useState('')
-
-  const addMatcher = () => {
-    setMatchers([...matchers, { name: '', value: '', isRegex: false, isEqual: true }])
-  }
-
-  const removeMatcher = (index) => {
-    setMatchers(matchers.filter((_, i) => i !== index))
-  }
-
-  const updateMatcher = (index, field, value) => {
-    const updated = [...matchers]
-    updated[index] = { ...updated[index], [field]: value }
-    setMatchers(updated)
-  }
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const startsAt = new Date().toISOString()
-    const endsAt = new Date(Date.now() + Number.parseInt(duration) * 60 * 60 * 1000).toISOString()
-    
-    onSave({
-      matchers,
-      startsAt,
-      endsAt,
-      createdBy: 'ui',
-      comment
-    })
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <label className="text-sm font-semibold text-sre-text">Matchers</label>
-        {matchers.map((matcher, index) => (
-          <div key={index} className="flex gap-2 items-end">
-            <Input
-              label={index === 0 ? "Label" : ""}
-              value={matcher.name}
-              onChange={(e) => updateMatcher(index, 'name', e.target.value)}
-              placeholder="label name"
-              required
-            />
-            <Input
-              label={index === 0 ? "Value" : ""}
-              value={matcher.value}
-              onChange={(e) => updateMatcher(index, 'value', e.target.value)}
-              placeholder="label value"
-              required
-            />
-            {matchers.length > 1 && (
-              <Button type="button" variant="ghost" onClick={() => removeMatcher(index)}>
-                <span className="material-icons text-sm">delete</span>
-              </Button>
-            )}
-          </div>
-        ))}
-        <Button type="button" variant="ghost" onClick={addMatcher}>
-          <span className="material-icons text-sm mr-2">add</span>
-          Add Matcher
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input
-          label="Duration (hours)"
-          type="number"
-          value={duration}
-          onChange={(e) => setDuration(e.target.value)}
-          min="1"
-          required
-        />
-        <Input
-          label="Comment"
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="Reason for silence"
-          required
-        />
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">
-          <span className="material-icons text-sm mr-2">volume_off</span>
-          Create Silence
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-SilenceForm.propTypes = {
-  onSave: PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
-}
 
 export default function AlertManagerPage() {
   const [activeTab, setActiveTab] = useState('alerts')
@@ -473,10 +37,6 @@ export default function AlertManagerPage() {
 
   const [testDialog, setTestDialog] = useState({ isOpen: false, title: '', message: '' })
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
   async function loadData() {
     setLoading(true)
     setError(null)
@@ -497,6 +57,10 @@ export default function AlertManagerPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadData()
+  }, [])
 
   async function handleSaveRule(ruleData) {
     try {
@@ -636,7 +200,7 @@ export default function AlertManagerPage() {
     <div className="animate-fade-in">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
-          <span className="material-icons text-3xl text-sre-primary">notifications_active</span>
+          <span className="material-icons text-3xl text-sre-primary">notifications_active</span>{' '}
           AlertManager
         </h1>
         <p className="text-sre-text-muted">Comprehensive alerting system with rules, channels, and silences</p>
@@ -681,6 +245,7 @@ export default function AlertManagerPage() {
           { key: 'silences', label: 'Silences', icon: 'volume_off' }
         ].map(tab => (
           <button
+            type="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2 flex items-center gap-2 border-b-2 transition-colors ${
@@ -704,7 +269,7 @@ export default function AlertManagerPage() {
           {activeTab === 'alerts' && (
             <Card 
               title="Active Alerts" 
-              subtitle={`${filteredAlerts.length} alert${filteredAlerts.length !== 1 ? 's' : ''}`}
+              subtitle={`${filteredAlerts.length} alert${filteredAlerts.length === 1 ? '' : 's'}`}
               action={
                 <Select value={filterSeverity} onChange={(e) => setFilterSeverity(e.target.value)}>
                   <option value="all">All Severities</option>
@@ -716,9 +281,9 @@ export default function AlertManagerPage() {
             >
               {filteredAlerts.length ? (
                 <div className="space-y-3">
-                  {filteredAlerts.map((a) => (
+                  {filteredAlerts.map((a, idx) => (
                     <div
-                      key={a.fingerprint || Math.random()}
+                      key={a.fingerprint || a.id || a.starts_at || idx}
                       className="p-4 bg-sre-surface/50 border border-sre-border rounded-lg hover:border-sre-primary/30 transition-all"
                     >
                       <div className="flex items-start justify-between mb-2">
@@ -788,17 +353,25 @@ export default function AlertManagerPage() {
               ) : (
                 <Card
                   title="Alert Rules"
-                  subtitle={`${rules.length} rule${rules.length !== 1 ? 's' : ''} configured`}
+                  subtitle={`${rules.length} rule${rules.length === 1 ? '' : 's'} configured`}
                   action={
                     <Button onClick={() => setShowRuleEditor(true)}>
-                      <span className="material-icons text-sm mr-2">add</span>
-                      Create Rule
+                      <span className="material-icons text-sm mr-2">add</span>{' '}Create Rule
                     </Button>
                   }
                 >
                   {rules.length ? (
                     <div className="space-y-3">
-                      {rules.map((rule) => (
+                      {rules.map((rule) => {
+                        let severityVariant;
+                        if (rule.severity === 'critical') {
+                          severityVariant = 'error';
+                        } else if (rule.severity === 'warning') {
+                          severityVariant = 'warning';
+                        } else {
+                          severityVariant = 'info';
+                        }
+                        return (
                         <div
                           key={rule.id}
                           className="p-4 bg-sre-surface/50 border border-sre-border rounded-lg hover:border-sre-primary/30 transition-all"
@@ -807,7 +380,7 @@ export default function AlertManagerPage() {
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="font-semibold text-sre-text">{rule.name}</span>
-                                <Badge variant={rule.severity === 'critical' ? 'error' : rule.severity === 'warning' ? 'warning' : 'info'}>
+                                <Badge variant={severityVariant}>
                                   {rule.severity}
                                 </Badge>
                                 {rule.enabled ? (
@@ -841,15 +414,15 @@ export default function AlertManagerPage() {
                             </div>
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-12">
                       <span className="material-icons text-6xl text-sre-text-subtle mb-4">rule</span>
                       <p className="text-sre-text-muted mb-4">No alert rules configured</p>
                       <Button onClick={() => setShowRuleEditor(true)}>
-                        <span className="material-icons text-sm mr-2">add</span>
-                        Create Your First Rule
+                        <span className="material-icons text-sm mr-2">add</span>{' '}Create Your First Rule
                       </Button>
                     </div>
                   )}
@@ -874,17 +447,27 @@ export default function AlertManagerPage() {
               ) : (
                 <Card
                   title="Notification Channels"
-                  subtitle={`${channels.length} channel${channels.length !== 1 ? 's' : ''} configured`}
+                  subtitle={`${channels.length} channel${channels.length === 1 ? '' : 's'} configured`}
                   action={
                     <Button onClick={() => setShowChannelEditor(true)}>
-                      <span className="material-icons text-sm mr-2">add</span>
-                      Create Channel
+                      <span className="material-icons text-sm mr-2">add</span>{' '}Create Channel
                     </Button>
                   }
                 >
                   {channels.length ? (
                     <div className="space-y-3">
-                      {channels.map((channel) => (
+                      {channels.map((channel) => {
+                        let iconName;
+                        if (channel.type === 'email') {
+                          iconName = 'email'
+                        } else if (channel.type === 'slack') {
+                          iconName = 'chat'
+                        } else if (channel.type === 'teams') {
+                          iconName = 'groups'
+                        } else {
+                          iconName = 'webhook'
+                        }
+                        return (
                         <div
                           key={channel.id}
                           className="p-4 bg-sre-surface/50 border border-sre-border rounded-lg hover:border-sre-primary/30 transition-all"
@@ -892,9 +475,7 @@ export default function AlertManagerPage() {
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
-                                <span className="material-icons text-sre-primary">
-                                  {channel.type === 'email' ? 'email' : channel.type === 'slack' ? 'chat' : channel.type === 'teams' ? 'groups' : 'webhook'}
-                                </span>
+                                <span className="material-icons text-sre-primary">{iconName}</span>
                                 <span className="font-semibold text-sre-text">{channel.name}</span>
                                 <Badge variant="info">{channel.type}</Badge>
                                 {channel.enabled ? (
@@ -928,15 +509,15 @@ export default function AlertManagerPage() {
                             </div>
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-12">
                       <span className="material-icons text-6xl text-sre-text-subtle mb-4">send</span>
                       <p className="text-sre-text-muted mb-4">No notification channels configured</p>
                       <Button onClick={() => setShowChannelEditor(true)}>
-                        <span className="material-icons text-sm mr-2">add</span>
-                        Create Your First Channel
+                        <span className="material-icons text-sm mr-2">add</span>{' '}Create Your First Channel
                       </Button>
                     </div>
                   )}
@@ -957,11 +538,10 @@ export default function AlertManagerPage() {
               ) : (
                 <Card
                   title="Active Silences"
-                  subtitle={`${silences.length} silence${silences.length !== 1 ? 's' : ''} active`}
+                  subtitle={`${silences.length} silence${silences.length === 1 ? '' : 's'} active`}
                   action={
                     <Button onClick={() => setShowSilenceForm(true)}>
-                      <span className="material-icons text-sm mr-2">add</span>
-                      Create Silence
+                      <span className="material-icons text-sm mr-2">add</span>{' '}Create Silence
                     </Button>
                   }
                 >
@@ -984,9 +564,9 @@ export default function AlertManagerPage() {
                               </div>
                               {s.matchers && s.matchers.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
-                                  {s.matchers.map((m, idx) => (
+                                  {s.matchers.map((m) => (
                                     <span
-                                      key={idx}
+                                      key={`${m.name}-${m.isEqual ? 'eq' : 'neq'}-${m.value}`}
                                       className="text-xs px-2 py-0.5 bg-sre-surface border border-sre-border rounded text-sre-text"
                                     >
                                       {m.name}{m.isEqual ? '=' : '!='}{m.value}
@@ -1010,7 +590,7 @@ export default function AlertManagerPage() {
                       <span className="material-icons text-6xl text-sre-text-subtle mb-4">volume_up</span>
                       <p className="text-sre-text-muted mb-4">No active silences</p>
                       <Button onClick={() => setShowSilenceForm(true)}>
-                        <span className="material-icons text-sm mr-2">add</span>
+                        <span className="material-icons text-sm mr-2">add</span>{' '}
                         Create Silence
                       </Button>
                     </div>

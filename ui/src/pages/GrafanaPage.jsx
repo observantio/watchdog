@@ -4,7 +4,7 @@ import {
   getDatasources, createDatasource, updateDatasource, deleteDatasource,
   getFolders, createFolder, deleteFolder
 } from '../api'
-import { Card, Button, Input, Alert, Badge, Spinner, Modal, ConfirmDialog, Select, Checkbox } from '../components/ui'
+import {  Button, Input, Alert, Modal, ConfirmDialog, Select, Checkbox } from '../components/ui'
 import GrafanaTabs from '../components/grafana/GrafanaTabs'
 import GrafanaContent from '../components/grafana/GrafanaContent'
 
