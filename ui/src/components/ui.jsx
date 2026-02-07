@@ -1,20 +1,27 @@
+/**
+ * UI Component Library
+ * Reusable UI components with SRE-themed styling
+ */
 import React from 'react'
+import PropTypes from 'prop-types'
 import clsx from 'clsx'
 
 /**
  * Button component with SRE styling
- * @param {object} props
- * @param {'primary' | 'secondary' | 'success' | 'danger' | 'ghost'} props.variant
- * @param {'sm' | 'md' | 'lg'} props.size
- * @param {boolean} props.loading
+ * @param {object} props - Component props
+ * @param {React.ReactNode} props.children - Button content
+ * @param {'primary'|'secondary'|'success'|'danger'|'ghost'} props.variant - Button variant
+ * @param {'sm'|'md'|'lg'} props.size - Button size
+ * @param {boolean} props.loading - Loading state
+ * @param {string} props.className - Additional CSS classes
  */
-export function Button({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
+export function Button({
+  children,
+  variant = 'primary',
+  size = 'md',
   loading = false,
   className,
-  ...props 
+  ...props
 }) {
   const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-sre-bg'
   
@@ -49,8 +56,22 @@ export function Button({
   )
 }
 
+Button.propTypes = {
+  children: PropTypes.node.isRequired,
+  variant: PropTypes.oneOf(['primary', 'secondary', 'success', 'danger', 'ghost']),
+  size: PropTypes.oneOf(['sm', 'md', 'lg']),
+  loading: PropTypes.bool,
+  className: PropTypes.string,
+}
+
 /**
  * Card component for content sections
+ * @param {object} props - Component props
+ * @param {React.ReactNode} props.children - Card content
+ * @param {string} props.className - Additional CSS classes
+ * @param {string} props.title - Card title
+ * @param {string} props.subtitle - Card subtitle
+ * @param {React.ReactNode} props.action - Card action element
  */
 export function Card({ children, className, title, subtitle, action, ...props }) {
   return (
@@ -77,8 +98,20 @@ export function Card({ children, className, title, subtitle, action, ...props })
   )
 }
 
+Card.propTypes = {
+  children: PropTypes.node.isRequired,
+  className: PropTypes.string,
+  title: PropTypes.string,
+  subtitle: PropTypes.string,
+  action: PropTypes.node,
+}
+
 /**
  * Badge component for status indicators
+ * @param {object} props - Component props
+ * @param {React.ReactNode} props.children - Badge content
+ * @param {'default'|'success'|'warning'|'error'|'info'|'neon'} props.variant - Badge variant
+ * @param {string} props.className - Additional CSS classes
  */
 export function Badge({ children, variant = 'default', className, ...props }) {
     const variants = {
