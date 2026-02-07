@@ -3,6 +3,14 @@
  */
 import { API_BASE, API_KEY } from './utils/constants'
 
+function getActiveApiKey() {
+  if (typeof globalThis.window !== 'undefined') {
+    const stored = globalThis.window.localStorage.getItem('beobservantApiKey')
+    if (stored) return stored
+  }
+  return API_KEY
+}
+
 /**
  * Make an HTTP request to the API
  * @param {string} path - API endpoint path
@@ -11,7 +19,8 @@ import { API_BASE, API_KEY } from './utils/constants'
  */
 async function request(path, opts = {}) {
   const headers = opts.headers || {}
-  if (API_KEY) headers['X-API-Key'] = API_KEY
+  const activeKey = getActiveApiKey()
+  if (activeKey) headers['X-API-Key'] = activeKey
   opts.headers = headers
 
   const res = await fetch(`${API_BASE}${path}`, opts)

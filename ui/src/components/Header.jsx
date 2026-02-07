@@ -1,7 +1,25 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
+import { Button } from './ui'
 
 export default function Header() {
+  const [apiKey, setApiKey] = useState('')
+
+  useEffect(() => {
+    const stored = globalThis.window.localStorage.getItem('beobservantApiKey')
+    if (stored) setApiKey(stored)
+  }, [])
+
+  const handleSaveApiKey = () => {
+    const trimmed = apiKey.trim()
+    if (trimmed) {
+      globalThis.window.localStorage.setItem('beobservantApiKey', trimmed)
+    } else {
+      globalThis.window.localStorage.removeItem('beobservantApiKey')
+    }
+  }
+
   return (
     <header className="sticky top-0 z-50 bg-sre-surface/80 backdrop-blur-xl border-b border-sre-border shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -89,8 +107,20 @@ export default function Header() {
               </NavLink>
             </nav>
 
-            {/* Theme Toggle */}
+            {/* API Key + Theme Toggle */}
             <div className="flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-2">
+                <label htmlFor="apiKey" className="text-xs text-sre-text-muted">API Key</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  onBlur={handleSaveApiKey}
+                  placeholder="Set API key"
+                  className="px-2 py-1 bg-sre-surface border border-sre-border rounded text-xs text-sre-text w-40"
+                />
+                <Button size="sm" variant="ghost" type="button" onClick={handleSaveApiKey}>Save</Button>
+              </div>
               <ThemeToggle />
             </div> 
           </div>

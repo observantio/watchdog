@@ -4,7 +4,7 @@ from fastapi import Header, HTTPException, status
 from config import config, constants
 
 
-async def verify_api_key(
+def verify_api_key(
     x_api_key: Optional[str] = Header(None, alias=config.API_KEY_HEADER)
 ) -> None:
     """Verify API key from request header.

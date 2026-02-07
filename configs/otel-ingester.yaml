@@ -1,16 +1,19 @@
 receivers:
-  kafka:
+  kafka/logs:
     brokers: ["kafka:9092"]
     protocol_version: "2.0.0"
-    logs:
-      topics: ["otel-logs"]
-      encoding: otlp_proto
-    traces:
-      topics: ["otel-traces"]
-      encoding: otlp_proto
-    metrics:
-      topics: ["otel-metrics"]
-      encoding: otlp_proto
+    topic: "otel-logs"
+    encoding: otlp_proto
+  kafka/traces:
+    brokers: ["kafka:9092"]
+    protocol_version: "2.0.0"
+    topic: "otel-traces"
+    encoding: otlp_proto
+  kafka/metrics:
+    brokers: ["kafka:9092"]
+    protocol_version: "2.0.0"
+    topic: "otel-metrics"
+    encoding: otlp_proto
 
 processors:
   memory_limiter:
@@ -37,17 +40,17 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [kafka]
+      receivers: [kafka/logs]
       processors: [memory_limiter]
       exporters: [debug, otlphttp/loki]
     
     traces:
-      receivers: [kafka]
+      receivers: [kafka/traces]
       processors: [memory_limiter]
       exporters: [debug, otlp/tempo]
 
     metrics:
-      receivers: [kafka]
+      receivers: [kafka/metrics]
       processors: [memory_limiter]
       exporters: [debug, prometheus]
 

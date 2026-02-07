@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from functools import wraps
-from typing import Callable, Any, TypeVar, ParamSpec
+from typing import Callable, TypeVar, ParamSpec
 import httpx
 
 from config import config
@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 P = ParamSpec('P')
 T = TypeVar('T')
-
 
 def with_retry(
     max_retries: int = config.MAX_RETRIES,

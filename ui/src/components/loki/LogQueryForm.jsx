@@ -1,0 +1,194 @@
+import PropTypes from 'prop-types'
+import { Button } from '../../components/ui'
+
+export default function LogQueryForm({
+  queryMode,
+  customLogQL,
+  setCustomLogQL,
+  labels,
+  selectedLabel,
+  setSelectedLabel,
+  labelValuesCache,
+  loadingValues,
+  selectedValue,
+  setSelectedValue,
+  pattern,
+  setPattern,
+  rangeMinutes,
+  setRangeMinutes,
+  maxLogs,
+  setMaxLogs,
+  addFilter,
+  selectedFilters,
+  clearAllFilters,
+  runQuery,
+  onQueryModeChange,
+  onLabelChange,
+  loading,
+  onRemoveFilter,
+}) {
+  return (
+    <form onSubmit={runQuery} className="space-y-4">
+      <div className="flex items-center gap-4 pb-3 border-b border-sre-border">
+        <span className="text-sm text-sre-text-muted flex items-center">
+          <span className="material-icons text-sm">build</span>
+          <span className="ml-1">Mode:</span>
+        </span>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" value="builder" checked={queryMode === 'builder'} onChange={onQueryModeChange} className="text-sre-primary focus:ring-sre-primary" />
+          <span className="text-sm text-sre-text">Filter Builder</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" value="custom" checked={queryMode === 'custom'} onChange={onQueryModeChange} className="text-sre-primary focus:ring-sre-primary" />
+          <span className="text-sm text-sre-text">Custom LogQL</span>
+        </label>
+      </div>
+
+      {queryMode === 'custom' ? (
+        <div>
+          <label className="block text-sm font-medium text-sre-text mb-2">
+            <span>LogQL Query</span>
+            <textarea value={customLogQL} onChange={(e)=>setCustomLogQL(e.target.value)} rows={4} className="mt-2 w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text font-mono text-sm focus:border-sre-primary focus:ring-1 focus:ring-sre-primary resize-none" />
+          </label>
+          <p className="text-xs text-sre-text-muted mt-1">Enter a LogQL query directly.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 pb-4 border-b border-sre-border flex-wrap">
+            <span className="text-sm text-sre-text-muted mr-2 flex items-center">
+              <span className="material-icons text-sm">filter_list</span>
+              <span className="ml-1">Quick:</span>
+            </span>
+            <Button variant="ghost" size="sm" onClick={()=>{ clearAllFilters(); setTimeout(()=>runQuery(),0) }} type="button" className="flex items-center gap-1">
+              <span className="material-icons text-sm">list</span>
+              <span className="ml-1">All Logs</span>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                <span>Label</span>
+                <select value={selectedLabel} onChange={(e)=>{setSelectedLabel(e.target.value); setSelectedValue(''); onLabelChange?.(e.target.value)}} className="mt-2 w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary">
+                  <option value="">-- Select label --</option>
+                  {labels?.map(l=> <option key={l} value={l}>{l}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                <span>Value</span>
+                <select value={selectedValue} onChange={(e)=>setSelectedValue(e.target.value)} disabled={!selectedLabel} className="mt-2 w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary">
+                  <option value="">{loadingValues?.[selectedLabel] ? 'Loading...' : '-- Select value --'}</option>
+                  {selectedLabel && !loadingValues?.[selectedLabel] && (
+                    <option value="__any__">Any value</option>
+                  )}
+                  {(labelValuesCache?.[selectedLabel] ?? []).map(v=> <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                <span>Text Filter</span>
+                <input value={pattern} onChange={(e)=>setPattern(e.target.value)} placeholder='e.g., "timeout"' className="mt-2 w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary" />
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                <span>Time Range</span>
+                <select value={rangeMinutes} onChange={(e)=>setRangeMinutes(Number(e.target.value))} className="mt-2 w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary">
+                  <option value={5}>Last 5 minutes</option>
+                  <option value={15}>Last 15 minutes</option>
+                  <option value={60}>Last 1 hour</option>
+                  <option value={180}>Last 3 hours</option>
+                  <option value={360}>Last 6 hours</option>
+                  <option value={1440}>Last 24 hours</option>
+                </select>
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                <span>Max Logs</span>
+                <select value={maxLogs} onChange={(e)=>setMaxLogs(Number(e.target.value))} className="mt-2 w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary">
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1000</option>
+                  <option value={5000}>5000</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center gap-2">
+        {queryMode === 'builder' && (
+          <>
+            <Button type="button" onClick={addFilter} disabled={!selectedLabel || !selectedValue}>Add Filter</Button>
+            {selectedFilters.length > 0 && <Button type="button" variant="ghost" onClick={clearAllFilters}>Clear All</Button>}
+          </>
+        )}
+        <div className="flex-1" />
+        <Button type="submit" loading={!!loading} className="px-8">Run Query</Button>
+      </div>
+
+      {selectedFilters.length > 0 && (
+        <div className="mt-2 flex gap-2 flex-wrap">
+          {selectedFilters.map((f, i) => (
+            <div key={`${f.label}-${f.value}-${i}`} className="inline-flex items-center gap-2 px-3 py-1.5 bg-sre-primary/10 border border-sre-primary/30 rounded-full">
+              <span className="text-xs font-mono text-sre-primary font-semibold">{f.label}</span>
+              <span className="text-xs font-mono text-sre-text">=</span>
+              <span className="text-sm font-semibold text-sre-text">{f.value}</span>
+              <button onClick={() => onRemoveFilter?.(i)} className="text-sre-text-muted hover:text-sre-text ml-1" type="button">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </form>
+  )
+}
+
+LogQueryForm.propTypes = {
+  queryMode: PropTypes.string.isRequired,
+  customLogQL: PropTypes.string.isRequired,
+  setCustomLogQL: PropTypes.func.isRequired,
+  labels: PropTypes.arrayOf(PropTypes.string).isRequired,
+  selectedLabel: PropTypes.string.isRequired,
+  setSelectedLabel: PropTypes.func.isRequired,
+  labelValuesCache: PropTypes.object.isRequired,
+  loadingValues: PropTypes.object.isRequired,
+  selectedValue: PropTypes.string.isRequired,
+  setSelectedValue: PropTypes.func.isRequired,
+  pattern: PropTypes.string.isRequired,
+  setPattern: PropTypes.func.isRequired,
+  rangeMinutes: PropTypes.number.isRequired,
+  setRangeMinutes: PropTypes.func.isRequired,
+  maxLogs: PropTypes.number.isRequired,
+  setMaxLogs: PropTypes.func.isRequired,
+  addFilter: PropTypes.func.isRequired,
+  selectedFilters: PropTypes.arrayOf(PropTypes.shape({
+    label: PropTypes.string.isRequired,
+    value: PropTypes.string.isRequired,
+  })).isRequired,
+  clearAllFilters: PropTypes.func.isRequired,
+  runQuery: PropTypes.func.isRequired,
+  onQueryModeChange: PropTypes.func.isRequired,
+  onLabelChange: PropTypes.func,
+  loading: PropTypes.bool,
+  onRemoveFilter: PropTypes.func,
+}
+
+LogQueryForm.defaultProps = {
+  onLabelChange: undefined,
+  loading: false,
+  onRemoveFilter: undefined,
+}

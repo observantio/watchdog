@@ -1,14 +1,13 @@
 """Grafana API router."""
-from fastapi import APIRouter, HTTPException, Query, Body, Depends, status
-from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from typing import Optional, List
 
 from models.grafana_models import (
-    Dashboard, DashboardCreate, DashboardUpdate, DashboardSearchResult,
+    DashboardCreate, DashboardUpdate, DashboardSearchResult,
     Datasource, DatasourceCreate, DatasourceUpdate, Folder
 )
 from services.grafana_service import GrafanaService
 from middleware.auth import verify_api_key
-from config import config, constants
 
 router = APIRouter(
     prefix="/api/grafana",

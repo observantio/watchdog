@@ -12,11 +12,13 @@ from services.alertmanager_service import AlertManagerService
 from services.storage_service import StorageService
 from services.notification_service import NotificationService
 from middleware.auth import verify_api_key
-from config import config, constants
+from config import constants
 from models.alertmanager_models import AlertStatus, AlertState
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+INVALID_FILTER_LABELS_JSON = "Invalid filter_labels JSON"
 
 router = APIRouter(
     prefix="/api/alertmanager",
@@ -126,7 +128,7 @@ async def get_alerts(
         try:
             labels = json.loads(filter_labels)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid filter_labels JSON")
+            raise HTTPException(status_code=400, detail=INVALID_FILTER_LABELS_JSON)
     
     alerts = await alertmanager_service.get_alerts(
         filter_labels=labels,
@@ -151,7 +153,7 @@ async def get_alert_groups(
         try:
             labels = json.loads(filter_labels)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid filter_labels JSON")
+            raise HTTPException(status_code=400, detail=INVALID_FILTER_LABELS_JSON)
     
     groups = await alertmanager_service.get_alert_groups(filter_labels=labels)
     return groups
@@ -181,7 +183,7 @@ async def delete_alerts(
     try:
         labels = json.loads(filter_labels)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid filter_labels JSON")
+        raise HTTPException(status_code=400, detail=INVALID_FILTER_LABELS_JSON)
     
     if not labels:
         raise HTTPException(status_code=400, detail="filter_labels cannot be empty")
@@ -206,7 +208,7 @@ async def get_silences(
         try:
             labels = json.loads(filter_labels)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid filter_labels JSON")
+            raise HTTPException(status_code=400, detail=INVALID_FILTER_LABELS_JSON)
     
     silences = await alertmanager_service.get_silences(filter_labels=labels)
     return silences
@@ -360,7 +362,7 @@ async def test_alert_rule(rule_id: str):
             "description": rule.annotations.get("description", rule.expr),
             **(rule.annotations or {})
         },
-        startsAt=datetime.utcnow().isoformat() + "Z",
+        startsAt=datetime.now(timezone.utc).isoformat(),
         status=AlertStatus(state=AlertState.ACTIVE, silencedBy=[], inhibitedBy=[]),
         fingerprint=f"test-{rule.id}"
     )
@@ -473,7 +475,7 @@ async def test_notification_channel(channel_id: str):
         status={"state": "active", "silencedBy": [], "inhibitedBy": []},
         fingerprint="test"
     )
-    
+
     try:
         success = await notification_service.send_notification(channel, test_alert, "firing")
         if success:

@@ -2,38 +2,118 @@
 import json
 import logging
 import uuid
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+
+from cryptography.fernet import Fernet, InvalidToken
 from models.alertmanager_models import (
     AlertRule, AlertRuleCreate, NotificationChannel, NotificationChannelCreate
 )
+from config import config
 
 logger = logging.getLogger(__name__)
 
 class StorageService:
     """Service for persisting alert rules and notification channels."""
     
-    def __init__(self, data_dir: str = "/tmp/beobservant_data"):
+    def __init__(self, data_dir: str = config.STORAGE_DIR):
         """Initialize storage service.
         
         Args:
             data_dir: Directory for storing data files
         """
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        
+        self.data_dir = self._find_writable_dir(Path(data_dir))
+
         self.rules_file = self.data_dir / "alert_rules.json"
         self.channels_file = self.data_dir / "notification_channels.json"
+
+        self._fernet = None
+        if config.DATA_ENCRYPTION_KEY:
+            try:
+                self._fernet = Fernet(config.DATA_ENCRYPTION_KEY)
+            except ValueError:
+                logger.error("Invalid DATA_ENCRYPTION_KEY; encryption disabled")
         
-        self._ensure_files_exist()
+        try:
+            self._ensure_files_exist()
+        except PermissionError:
+            logger.warning("Configured storage dir %s not writable, attempting fallback", data_dir)
+            alternate = self._find_writable_dir(Path(tempfile.gettempdir()) / "beobservant")
+            if str(alternate) != str(self.data_dir):
+                self.data_dir = alternate
+                self.rules_file = self.data_dir / "alert_rules.json"
+                self.channels_file = self.data_dir / "notification_channels.json"
+                self._ensure_files_exist()
+            else:
+                raise
     
     def _ensure_files_exist(self):
         """Ensure storage files exist with default data."""
         if not self.rules_file.exists():
-            self.rules_file.write_text(json.dumps([], indent=2))
-        
+            try:
+                self.rules_file.write_text(self._serialize([]))
+            except PermissionError as e:
+                logger.error("Permission denied when creating %s: %s", self.rules_file, e)
+                raise
+
         if not self.channels_file.exists():
-            self.channels_file.write_text(json.dumps([], indent=2))
+            try:
+                self.channels_file.write_text(self._serialize([]))
+            except PermissionError as e:
+                logger.error("Permission denied when creating %s: %s", self.channels_file, e)
+                raise
+
+    def _find_writable_dir(self, candidate: Path) -> Path:
+        """Return a directory Path that is writable, trying fallbacks.
+
+        Tries the configured `candidate` first, then `/tmp/beobservant`, then
+        an application-local `data/` directory next to the server package.
+        """
+        candidates = [candidate, Path(tempfile.gettempdir()) / "beobservant",
+                      Path(__file__).resolve().parent.parent / "data"]
+
+        last_exc = None
+        for p in candidates:
+            try:
+                p.mkdir(parents=True, exist_ok=True)
+                test_file = p / ".writetest"
+                with test_file.open("w") as f:
+                    f.write("ok")
+                try:
+                    test_file.unlink()
+                except Exception:
+                    pass
+                logger.info("Using storage directory: %s", p)
+                return p
+            except PermissionError as e:
+                last_exc = e
+                logger.warning("No write access to %s: %s", p, e)
+            except Exception as e:
+                last_exc = e
+                logger.warning("Unable to prepare storage dir %s: %s", p, e)
+
+        logger.error("No writable storage directory found; last error: %s", last_exc)
+        raise PermissionError("No writable storage directory available")
+
+    def _serialize(self, payload: List[Dict[str, Any]]) -> str:
+        content = json.dumps(payload, indent=2, default=str)
+        if not self._fernet:
+            return content
+        token = self._fernet.encrypt(content.encode("utf-8")).decode("utf-8")
+        return f"ENC::{token}"
+
+    def _deserialize(self, content: str) -> List[Dict[str, Any]]:
+        if content.startswith("ENC::"):
+            if not self._fernet:
+                raise ValueError("Encrypted storage requires DATA_ENCRYPTION_KEY")
+            token = content.replace("ENC::", "", 1)
+            try:
+                decrypted = self._fernet.decrypt(token.encode("utf-8")).decode("utf-8")
+            except InvalidToken as exc:
+                raise ValueError("Invalid encryption token or key") from exc
+            return json.loads(decrypted)
+        return json.loads(content)
     
     def get_alert_rules(self) -> List[AlertRule]:
         """Get all alert rules.
@@ -42,7 +122,7 @@ class StorageService:
             List of alert rules
         """
         try:
-            data = json.loads(self.rules_file.read_text())
+            data = self._deserialize(self.rules_file.read_text())
             return [AlertRule(**rule) for rule in data]
         except Exception as e:
             logger.error(f"Error loading alert rules: {e}")
@@ -138,7 +218,7 @@ class StorageService:
             rules: List of rules to save
         """
         data = [rule.model_dump() for rule in rules]
-        self.rules_file.write_text(json.dumps(data, indent=2, default=str))
+        self.rules_file.write_text(self._serialize(data))
     
     def get_notification_channels(self) -> List[NotificationChannel]:
         """Get all notification channels.
@@ -147,7 +227,7 @@ class StorageService:
             List of notification channels
         """
         try:
-            data = json.loads(self.channels_file.read_text())
+            data = self._deserialize(self.channels_file.read_text())
             return [NotificationChannel(**channel) for channel in data]
         except Exception as e:
             logger.error(f"Error loading notification channels: {e}")
@@ -250,7 +330,7 @@ class StorageService:
             channels: List of channels to save
         """
         data = [channel.model_dump() for channel in channels]
-        self.channels_file.write_text(json.dumps(data, indent=2, default=str))
+        self.channels_file.write_text(self._serialize(data))
     
     def test_notification_channel(self, channel_id: str) -> Dict[str, Any]:
         """Test a notification channel.

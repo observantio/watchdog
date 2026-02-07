@@ -7,6 +7,7 @@ volumes:
   prometheus:
   grafana:
   alertmanager:
+  beobservant_data:
 
 services:
   kafka:
@@ -42,6 +43,8 @@ services:
     command: ["--config=/etc/otel/agent.yaml"]
     volumes:
       - ./configs/otel-agent.yaml:/etc/otel/agent.yaml:ro
+    environment:
+      OTEL_AGENT_API_KEY: "${OTEL_AGENT_API_KEY:-public}"
     depends_on:
       kafka:
         condition: service_healthy
@@ -71,7 +74,7 @@ services:
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.6.5
     command: -config.file=/etc/loki/loki.yaml
     volumes:
       - ./configs/loki.yaml:/etc/loki/loki.yaml:ro
@@ -98,8 +101,12 @@ services:
       AWS_REGION: "${AWS_REGION:-us-east-1}"
       AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
       AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      STORAGE_DIR: "/data/beobservant"
+      DATA_ENCRYPTION_KEY: "${DATA_ENCRYPTION_KEY:-}"
     ports:
       - "4319:4319"
+    volumes:
+      - beobservant_data:/data/beobservant
     deploy:
       replicas: 1
       resources:

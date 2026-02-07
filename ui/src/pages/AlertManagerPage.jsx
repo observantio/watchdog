@@ -11,6 +11,29 @@ import RuleEditor from '../components/alertmanager/RuleEditor'
 import ChannelEditor from '../components/alertmanager/ChannelEditor'
 import SilenceForm from '../components/alertmanager/SilenceForm'
 
+function normalizeChannelPayload(channelData) {
+  const normalized = { ...channelData, config: channelData.config || {} }
+
+  const mappings = {
+    email: { smtpHost: 'smtp_host', smtpPort: 'smtp_port' },
+    slack: { webhookUrl: 'webhook_url' },
+    teams: { webhookUrl: 'webhook_url' },
+    pagerduty: { integrationKey: 'routing_key' },
+    opsgenie: { apiKey: 'api_key', apiUrl: 'api_url' }
+  }
+
+  const map = mappings[normalized.type]
+  if (map) {
+    for (const [from, to] of Object.entries(map)) {
+      if (normalized.config[from] && !normalized.config[to]) {
+        normalized.config[to] = normalized.config[from]
+      }
+    }
+  }
+
+  return normalized
+}
+
 
 export default function AlertManagerPage() {
   const [activeTab, setActiveTab] = useState('alerts')
@@ -99,10 +122,11 @@ export default function AlertManagerPage() {
 
   async function handleSaveChannel(channelData) {
     try {
+      const normalizedChannel = normalizeChannelPayload(channelData)
       if (editingChannel) {
-        await updateNotificationChannel(editingChannel.id, channelData)
+        await updateNotificationChannel(editingChannel.id, normalizedChannel)
       } else {
-        await createNotificationChannel(channelData)
+        await createNotificationChannel(normalizedChannel)
       }
       await loadData()
       setShowChannelEditor(false)

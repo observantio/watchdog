@@ -5,7 +5,7 @@ from typing import Optional, List
 from models.tempo_models import Trace, TraceQuery, TraceResponse
 from services.tempo_service import TempoService
 from middleware.auth import verify_api_key
-from config import config, constants
+from config import config
 
 router = APIRouter(
     prefix="/api/tempo",

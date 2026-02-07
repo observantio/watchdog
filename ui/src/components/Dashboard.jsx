@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchHealth, getAlerts } from '../api'
 import { Card, Badge, MetricCard, Spinner } from './ui'
+import PropTypes from 'prop-types'
 
 export default function Dashboard({ info }) {
   const [health, setHealth] = useState(null)
@@ -72,6 +73,17 @@ export default function Dashboard({ info }) {
     },
   ]
 
+  const getStatusValue = () => {
+    if (loading) return <Spinner size="sm" />
+    return health?.status ? health?.status.charAt(0).toUpperCase() + health?.status.slice(1) : 'Unknown'
+  }
+
+  const getAlertValue = () => {
+    if (loadingAlerts) return <Spinner size="sm" />
+    if (alertCount === null) return '0'
+    return String(alertCount)
+  }
+
   return (
     <div className="animate-fade-in">
       {/* Hero Section */}
@@ -87,7 +99,7 @@ export default function Dashboard({ info }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <MetricCard
             label="Service Status"
-            value={loading ? <Spinner size="sm" /> : (health?.status ? health?.status.charAt(0).toUpperCase() + health?.status.slice(1) : 'Unknown')}
+            value={getStatusValue()}
             trend={health?.status === 'Healthy' ? 'All systems operational' : 'Issues detected'}
             status={health?.status === 'Healthy' ? 'success' : 'warning'}
             icon={
@@ -98,7 +110,7 @@ export default function Dashboard({ info }) {
           />
           <MetricCard
             label="Active Alerts"
-            value={loadingAlerts ? <Spinner size="sm" /> : (alertCount !== null ? String(alertCount) : '0')}
+            value={getAlertValue()}
             trend={alertCount > 0 ? `${alertCount} active` : 'No active alerts'}
             status={alertCount > 0 ? 'warning' : 'success'}
             icon={
@@ -182,4 +194,11 @@ export default function Dashboard({ info }) {
       </div>
     </div>
   )
+}
+
+Dashboard.propTypes = {
+  info: PropTypes.shape({
+    service: PropTypes.string,
+    version: PropTypes.string,
+  }),
 }

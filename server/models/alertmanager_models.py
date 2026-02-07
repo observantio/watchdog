@@ -1,7 +1,6 @@
 """AlertManager related models."""
 from typing import Dict, List, Optional, Any, Union
-from pydantic import BaseModel, Field, EmailStr
-from datetime import datetime
+from pydantic import BaseModel, Field
 from enum import Enum
 
 class AlertState(str, Enum):

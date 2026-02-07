@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from config import config, constants
-from routers import tempo_router, loki_router, alertmanager_router, grafana_router
+from routers import tempo_router, loki_router, alertmanager_router, grafana_router, agents_router
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -71,6 +71,7 @@ app.include_router(loki_router.router)
 app.include_router(alertmanager_router.router)
 app.include_router(alertmanager_router.webhook_router)
 app.include_router(grafana_router.router)
+app.include_router(agents_router.router)
 
 
 @app.get("/", tags=["info"])

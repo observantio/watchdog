@@ -7,12 +7,32 @@ import LogVolume from '../components/loki/LogVolume'
 import LogQuickFilters from '../components/loki/LogQuickFilters'
 import LogLabels from '../components/loki/LogLabels'
 
-function copyToClipboard(text){
-  navigator.clipboard.writeText(text).then(() => {
-    alert('Copied to clipboard!')
-  }).catch(error_ => {
-    console.error('Failed to copy:', error_)
-  })
+function escapeLogQLValue(value) {
+  // Use JSON.stringify to correctly escape backslashes and quotes without manual escaping
+  const s = String(value)
+  // JSON.stringify wraps the value in quotes, so strip them off
+  return JSON.stringify(s).slice(1, -1)
+}
+
+function normalizeLabelValue(label, value) {
+  if (value === null || value === undefined) return ''
+  const raw = String(value).trim()
+  if (!raw) return ''
+  const escapedLabel = String(label).replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\\$&`)
+  const matcher = new RegExp(`${escapedLabel}="([^"]+)"`)
+  const match = matcher.exec(raw)
+  if (match?.[1]) return match[1]
+
+  const cutIndex = raw.indexOf('",')
+  if (cutIndex > 0) return raw.slice(0, cutIndex)
+
+  return raw
+}
+function normalizeLabelValues(label, values) {
+  const cleaned = (values || [])
+    .map((value) => normalizeLabelValue(label, value))
+    .filter(Boolean)
+  return Array.from(new Set(cleaned)).sort((a, b) => a.localeCompare(b))
 }
 
 function getLogText(raw){
@@ -61,6 +81,23 @@ function collectTokensFromResults(result, maxSamples, stopwords){
   return tokens
 }
 
+function collectTokensFromStreamLabels(result, stopwords){
+  if(!result) return []
+  const tokens = []
+  for(const stream of result){
+    const labels = stream.stream || {}
+    for(const value of Object.values(labels)){
+      const parts = String(value).toLowerCase().split(/[^a-z0-9_+-]+/).filter(Boolean)
+      const cleaned = parts
+        .filter(tok => isTokenValid(tok, stopwords))
+        .map(normalizeToken)
+        .filter(Boolean)
+      tokens.push(...cleaned)
+    }
+  }
+  return tokens
+}
+
 function countTokens(tokens){
   return tokens.reduce((acc, t) => {
     acc[t] = (acc[t] || 0) + 1
@@ -86,13 +123,23 @@ function computeTopTermsFromResult(res, maxTerms = 8){
 
   const stopwords = new Set(['the','and','for','with','that','this','from','are','was','but','not','you','your','have','has','will','can','http','https','info','message'])
   const tokens = collectTokensFromResults(res.data.result, 2000, stopwords)
-  if(tokens.length === 0) return []
+  if(tokens.length === 0) {
+    const fallbackTokens = collectTokensFromStreamLabels(res.data.result, stopwords)
+    if(fallbackTokens.length === 0) return []
+    const fallbackFreq = countTokens(fallbackTokens)
+    return mapTopTerms(fallbackFreq, maxTerms)
+  }
   const freq = countTokens(tokens)
   return mapTopTerms(freq, maxTerms)
 }
 
 function getVolumeValues(volRes){
   return (volRes?.data?.result?.[0]?.values || []).map(v => Number(v[1]))
+}
+
+function buildLabelMatcher(label, value) {
+  if (value === '__any__') return `${label}=~".+"`
+  return `${label}="${escapeLogQLValue(value)}"`
 }
 
 function buildFallbackVolume(res, totalLogs){
@@ -134,9 +181,11 @@ export default function LokiPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [topTerms, setTopTerms] = useState([])
+  const [toast, setToast] = useState(null)
   
   
   const autoRefreshRef = useRef(null)
+  const toastTimeoutRef = useRef(null)
 
   useEffect(()=>{
     loadInitialData()
@@ -160,7 +209,7 @@ export default function LokiPage() {
     try {
       const lbls = await getLabels()
       console.log('[LokiPage] getLabels response:', lbls)
-      const labelsArray = lbls?.data || []
+      const labelsArray = (lbls?.data || []).filter((label) => typeof label === 'string' && label.trim() !== '')
       console.log('[LokiPage] Setting labels:', labelsArray)
       setLabels(labelsArray)
       
@@ -169,7 +218,8 @@ export default function LokiPage() {
           try {
             const vals = await getLabelValues(label)
             console.log(`[LokiPage] getLabelValues(${label}):`, vals)
-            setLabelValuesCache(prev => ({...prev, [label]: vals?.data || []}))
+            const normalizedValues = normalizeLabelValues(label, vals?.data || [])
+            setLabelValuesCache(prev => ({...prev, [label]: normalizedValues}))
           } catch(e) {
             console.warn(`Failed to load values for ${label}:`, e)
           }
@@ -187,8 +237,11 @@ export default function LokiPage() {
     
     setLoadingValues(prev => ({...prev, [label]: true}))
     try{
-      const vals = await getLabelValues(label)
-      setLabelValuesCache(prev => ({...prev, [label]: vals.data || []}))
+      const end = Date.now() * 1e6
+      const start = (Date.now() - rangeMinutes * 60 * 1000) * 1e6
+      const vals = await getLabelValues(label, { start: Math.round(start), end: Math.round(end) })
+      const normalizedValues = normalizeLabelValues(label, vals?.data || [])
+      setLabelValuesCache(prev => ({...prev, [label]: normalizedValues}))
     }catch(e){
       console.warn('Failed to load label values for', label, e)
     }finally{
@@ -216,15 +269,22 @@ export default function LokiPage() {
     setPattern('')
   }
 
+
   function buildSelector(){
-    if(!selectedFilters.length) {
-      // Return a selector that matches all logs using the first available label
+    let effectiveFilters
+    if (selectedFilters.length) {
+      effectiveFilters = selectedFilters
+    } else if (selectedLabel && selectedValue) {
+      effectiveFilters = [{ label: selectedLabel, value: selectedValue }]
+    } else {
+      effectiveFilters = []
+    }
+
+    if(!effectiveFilters.length) {
       const firstLabel = labels[0] || 'service_name'
       return `{${firstLabel}=~".+"}`
     }
-    const parts = selectedFilters.map(f => (
-      f.value === '__any__' ? `${f.label}=~".+"` : `${f.label}="${f.value}"`
-    ))
+    const parts = effectiveFilters.map(f => buildLabelMatcher(f.label, f.value))
     return `{${parts.join(',')}}`
   }
   
@@ -299,7 +359,7 @@ export default function LokiPage() {
         const selector = buildSelector()
         selectorForVolume = selector
         q = selector
-        if(pattern) q += ` |= "${pattern}"`
+        if(pattern) q += ` |= "${escapeLogQLValue(pattern)}"`
       }
       
       const start = Date.now() - rangeMinutes*60*1000
@@ -337,12 +397,14 @@ export default function LokiPage() {
     const filters = [{ label, value }]
     setSelectedFilters(filters)
     setPattern('')
+    setQueryMode('builder')
     runQueryWithFilters(filters, '')
   }
 
   function handleSelectPattern(term){
     setSelectedFilters([])
     setPattern(term)
+    setQueryMode('builder')
     runQueryWithFilters([], term)
   }
   
@@ -366,7 +428,7 @@ export default function LokiPage() {
         const selector = buildSelectorFromFilters(filters)
         selectorForVolume = selector
         q = selector
-        if(textPattern) q += ` |= "${textPattern}"`
+        if(textPattern) q += ` |= "${escapeLogQLValue(textPattern)}"`
       }
       
       const start = Date.now() - rangeMinutes*60*1000
@@ -405,8 +467,38 @@ export default function LokiPage() {
       const firstLabel = labels[0] || 'service_name'
       return `{${firstLabel}=~".+"}`  
     }
-    const parts = filters.map(f=>`${f.label}="${f.value}"`)
+    const parts = filters.map(f=>buildLabelMatcher(f.label, f.value))
     return `{${parts.join(',')}}`
+  }
+
+  async function copyToClipboard(text) {
+    const value = typeof text === 'string' ? text : JSON.stringify(text)
+    try {
+      if (navigator.clipboard?.writeText && globalThis.window.isSecureContext) {
+        await navigator.clipboard.writeText(value)
+      } else {
+        const textarea = document.createElement('textarea')
+        textarea.value = value
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(value)
+        } else {
+          globalThis.window.prompt('Copy to clipboard: Ctrl+C, Enter', value)
+        }
+        textarea.remove()
+      }
+      setToast({ message: 'Copied to clipboard', variant: 'success' })
+    } catch (error_) {
+      console.error('Failed to copy:', error_)
+      setToast({ message: 'Copy failed. Please try again.', variant: 'error' })
+    }
+
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 2000)
   }
 
   return (
@@ -436,6 +528,12 @@ export default function LokiPage() {
           )}
         </div>
       </div>
+
+      {toast && (
+        <Alert variant={toast.variant} className="mb-4" onClose={() => setToast(null)}>
+          {toast.message}
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="error" className="mb-6">

@@ -68,7 +68,7 @@ class NotificationService:
     async def _send_slack(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send Slack notification."""
         config = channel.config
-        webhook_url = config.get('webhook_url')
+        webhook_url = config.get('webhook_url') or config.get('webhookUrl')
         
         if not webhook_url:
             logger.error("Slack webhook URL not configured")
@@ -121,7 +121,7 @@ class NotificationService:
     async def _send_teams(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send Microsoft Teams notification."""
         config = channel.config
-        webhook_url = config.get('webhook_url')
+        webhook_url = config.get('webhook_url') or config.get('webhookUrl')
         
         if not webhook_url:
             logger.error("Teams webhook URL not configured")
@@ -159,7 +159,7 @@ class NotificationService:
     async def _send_webhook(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send webhook notification."""
         config = channel.config
-        webhook_url = config.get('url')
+        webhook_url = config.get('url') or config.get('webhook_url') or config.get('webhookUrl')
         
         if not webhook_url:
             logger.error("Webhook URL not configured")
@@ -187,7 +187,7 @@ class NotificationService:
     async def _send_pagerduty(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send PagerDuty notification."""
         config = channel.config
-        routing_key = config.get('routing_key')
+        routing_key = config.get('routing_key') or config.get('integrationKey')
         
         if not routing_key:
             logger.error("PagerDuty routing key not configured")
@@ -226,7 +226,7 @@ class NotificationService:
     async def _send_opsgenie(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send Opsgenie notification."""
         config = channel.config
-        api_key = config.get('api_key')
+        api_key = config.get('api_key') or config.get('apiKey')
         
         if not api_key:
             logger.error("Opsgenie API key not configured")

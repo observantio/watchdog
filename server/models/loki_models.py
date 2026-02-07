@@ -1,8 +1,13 @@
 """Loki/Logging related models."""
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
-from datetime import datetime
 from enum import Enum
+
+# Description constants to avoid duplicated literals
+MAX_LOG_ENTRIES_DESC = "Maximum number of log entries to return"
+TIME_NS_START_DESC = "Start time in nanoseconds"
+TIME_NS_END_DESC = "End time in nanoseconds"
+RESPONSE_STATUS_DESC = "Response status"
 
 class LogLevel(str, Enum):
     """Log level enum."""
@@ -31,9 +36,9 @@ class LogStream(BaseModel):
 class LogQuery(BaseModel):
     """Query parameters for log search."""
     query: str = Field(..., description="LogQL query string")
-    limit: int = Field(100, ge=1, le=5000, description="Maximum number of log entries to return")
-    start: Optional[int] = Field(None, description="Start time in nanoseconds")
-    end: Optional[int] = Field(None, description="End time in nanoseconds")
+    limit: int = Field(100, ge=1, le=5000, description=MAX_LOG_ENTRIES_DESC)
+    start: Optional[int] = Field(None, description=TIME_NS_START_DESC)
+    end: Optional[int] = Field(None, description=TIME_NS_END_DESC)
     direction: LogDirection = Field(LogDirection.BACKWARD, description="Direction to search logs")
     step: Optional[int] = Field(None, description="Query resolution step in seconds")
 
@@ -46,32 +51,32 @@ class LogStatsResponse(BaseModel):
 
 class LogResponse(BaseModel):
     """Response containing log streams."""
-    status: str = Field(..., description="Response status")
+    status: str = Field(..., description=RESPONSE_STATUS_DESC)
     data: Dict[str, Any] = Field(..., description="Log data containing streams and statistics")
     stats: Optional[LogStatsResponse] = None
 
 class LogLabelsResponse(BaseModel):
     """Available log labels."""
-    status: str = Field(..., description="Response status")
+    status: str = Field(..., description=RESPONSE_STATUS_DESC)
     data: List[str] = Field(..., description="List of available label names")
 
 class LogLabelValuesResponse(BaseModel):
     """Values for a specific log label."""
-    status: str = Field(..., description="Response status")
+    status: str = Field(..., description=RESPONSE_STATUS_DESC)
     data: List[str] = Field(..., description="List of values for the label")
 
 class LogFilterRequest(BaseModel):
     """Request model for log filtering."""
     labels: Dict[str, str] = Field(..., description="Labels to filter logs by")
     filters: Optional[List[str]] = Field(None, description="Additional filter expressions")
-    start: Optional[int] = Field(None, description="Start time in nanoseconds")
-    end: Optional[int] = Field(None, description="End time in nanoseconds")
-    limit: int = Field(100, ge=1, le=5000, description="Maximum number of log entries to return")
+    start: Optional[int] = Field(None, description=TIME_NS_START_DESC)
+    end: Optional[int] = Field(None, description=TIME_NS_END_DESC)
+    limit: int = Field(100, ge=1, le=5000, description=MAX_LOG_ENTRIES_DESC)
 
 class LogSearchRequest(BaseModel):
     """Request model for log searching."""
     pattern: str = Field(..., description="Search pattern or LogQL query")
     labels: Optional[Dict[str, str]] = Field(None, description="Labels to filter search results")
-    start: Optional[int] = Field(None, description="Start time in nanoseconds")
-    end: Optional[int] = Field(None, description="End time in nanoseconds")
-    limit: int = Field(100, ge=1, le=5000, description="Maximum number of log entries to return")
+    start: Optional[int] = Field(None, description=TIME_NS_START_DESC)
+    end: Optional[int] = Field(None, description=TIME_NS_END_DESC)
+    limit: int = Field(100, ge=1, le=5000, description=MAX_LOG_ENTRIES_DESC)
