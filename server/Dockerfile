@@ -33,9 +33,8 @@ COPY services/ ./services/
 
 COPY entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /entrypoint.sh
-
-RUN useradd -m -u 1000 appuser && \
+RUN chmod +x /entrypoint.sh && \
+    useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
 USER root

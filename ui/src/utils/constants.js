@@ -4,7 +4,6 @@
 
 // API Configuration
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4319'
-export const API_KEY = import.meta.env.VITE_API_KEY
 export const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL || 'https://localhost/grafana'
 
 // Time ranges (in minutes)

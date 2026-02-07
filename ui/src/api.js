@@ -1,15 +1,7 @@
 /**
  * API client for beObservant backend
  */
-import { API_BASE, API_KEY } from './utils/constants'
-
-function getActiveApiKey() {
-  if (typeof globalThis.window !== 'undefined') {
-    const stored = globalThis.window.localStorage.getItem('beobservantApiKey')
-    if (stored) return stored
-  }
-  return API_KEY
-}
+import { API_BASE } from './utils/constants'
 
 /**
  * Make an HTTP request to the API
@@ -19,8 +11,6 @@ function getActiveApiKey() {
  */
 async function request(path, opts = {}) {
   const headers = opts.headers || {}
-  const activeKey = getActiveApiKey()
-  if (activeKey) headers['X-API-Key'] = activeKey
   opts.headers = headers
 
   const res = await fetch(`${API_BASE}${path}`, opts)

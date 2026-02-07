@@ -8,7 +8,6 @@ from models.loki_models import (
     LogLabelValuesResponse, LogDirection, LogFilterRequest, LogSearchRequest
 )
 from services.loki_service import LokiService
-from middleware.auth import require_tenant_key
 from config import config
 
 START_TIME_DESC = "Start time in nanoseconds"
@@ -16,8 +15,7 @@ END_TIME_DESC = "End time in nanoseconds"
 
 router = APIRouter(
     prefix="/api/loki",
-    tags=["loki"],
-    dependencies=[Depends(require_tenant_key)]
+    tags=["loki"]
 )
 loki_service = LokiService()
 
@@ -72,7 +70,7 @@ async def query_logs(
         step=step
     )
     
-    result = await loki_service.query_logs(log_query, tenant_id=tenant_id)
+    result = await loki_service.query_logs(log_query)
     return result
 
 
@@ -88,7 +86,7 @@ async def query_logs_instant(
     """
     tenant_id = getattr(request.state, "api_key", None)
     scoped_query = _inject_tenant_label(query, tenant_id)
-    result = await loki_service.query_logs_instant(scoped_query, time, tenant_id=tenant_id)
+    result = await loki_service.query_logs_instant(scoped_query, time)
     return result
 
 
@@ -103,7 +101,7 @@ async def get_labels(
     Returns a list of label names that can be used in queries.
     """
     tenant_id = getattr(request.state, "api_key", None)
-    result = await loki_service.get_labels(start, end, tenant_id=tenant_id)
+    result = await loki_service.get_labels(start, end)
     return result
 
 
@@ -122,7 +120,7 @@ async def get_label_values(
     tenant_id = getattr(request.state, "api_key", None)
     tenant_query = _tenant_filter_query(tenant_id)
     effective_query = query or tenant_query
-    result = await loki_service.get_label_values(label, start, end, effective_query, tenant_id=tenant_id)
+    result = await loki_service.get_label_values(label, start, end, effective_query)
     return result
 
 
@@ -146,7 +144,6 @@ async def search_logs(
         start=payload.start,
         end=payload.end,
         limit=payload.limit,
-        tenant_id=tenant_id
     )
     return result
 
@@ -172,7 +169,6 @@ async def filter_logs(
         start=payload.start,
         end=payload.end,
         limit=payload.limit,
-        tenant_id=tenant_id
     )
     return result
 
@@ -192,7 +188,7 @@ async def aggregate_logs(
     """
     tenant_id = getattr(request.state, "api_key", None)
     scoped_query = _inject_tenant_label(query, tenant_id)
-    result = await loki_service.aggregate_logs(scoped_query, start, end, step, tenant_id=tenant_id)
+    result = await loki_service.aggregate_logs(scoped_query, start, end, step)
     return result
 
 
@@ -210,5 +206,5 @@ async def get_log_volume(
     """
     tenant_id = getattr(request.state, "api_key", None)
     scoped_query = _inject_tenant_label(query, tenant_id)
-    result = await loki_service.get_log_volume(scoped_query, start, end, step, tenant_id=tenant_id)
+    result = await loki_service.get_log_volume(scoped_query, start, end, step)
     return result

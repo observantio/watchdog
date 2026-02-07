@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from config import config, constants
-from routers import tempo_router, loki_router, alertmanager_router, grafana_router, agents_router
+from routers import tempo_router, loki_router, alertmanager_router, grafana_router
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -71,7 +71,6 @@ app.include_router(loki_router.router)
 app.include_router(alertmanager_router.router)
 app.include_router(alertmanager_router.webhook_router)
 app.include_router(grafana_router.router)
-app.include_router(agents_router.router)
 
 
 @app.get("/", tags=["info"])
@@ -103,8 +102,7 @@ if __name__ == "__main__":
     import uvicorn
     
     logger.info(f"Starting {constants.APP_NAME} v{constants.APP_VERSION}")
-    logger.info(f"Authentication: {'enabled' if config.ENABLE_AUTH else 'disabled'}")
-    
+
     uvicorn.run(
         app,
         host=config.HOST,

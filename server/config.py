@@ -19,14 +19,6 @@ class Config:
     GRAFANA_USERNAME: str = os.getenv("GRAFANA_USERNAME", "admin")
     GRAFANA_PASSWORD: str = os.getenv("GRAFANA_PASSWORD", "admin")
     
-    # Authentication
-    API_KEY_HEADER: str = "X-API-Key"
-    API_KEY: Optional[str] = os.getenv("API_KEY")
-    API_KEYS: list = [key.strip() for key in os.getenv("API_KEYS", "").split(",") if key.strip()]
-    ENABLE_AUTH: bool = os.getenv("ENABLE_AUTH", "false").lower() == "true"
-    TENANT_LABEL_KEY: str = os.getenv("TENANT_LABEL_KEY", "tenant_id")
-    REQUIRE_API_KEY_FOR_DATA: bool = os.getenv("REQUIRE_API_KEY_FOR_DATA", "true").lower() == "true"
-
     # Storage security
     STORAGE_DIR: str = os.getenv("STORAGE_DIR", "/data/beobservant")
     DATA_ENCRYPTION_KEY: Optional[str] = os.getenv("DATA_ENCRYPTION_KEY")

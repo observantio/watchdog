@@ -1,16 +1,14 @@
 """Tempo API router."""
-from fastapi import APIRouter, HTTPException, Query, Depends, status
+from fastapi import APIRouter, HTTPException, Query, status
 from typing import Optional, List
 
 from models.tempo_models import Trace, TraceQuery, TraceResponse
 from services.tempo_service import TempoService
-from middleware.auth import verify_api_key
 from config import config
 
 router = APIRouter(
     prefix="/api/tempo",
-    tags=["tempo"],
-    dependencies=[Depends(verify_api_key)]
+    tags=["tempo"]
 )
 tempo_service = TempoService()
 

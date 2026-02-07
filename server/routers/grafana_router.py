@@ -1,5 +1,5 @@
 """Grafana API router."""
-from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import Optional, List
 
 from models.grafana_models import (
@@ -7,12 +7,10 @@ from models.grafana_models import (
     Datasource, DatasourceCreate, DatasourceUpdate, Folder
 )
 from services.grafana_service import GrafanaService
-from middleware.auth import verify_api_key
 
 router = APIRouter(
     prefix="/api/grafana",
-    tags=["grafana"],
-    dependencies=[Depends(verify_api_key)]
+    tags=["grafana"]
 )
 
 grafana_service = GrafanaService()

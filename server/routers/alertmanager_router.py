@@ -1,5 +1,5 @@
 """AlertManager API router."""
-from fastapi import APIRouter, HTTPException, Query, Body, Request, Depends, status
+from fastapi import APIRouter, HTTPException, Query, Body, Request, status
 from typing import Optional, List, Dict
 import logging
 
@@ -11,7 +11,6 @@ from models.alertmanager_models import (
 from services.alertmanager_service import AlertManagerService
 from services.storage_service import StorageService
 from services.notification_service import NotificationService
-from middleware.auth import verify_api_key
 from config import constants
 from models.alertmanager_models import AlertStatus, AlertState
 from datetime import datetime, timezone
@@ -22,8 +21,7 @@ INVALID_FILTER_LABELS_JSON = "Invalid filter_labels JSON"
 
 router = APIRouter(
     prefix="/api/alertmanager",
-    tags=["alertmanager"],
-    dependencies=[Depends(verify_api_key)]
+    tags=["alertmanager"]
 )
 
 webhook_router = APIRouter(tags=["alertmanager-webhooks"])

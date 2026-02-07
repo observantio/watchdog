@@ -44,7 +44,7 @@ services:
     volumes:
       - ./configs/otel-agent.yaml:/etc/otel/agent.yaml:ro
     environment:
-      OTEL_AGENT_API_KEY: "${OTEL_AGENT_API_KEY:-public}"
+      OTEL_AGENT_query_logsKEY: "${OTEL_AGENT_API_KEY:-public}"
     depends_on:
       kafka:
         condition: service_healthy
