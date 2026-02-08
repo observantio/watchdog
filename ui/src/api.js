@@ -194,11 +194,6 @@ export async function getTrace(traceID) {
   return request(`/api/tempo/traces/${encodeURIComponent(traceID)}`)
 }
 
-// Agents
-export async function getAgents() {
-  return request('/api/agents/')
-}
-
 // Grafana
 export async function searchDashboards(q = '') {
   const url = q ? `/api/grafana/dashboards/search?query=${encodeURIComponent(q)}` : '/api/grafana/dashboards/search'
