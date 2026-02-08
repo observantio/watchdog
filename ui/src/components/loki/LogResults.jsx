@@ -2,6 +2,21 @@ import { Badge, Spinner } from '../../components/ui'
 import PropTypes from 'prop-types'
 import { formatNsToIso, formatRelativeTime, formatLogLine, getLogLevelColor, getLogLevelBadge } from '../../utils/logFormatters'
 
+function normalizeStreamLabelValue(label, value) {
+  if (typeof value !== 'string') return value
+  if (!value.includes('="')) return value
+
+  const escapedLabel = String(label).replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\\$&`)
+  const matcher = new RegExp(`${escapedLabel}="([^"]+)"`)
+  const match = matcher.exec(value)
+  if (match?.[1]) return match[1]
+
+  const cutIndex = value.indexOf('",')
+  if (cutIndex > 0) return value.slice(0, cutIndex)
+
+  return value
+}
+
 export default function LogResults({ queryResult, loading, filterDisplayedLogs, viewMode, expandedLogs, toggleLogExpand, copyToClipboard, handleTraceClick, handleStreamClick }) {
   if (loading) {
     return (
@@ -43,7 +58,7 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
                     <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 bg-sre-surface border border-sre-border rounded text-xs font-mono">
                       <span className="text-sre-primary font-semibold">{k}</span>
                       <span className="text-sre-text-muted">=</span>
-                      <span className="text-sre-text">{v}</span>
+                      <span className="text-sre-text">{normalizeStreamLabelValue(k, v)}</span>
                     </span>
                   ))}
                 </div>

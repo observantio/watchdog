@@ -11,6 +11,9 @@ import dagre from '@dagrejs/dagre'
 import { getServiceName, getSpanAttribute, percentile } from '../../utils/helpers'
 import { formatDuration } from '../../utils/formatters'
 
+const PAIN_P95_THRESHOLD_US = 1_000_000
+const WARN_P95_THRESHOLD_US = 300_000
+
 /**=
  * ServiceNode component for rendering service nodes in the graph
  * @param {object} props - Component props
@@ -187,16 +190,16 @@ export default function ServiceGraph({ traces }) {
 
   const nodes = useMemo(() => {
     const nodesArray = []
-    const entries = Array.from(graphData.services.entries())
+    const entries = Array.from(graphData.services.entries()).sort((a, b) => a[0].localeCompare(b[0]))
     entries.forEach(([name, stats]) => {
       const p50 = percentile(stats.durations, 0.5)
       const p95 = percentile(stats.durations, 0.95)
       const errorRateNum = stats.spans ? (stats.errors / stats.spans) * 100 : 0
-      const pain = p95 > 1000000000 || errorRateNum > 5
+      const pain = p95 > PAIN_P95_THRESHOLD_US || errorRateNum > 5
       let colorClass
       if (pain) {
         colorClass = 'ring-2 ring-red-500/60'
-      } else if (errorRateNum > 1) {
+      } else if (p95 > WARN_P95_THRESHOLD_US || errorRateNum > 1) {
         colorClass = 'ring-2 ring-yellow-400/60'
       } else {
         colorClass = 'ring-2 ring-green-500/40'
@@ -232,11 +235,11 @@ export default function ServiceGraph({ traces }) {
       const [source, target] = key.split('->')
       const p95 = percentile(val.durations, 0.95)
       const errorRateNum = val.count ? (val.errors / val.count) * 100 : 0
-      const isPain = p95 > 1000000000 || errorRateNum > 5
+      const isPain = p95 > PAIN_P95_THRESHOLD_US || errorRateNum > 5
       let color
       if (isPain) {
         color = '#ef4444'
-      } else if (errorRateNum > 1) {
+      } else if (p95 > WARN_P95_THRESHOLD_US || errorRateNum > 1) {
         color = '#f59e0b'
       } else {
         color = '#10b981'
@@ -265,6 +268,7 @@ export default function ServiceGraph({ traces }) {
     g.setDefaultEdgeLabel(() => ({}))
     g.setGraph({
       rankdir: 'LR',
+      ranker: 'tight-tree',
       nodesep: 80,
       ranksep: 140,
       edgesep: 20,

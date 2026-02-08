@@ -32,64 +32,58 @@ export function getLogLevel(line) {
  * @param {object} span - Span object
  * @returns {string} Service name
 */
-
 export function getServiceName(span) {
   if (!span) return 'unknown'
   if (span.serviceName) return span.serviceName
   if (span.process?.serviceName) return span.process.serviceName
-  
-  if (Array.isArray(span.tags)) {
-    const t = span.tags.find(t => 
-      t.key === 'service.name' || 
-      t.key === 'service' || 
-      t.key?.toLowerCase().includes('service')
-    )
-    if (t && (t.value || t.value === 0)) return String(t.value)
-  } else if (span.tags && typeof span.tags === 'object') {
-    if (span.tags['service.name']) return String(span.tags['service.name'])
-    if (span.tags['service']) return String(span.tags['service'])
-    const k = Object.keys(span.tags).find(k => k.toLowerCase().includes('service'))
-    if (k) return String(span.tags[k])
-  }
-  
-  if (span.attributes && typeof span.attributes === 'object') {
-    if (span.attributes['service.name']) return String(span.attributes['service.name'])
-    if (span.attributes['service']) return String(span.attributes['service'])
-  }
-  
+
+  const tagKey = ['service.name', 'service', 'service_name']
+  const tagVal = getSpanAttribute(span, tagKey)
+  if (tagVal != null) return String(tagVal)
+
   return 'unknown'
 }
 
 /**
  * Get span attribute value
  * @param {object} span - Span object
- * @param {string|string[]} keys - Attribute key(s) to look for
+ * @param {string} keys - Attribute key to look for
  * @returns {any} Attribute value or null
  */
+function getFromAttributes(attrs, keys) {
+  if (!attrs || typeof attrs !== 'object') return null
+  for (const key of keys) {
+    const val = attrs[key]
+    if (val != null) return val
+  }
+  return null
+}
+
+function getFromTags(tags, keys) {
+  if (Array.isArray(tags)) {
+    for (const key of keys) {
+      const tag = tags.find(t => t?.key === key)
+      if (tag?.value != null) return tag.value
+    }
+    return null
+  }
+  if (typeof tags === 'object' && tags) {
+    for (const key of keys) {
+      const val = tags[key]
+      if (val != null) return val
+    }
+  }
+  return null
+}
+
 export function getSpanAttribute(span, keys) {
-  if (!span) return null
+  if (!span || !keys) return null
   const keyList = Array.isArray(keys) ? keys : [keys]
 
-  if (span.attributes && typeof span.attributes === 'object') {
-    for (const k of keyList) {
-      if (span.attributes[k] !== undefined && span.attributes[k] !== null) {
-        return span.attributes[k]
-      }
-    }
-  }
+  const attrVal = getFromAttributes(span.attributes, keyList)
+  if (attrVal != null) return attrVal
 
-  if (Array.isArray(span.tags)) {
-    for (const k of keyList) {
-      const t = span.tags.find(tag => tag?.key === k)
-      if (t?.value != null) return t.value
-    }
-  } else if (span.tags && typeof span.tags === 'object') {
-    for (const k of keyList) {
-      if (span.tags[k] !== undefined && span.tags[k] !== null) return span.tags[k]
-    }
-  }
-
-  return null
+  return getFromTags(span.tags, keyList)
 }
 
 /**
@@ -160,7 +154,7 @@ export function debounce(func, wait) {
  */
 export function deepClone(obj) {
   try {
-    return JSON.parse(JSON.stringify(obj))
+    return structuredClone(obj)
   } catch {
     return obj
   }
@@ -184,5 +178,5 @@ export function isEmpty(value) {
  * @returns {string} Unique ID
  */
 export function generateId() {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
 }

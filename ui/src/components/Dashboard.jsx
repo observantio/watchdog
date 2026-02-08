@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchHealth, getAlerts } from '../api'
+import { fetchHealth, getAlerts, getAgents } from '../api'
 import { Card, Badge, MetricCard, Spinner } from './ui'
 import PropTypes from 'prop-types'
 
@@ -8,6 +8,8 @@ export default function Dashboard({ info }) {
   const [loading, setLoading] = useState(true)
   const [alertCount, setAlertCount] = useState(null)
   const [loadingAlerts, setLoadingAlerts] = useState(true)
+  const [agents, setAgents] = useState([])
+  const [loadingAgents, setLoadingAgents] = useState(true)
 
   useEffect(() => {
     fetchHealth()
@@ -22,6 +24,20 @@ export default function Dashboard({ info }) {
       })
       .catch(() => setAlertCount(0))
       .finally(() => setLoadingAlerts(false))
+
+    // Agents — poll every 10s
+    let mounted = true
+    const loadAgents = () => {
+      setLoadingAgents(true)
+      getAgents()
+        .then((list) => { if (mounted) setAgents(Array.isArray(list) ? list : []) })
+        .catch(() => { if (mounted) setAgents([]) })
+        .finally(() => { if (mounted) setLoadingAgents(false) })
+    }
+
+    loadAgents()
+    const interval = setInterval(loadAgents, 10000)
+    return () => { mounted = false; clearInterval(interval) }
   }, [])
 
   const statusBadge = (status) => {
@@ -160,7 +176,52 @@ export default function Dashboard({ info }) {
             </div>
           </div>
         </Card>
+        
+        {/* Agents */}
+        <Card
+          title="Agents"
+          subtitle="Active OpenTelemetry agents"
+          className="lg:col-span-2"
+        >
+          {loadingAgents ? (
+            <div className="flex items-center justify-center p-6"><Spinner /></div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {agents.length === 0 && (
+                <div className="text-sm text-sre-text-muted">No agents registered</div>
+              )}
+              {agents.map((agent) => {
+                let statusColor
+                if (agent.status === 'active') {
+                  statusColor = 'bg-green-400 animate-pulse'
+                } else if (agent.status === 'warning') {
+                  statusColor = 'bg-yellow-400'
+                } else {
+                  statusColor = 'bg-gray-400'
+                }
 
+                return (
+                  <div key={agent.id} className="flex items-center gap-3 p-3 bg-sre-bg-alt rounded border border-sre-border">
+                    <div className="flex-shrink-0">
+                      <span
+                        className={`w-3 h-3 rounded-full inline-block ${statusColor}`}
+                        aria-hidden
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sre-text">{agent.name || agent.id}</div>
+                      <div className="text-xs text-sre-text-muted">{agent.system || 'unknown system'}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-mono">{agent.status}</div>
+                      <div className="text-xs text-sre-text-muted">Last seen: {agent.last_seen ? new Date(agent.last_seen).toLocaleString() : 'n/a'}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
         {/* Connected Services */}
         <Card
           title="Connected Services"

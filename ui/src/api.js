@@ -8,7 +8,8 @@ import { API_BASE } from './utils/constants'
  * @param {string} path - API endpoint path
  * @param {object} opts - Fetch options
  * @returns {Promise<any>} Response data
- */
+*/
+
 async function request(path, opts = {}) {
   const headers = opts.headers || {}
   opts.headers = headers
@@ -191,6 +192,11 @@ export async function fetchTempoServices() {
 }
 export async function getTrace(traceID) {
   return request(`/api/tempo/traces/${encodeURIComponent(traceID)}`)
+}
+
+// Agents
+export async function getAgents() {
+  return request('/api/agents/')
 }
 
 // Grafana

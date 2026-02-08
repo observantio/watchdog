@@ -1,6 +1,7 @@
 // This component is used to catch JavaScript errors anywhere in the child component tree,
 
 import React from 'react'
+import PropTypes from 'prop-types'
 import { Alert, Button } from './ui'
 
 export default class ErrorBoundary extends React.Component {
@@ -15,7 +16,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo)
-    this.state = { hasError: true, error, errorInfo }
+    this.setState({ hasError: true, error, errorInfo })
   }
 
   handleReset = () => {
@@ -58,9 +59,9 @@ export default class ErrorBoundary extends React.Component {
                   <div className="flex gap-2 mt-4">
                     <Button onClick={this.handleReset}>
                       <span className="material-icons text-sm mr-2">refresh</span>
-                      Try Again
+                      <span>Try Again</span>
                     </Button>
-                    <Button variant="ghost" onClick={() => window.location.reload()}>
+                    <Button variant="ghost" onClick={() => globalThis.location.reload()}>
                       Reload Page
                     </Button>
                   </div>
@@ -74,4 +75,10 @@ export default class ErrorBoundary extends React.Component {
 
     return this.props.children
   }
+}
+
+ErrorBoundary.propTypes = {
+  children: PropTypes.node.isRequired,
+  fallback: PropTypes.node,
+  onReset: PropTypes.func
 }

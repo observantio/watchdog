@@ -8,7 +8,7 @@ from middleware.resilience import with_retry, with_timeout
 
 logger = logging.getLogger(__name__)
 
-# Constants for service tag keys used across the module
+
 SERVICE_NAME_KEY = "service.name"
 SERVICE_ALIAS_KEY = "service"
 SERVICE_KEYS = [SERVICE_NAME_KEY, SERVICE_ALIAS_KEY]
@@ -24,15 +24,10 @@ class TempoService:
         """
         self.tempo_url = tempo_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
-
-    def _headers(self, tenant_id: Optional[str]) -> Dict[str, str]:
-        if tenant_id:
-            return {"X-Scope-OrgID": tenant_id}
-        return {}
     
     @with_retry()
     @with_timeout()
-    async def search_traces(self, query: TraceQuery, tenant_id: Optional[str] = None) -> TraceResponse:
+    async def search_traces(self, query: TraceQuery) -> TraceResponse:
         """Search for traces matching query parameters.
         
         Args:
@@ -47,8 +42,7 @@ class TempoService:
             try:
                 response = await client.get(
                     f"{self.tempo_url}/api/search",
-                    params=params,
-                    headers=self._headers(tenant_id)
+                    params=params
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -58,7 +52,7 @@ class TempoService:
                     for trace_data in data["traces"]:
                         trace_id = trace_data.get("traceID")
                         if trace_id:
-                            full_trace = await self.get_trace(trace_id, tenant_id=tenant_id)
+                            full_trace = await self.get_trace(trace_id)
                             if full_trace:
                                 traces.append(full_trace)
                 
@@ -80,7 +74,7 @@ class TempoService:
     
     @with_retry()
     @with_timeout()
-    async def get_trace(self, trace_id: str, tenant_id: Optional[str] = None) -> Optional[Trace]:
+    async def get_trace(self, trace_id: str) -> Optional[Trace]:
         """Get a specific trace by ID.
         
         Args:
@@ -92,17 +86,14 @@ class TempoService:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.get(
-                    f"{self.tempo_url}/api/traces/{trace_id}",
-                    headers=self._headers(tenant_id)
+                    f"{self.tempo_url}/api/traces/{trace_id}"
                 )
                 response.raise_for_status()
                 data = response.json()
                 
-                # Parse Tempo/Jaeger format
+                
                 if "batches" in data:
                     trace = self._parse_tempo_trace(trace_id, data)
-                    if tenant_id and not self._trace_has_tenant(trace, tenant_id):
-                        return None
                     return trace
                 
                 return None
@@ -113,7 +104,7 @@ class TempoService:
     
     @with_retry()
     @with_timeout()
-    async def get_services(self, tenant_id: Optional[str] = None) -> List[str]:
+    async def get_services(self) -> List[str]:
         """Get list of services that have traces.
         
         Returns:
@@ -122,8 +113,7 @@ class TempoService:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.get(
-                    f"{self.tempo_url}/api/search/tags",
-                    headers=self._headers(tenant_id)
+                    f"{self.tempo_url}/api/search/tags"
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -132,8 +122,7 @@ class TempoService:
                     for tag in data["tagNames"]:
                         if tag in SERVICE_KEYS:
                             values_response = await client.get(
-                                f"{self.tempo_url}/api/search/tag/{tag}/values",
-                                headers=self._headers(tenant_id)
+                                f"{self.tempo_url}/api/search/tag/{tag}/values"
                             )
                             values_response.raise_for_status()
                             values_data = values_response.json()
@@ -146,7 +135,7 @@ class TempoService:
                 logger.error(f"Error fetching services: {e}")
                 return []
     
-    async def get_operations(self, service: str, tenant_id: Optional[str] = None) -> List[str]:
+    async def get_operations(self, service: str) -> List[str]:
         """Get operations for a specific service.
         
         Args:
@@ -156,7 +145,7 @@ class TempoService:
             List of operation names
         """
         query = TraceQuery(service=service, limit=100)
-        response = await self.search_traces(query, tenant_id=tenant_id)
+        response = await self.search_traces(query)
         
         operations = set()
         for trace in response.data:
@@ -169,8 +158,7 @@ class TempoService:
         self,
         service: Optional[str] = None,
         start: Optional[int] = None,
-        end: Optional[int] = None,
-        tenant_id: Optional[str] = None
+        end: Optional[int] = None
     ) -> Dict[str, Any]:
         """Get trace metrics/statistics.
         
@@ -183,7 +171,7 @@ class TempoService:
             Dictionary with trace metrics
         """
         query = TraceQuery(service=service, start=start, end=end, limit=1000)
-        response = await self.search_traces(query, tenant_id=tenant_id)
+        response = await self.search_traces(query)
         
         total_spans = sum(len(trace.spans) for trace in response.data)
         durations = []
@@ -237,10 +225,8 @@ class TempoService:
             params["tags"] = " && ".join(tag_queries)
         
         if query.start:
-            # Tempo expects seconds; UI sends microseconds
             params["start"] = int(int(query.start) / 1_000_000)
         if query.end:
-            # Tempo expects seconds; UI sends microseconds
             params["end"] = int(int(query.end) / 1_000_000)
     
         if query.min_duration:
@@ -250,16 +236,6 @@ class TempoService:
         
         return params
 
-    def _trace_has_tenant(self, trace: Trace, tenant_id: str) -> bool:
-        key = config.TENANT_LABEL_KEY
-        for span in trace.spans:
-            if span.attributes and span.attributes.get(key) == tenant_id:
-                return True
-            for tag in span.tags or []:
-                if tag.key == key and tag.value == tenant_id:
-                    return True
-        return False
-    
     def _parse_tempo_trace(self, trace_id: str, data: Dict[str, Any]) -> Trace:
         """Parse Tempo trace format into our Trace model.
         
@@ -322,7 +298,7 @@ class TempoService:
         for key, value in attr_map.items():
             tags.append({"key": key, "value": value})
 
-        # ensure service name is present in attributes/tags for UI parsing
+        
         if service_name and SERVICE_NAME_KEY not in attr_map:
             attr_map[SERVICE_NAME_KEY] = service_name
             tags.append({"key": SERVICE_NAME_KEY, "value": service_name})

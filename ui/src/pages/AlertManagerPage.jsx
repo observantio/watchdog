@@ -34,7 +34,6 @@ function normalizeChannelPayload(channelData) {
   return normalized
 }
 
-
 export default function AlertManagerPage() {
   const [activeTab, setActiveTab] = useState('alerts')
   const [alerts, setAlerts] = useState([])

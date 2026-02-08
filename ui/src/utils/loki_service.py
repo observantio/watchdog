@@ -1,7 +1,6 @@
 """Loki service for log operations."""
 import httpx
 import logging
-import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
@@ -12,11 +11,6 @@ from models import (
 from middleware.resilience import with_retry, with_timeout
 
 logger = logging.getLogger(__name__)
-
-SERVICE_NAME_LABEL = "service.name"
-SERVICE_NAME_ALIAS = "service_name"
-LABELSET_PAIR_RE = re.compile(r'([A-Za-z0-9_.:-]+)="([^"]*)"')
-SERVICE_LABEL_EXACT_RE = re.compile(r'(?P<label>service_name|service\.name)\s*=\s*"(?P<value>[^"]+)"')
 
 class LokiService:
     """Service for interacting with Loki logging backend."""
@@ -29,122 +23,6 @@ class LokiService:
         """
         self.loki_url = loki_url.rstrip('/')
         self.timeout = 30.0
-
-    def _normalize_service_label_query(self, query_str: str) -> str:
-        if SERVICE_NAME_ALIAS not in query_str or SERVICE_NAME_LABEL in query_str:
-            return query_str
-
-        def replace_in_selector(match: re.Match) -> str:
-            content = match.group(1)
-            updated = re.sub(
-                rf'(?<![\w.]){SERVICE_NAME_ALIAS}(?=\s*(=|=~))',
-                SERVICE_NAME_LABEL,
-                content
-            )
-            return "{" + updated + "}"
-
-        return re.sub(r"\{([^}]*)\}", replace_in_selector, query_str)
-
-    def _expand_service_label_matchers(self, query_str: str) -> str:
-        def replace_match(match: re.Match) -> str:
-            label = match.group("label")
-            value = match.group("value")
-            return f'{label}=~"{value}.*"'
-
-        return SERVICE_LABEL_EXACT_RE.sub(replace_match, query_str)
-
-    def _build_service_fallback_queries(self, query_str: str) -> List[str]:
-        candidates: List[str] = []
-
-        normalized = self._normalize_service_label_query(query_str)
-        if normalized != query_str:
-            candidates.append(normalized)
-
-        expanded_original = self._expand_service_label_matchers(query_str)
-        if expanded_original != query_str:
-            candidates.append(expanded_original)
-
-        expanded_normalized = self._expand_service_label_matchers(normalized)
-        if expanded_normalized not in (query_str, expanded_original):
-            candidates.append(expanded_normalized)
-
-        return candidates
-
-    def _parse_labelset_value(self, label_key: str, raw_value: str) -> Optional[Dict[str, str]]:
-        if not isinstance(raw_value, str) or '="' not in raw_value:
-            return None
-
-        candidate = raw_value
-        if f'{label_key}="' not in raw_value:
-            candidate = f'{label_key}="{raw_value}'
-
-        pairs = LABELSET_PAIR_RE.findall(candidate)
-        if not pairs:
-            return None
-        return dict(pairs)
-
-    def _normalize_label_value(self, label_key: str, value: Any) -> tuple[Optional[str], Optional[Dict[str, str]]]:
-        if not isinstance(value, str):
-            return None, None
-        if '="' not in value or '",' not in value:
-            return None, None
-
-        parsed = self._parse_labelset_value(label_key, value)
-        if parsed:
-            return parsed.get(label_key, value), parsed
-
-        cut_index = value.find('",')
-        if cut_index > 0:
-            return value[:cut_index], None
-
-        return None, None
-
-    def _normalize_label_dict(self, labels: Dict[str, Any]) -> Dict[str, str]:
-        extra_labels: Dict[str, str] = {}
-        for key, value in labels.items():
-            normalized_value, parsed = self._normalize_label_value(key, value)
-            if normalized_value is not None:
-                labels[key] = normalized_value
-            if parsed:
-                for parsed_key, parsed_value in parsed.items():
-                    if parsed_key not in labels:
-                        extra_labels[parsed_key] = parsed_value
-
-        return extra_labels
-
-    def _normalize_stream_labels(self, data: Dict[str, Any]) -> None:
-        result = data.get("result")
-        if not isinstance(result, list):
-            return
-
-        for stream in result:
-            labels = stream.get("stream")
-            if not isinstance(labels, dict):
-                continue
-
-            extra = self._normalize_label_dict(labels)
-            if extra:
-                labels.update(extra)
-
-    def _normalize_label_values(self, label: str, values: List[str]) -> List[str]:
-        cleaned: List[str] = []
-        for value in values:
-            if not isinstance(value, str):
-                cleaned.append(value)
-                continue
-
-            parsed = self._parse_labelset_value(label, value)
-            if parsed and label in parsed:
-                cleaned.append(parsed[label])
-                continue
-
-            cut_index = value.find('",')
-            if cut_index > 0:
-                cleaned.append(value[:cut_index])
-            else:
-                cleaned.append(value)
-
-        return cleaned
     
     @with_retry()
     @with_timeout()
@@ -168,25 +46,10 @@ class LokiService:
                 response.raise_for_status()
                 data = response.json()
                 
-                if query.query and not data.get("data", {}).get("result"):
-                    for candidate in self._build_service_fallback_queries(query.query):
-                        params["query"] = candidate
-                        response = await client.get(
-                            f"{self.loki_url}/loki/api/v1/query_range",
-                            params=params
-                        )
-                        response.raise_for_status()
-                        data = response.json()
-                        if data.get("data", {}).get("result"):
-                            break
-
-                data_payload = data.get("data", {})
-                self._normalize_stream_labels(data_payload)
-
                 return LogResponse(
                     status=data.get("status", "success"),
-                    data=data_payload,
-                    stats=self._calculate_stats(data_payload)
+                    data=data.get("data", {}),
+                    stats=self._calculate_stats(data.get("data", {}))
                 )
                 
             except httpx.HTTPError as e:
@@ -225,24 +88,9 @@ class LokiService:
                 response.raise_for_status()
                 data = response.json()
                 
-                if query_str and not data.get("data", {}).get("result"):
-                    for candidate in self._build_service_fallback_queries(query_str):
-                        params["query"] = candidate
-                        response = await client.get(
-                            f"{self.loki_url}/loki/api/v1/query",
-                            params=params
-                        )
-                        response.raise_for_status()
-                        data = response.json()
-                        if data.get("data", {}).get("result"):
-                            break
-
-                data_payload = data.get("data", {})
-                self._normalize_stream_labels(data_payload)
-
                 return LogResponse(
                     status=data.get("status", "success"),
-                    data=data_payload
+                    data=data.get("data", {})
                 )
                 
             except httpx.HTTPError as e:
@@ -325,20 +173,15 @@ class LokiService:
                 response.raise_for_status()
                 data = response.json()
                 
-                values = data.get("data", [])
-                normalized_values = self._normalize_label_values(label, values)
-
                 return LogLabelValuesResponse(
                     status=data.get("status", "success"),
-                    data=normalized_values
+                    data=data.get("data", [])
                 )
                 
             except httpx.HTTPError as e:
                 logger.error(f"Error fetching label values: {e}")
                 return LogLabelValuesResponse(status="error", data=[])
     
-    @with_retry()
-    @with_timeout()
     async def aggregate_logs(
         self,
         query_str: str,
@@ -394,8 +237,6 @@ class LokiService:
                     "query": query_str
                 }
     
-    @with_retry()
-    @with_timeout()
     async def get_log_volume(
         self,
         query_str: str,
@@ -418,8 +259,6 @@ class LokiService:
         volume_query = f'sum(count_over_time({query_str}[{step}s]))'
         return await self.aggregate_logs(volume_query, start, end, step)
     
-    @with_retry()
-    @with_timeout()
     async def search_logs_by_pattern(
         self,
         pattern: str,
@@ -453,8 +292,6 @@ class LokiService:
         
         return await self.query_logs(query)
     
-    @with_retry()
-    @with_timeout()
     async def filter_logs(
         self,
         labels: Dict[str, str],

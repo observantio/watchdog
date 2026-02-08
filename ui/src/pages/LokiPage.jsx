@@ -23,6 +23,12 @@ function normalizeLabelValue(label, value) {
   const match = matcher.exec(raw)
   if (match?.[1]) return match[1]
 
+  if (raw.includes('="') && !raw.startsWith(`${label}="`)) {
+    const prefixed = `${label}="${raw}`
+    const prefMatch = matcher.exec(prefixed)
+    if (prefMatch?.[1]) return prefMatch[1]
+  }
+
   const cutIndex = raw.indexOf('",')
   if (cutIndex > 0) return raw.slice(0, cutIndex)
 

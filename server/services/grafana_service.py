@@ -13,7 +13,6 @@ from middleware.resilience import with_retry, with_timeout
 
 logger = logging.getLogger(__name__)
 
-
 class GrafanaService:
     """Service for interacting with Grafana."""
     
@@ -43,6 +42,8 @@ class GrafanaService:
             "Content-Type": "application/json"
         }
     
+    @with_retry()
+    @with_timeout()
     async def search_dashboards(
         self,
         query: Optional[str] = None,
@@ -87,6 +88,8 @@ class GrafanaService:
                 logger.error(f"Error searching dashboards: {e}")
                 return []
     
+    @with_retry()
+    @with_timeout()
     async def get_dashboard(self, uid: str) -> Optional[Dict[str, Any]]:
         """Get a dashboard by UID.
         
@@ -109,6 +112,8 @@ class GrafanaService:
                 logger.error(f"Error fetching dashboard {uid}: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def create_dashboard(self, dashboard_create: DashboardCreate) -> Optional[Dict[str, Any]]:
         """Create a new dashboard.
         
@@ -134,6 +139,8 @@ class GrafanaService:
                 logger.error(f"Error creating dashboard: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def update_dashboard(
         self,
         uid: str,
@@ -148,12 +155,12 @@ class GrafanaService:
         Returns:
             Updated dashboard info or None if error
         """
-        # Get existing dashboard to preserve UID
+        
         existing = await self.get_dashboard(uid)
         if not existing:
             return None
         
-        # Update the dashboard
+        
         dashboard_update.dashboard.uid = uid
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -172,6 +179,8 @@ class GrafanaService:
                 logger.error(f"Error updating dashboard {uid}: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def delete_dashboard(self, uid: str) -> bool:
         """Delete a dashboard.
         
@@ -194,8 +203,10 @@ class GrafanaService:
                 logger.error(f"Error deleting dashboard {uid}: {e}")
                 return False
     
-    # Datasource operations
     
+    
+    @with_retry()
+    @with_timeout()
     async def get_datasources(self) -> List[Datasource]:
         """Get all datasources.
         
@@ -217,6 +228,8 @@ class GrafanaService:
                 logger.error(f"Error fetching datasources: {e}")
                 return []
     
+    @with_retry()
+    @with_timeout()
     async def get_datasource(self, uid: str) -> Optional[Datasource]:
         """Get a datasource by UID.
         
@@ -241,6 +254,8 @@ class GrafanaService:
                 logger.error(f"Error fetching datasource {uid}: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def get_datasource_by_name(self, name: str) -> Optional[Datasource]:
         """Get a datasource by name.
         
@@ -265,6 +280,8 @@ class GrafanaService:
                 logger.error(f"Error fetching datasource {name}: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def create_datasource(self, datasource: DatasourceCreate) -> Optional[Datasource]:
         """Create a new datasource.
         
@@ -286,7 +303,7 @@ class GrafanaService:
                 response.raise_for_status()
                 result = response.json()
                 
-                # Fetch the created datasource
+                
                 if "datasource" in result:
                     return Datasource(**result["datasource"])
                 return None
@@ -295,6 +312,8 @@ class GrafanaService:
                 logger.error(f"Error creating datasource: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def update_datasource(
         self,
         uid: str,
@@ -333,6 +352,8 @@ class GrafanaService:
                 logger.error(f"Error updating datasource {uid}: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def delete_datasource(self, uid: str) -> bool:
         """Delete a datasource.
         
@@ -355,6 +376,8 @@ class GrafanaService:
                 logger.error(f"Error deleting datasource {uid}: {e}")
                 return False
     
+    @with_retry()
+    @with_timeout()
     async def get_folders(self) -> List[Folder]:
         """Get all folders.
         
@@ -376,6 +399,8 @@ class GrafanaService:
                 logger.error(f"Error fetching folders: {e}")
                 return []
     
+    @with_retry()
+    @with_timeout()
     async def create_folder(self, title: str) -> Optional[Folder]:
         """Create a new folder.
         
@@ -401,6 +426,8 @@ class GrafanaService:
                 logger.error(f"Error creating folder: {e}")
                 return None
     
+    @with_retry()
+    @with_timeout()
     async def delete_folder(self, uid: str) -> bool:
         """Delete a folder.
         
