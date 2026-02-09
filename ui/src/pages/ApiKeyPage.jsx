@@ -97,7 +97,7 @@ service:
 
 export default function ApiKeyPage() {
   const { user, updateUser } = useAuth()
-  const [orgId, setOrgId] = useState('default')
+  const [orgId, setOrgId] = useState('')
   const [apiKeys, setApiKeys] = useState([])
   const [yamlKeyId, setYamlKeyId] = useState('')
   const [newKeyName, setNewKeyName] = useState('')
@@ -114,7 +114,9 @@ export default function ApiKeyPage() {
       const initialKey = enabled[0] || (user.api_keys || [])[0]
       setYamlKeyId(initialKey?.id || '')
       const defaultKey = (user.api_keys || []).find((k) => k.is_default)
-      setOrgId(defaultKey?.id || '')
+      const orgKey = defaultKey
+        || (user.api_keys || []).find((k) => k.key === user.org_id)
+      setOrgId(orgKey?.id || '')
     }
   }, [user])
 
@@ -219,9 +221,9 @@ export default function ApiKeyPage() {
   const yamlKey = useMemo(() => apiKeys.find((k) => k.id === yamlKeyId) || apiKeys[0], [apiKeys, yamlKeyId])
   const selectedOrgKeyValue = useMemo(() => {
     const found = apiKeys.find((k) => k.id === orgId)
-    return found?.key || 'default'
-  }, [apiKeys, orgId])
-  const yamlContent = useMemo(() => buildOtelYaml(yamlKey?.key || selectedOrgKeyValue || 'default'), [yamlKey, selectedOrgKeyValue])
+    return found?.key || user?.org_id || ''
+  }, [apiKeys, orgId, user])
+  const yamlContent = useMemo(() => buildOtelYaml(yamlKey?.key || selectedOrgKeyValue || ''), [yamlKey, selectedOrgKeyValue])
 
   const enabledCount = apiKeys.filter((k) => k.is_enabled).length
 

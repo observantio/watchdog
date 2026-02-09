@@ -363,13 +363,6 @@ export default function Dashboard({ info }) {
     return 'N/A'
   }
 
-  const getTraceTrend = () => {
-    if (traceErrorCount === null) return traceCount > 0 ? 'Errors unknown' : 'No traces'
-    if (traceErrorCount > 0) return `${traceErrorCount} with errors`
-    if (traceCount > 0) return 'No errors'
-    return 'No traces'
-  }
-
   const getTraceStatus = () => {
     if (traceErrorCount === null) return traceCount > 0 ? 'success' : 'default'
     if (traceErrorCount > 0) return 'warning'
@@ -401,6 +394,8 @@ export default function Dashboard({ info }) {
     return 'N/A'
   }
 
+  const traceTrend = traceErrorCount > 0 ? `${traceErrorCount} with errors` : traceCount > 0 ? 'No errors' : 'No traces'
+
   const metrics = [
     {
       id: 'service-status',
@@ -430,7 +425,7 @@ export default function Dashboard({ info }) {
       id: 'traces',
       label: "Traces (last 1h)",
       value: getTraceValue(),
-      trend: getTraceTrend(),
+      trend: traceTrend,
       status: getTraceStatus(),
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">

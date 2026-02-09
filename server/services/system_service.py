@@ -12,18 +12,27 @@ class SystemService:
     def __init__(self):
         """Initialize with current process."""
         self.process = psutil.Process(os.getpid())
+        try:
+            self.process.cpu_percent(interval=None)
+        except Exception as e:
+            logger.warning(f"Unable to prime CPU percent: {e}")
 
     def get_cpu_metrics(self) -> Dict[str, Any]:
         """Get CPU utilization metrics for the beObservant process."""
         try:
-            # Get process CPU percent (percent of one CPU core)
-            cpu_percent = self.process.cpu_percent(interval=0.1)
-            cpu_count = psutil.cpu_count()
-            # Get number of threads
+            cpu_percent = self.process.cpu_percent(interval=None)
+            if cpu_percent == 0:
+                cpu_percent = self.process.cpu_percent(interval=0.1)
+            cpu_count = psutil.cpu_count() or 1
             num_threads = self.process.num_threads()
+
+            # Normalize to 0-100% of total CPU capacity to avoid >100% readings
+            normalized = cpu_percent / cpu_count if cpu_count else cpu_percent
+            normalized = min(normalized, 100)
             
             return {
-                "utilization": round(cpu_percent, 2),
+                "utilization": round(normalized, 2),
+                "raw_utilization": round(cpu_percent, 2),
                 "count": cpu_count,
                 "threads": num_threads,
                 "frequency_mhz": None  # Process-specific frequency not available
@@ -32,6 +41,7 @@ class SystemService:
             logger.error(f"Error getting CPU metrics: {e}")
             return {
                 "utilization": 0,
+                "raw_utilization": 0,
                 "count": 0,
                 "threads": 0,
                 "frequency_mhz": None

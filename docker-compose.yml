@@ -127,6 +127,7 @@ services:
       DEFAULT_ADMIN_USERNAME: "${DEFAULT_ADMIN_USERNAME:-admin}"
       DEFAULT_ADMIN_PASSWORD: "${DEFAULT_ADMIN_PASSWORD:-admin123}"
       DEFAULT_ADMIN_EMAIL: "${DEFAULT_ADMIN_EMAIL:-admin@example.com}"
+      DEFAULT_ORG_ID: "${DEFAULT_ORG_ID:-Av45ZchZsQdKjN8XyG}"
     ports:
       - "4319:4319"
     volumes:

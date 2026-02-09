@@ -17,7 +17,7 @@ function normalizeStreamLabelValue(label, value) {
   return value
 }
 
-export default function LogResults({ queryResult, loading, filterDisplayedLogs, viewMode, expandedLogs, toggleLogExpand, copyToClipboard, handleTraceClick, handleStreamClick }) {
+export default function LogResults({ queryResult, loading, filterDisplayedLogs, searchText, viewMode, expandedLogs, toggleLogExpand, copyToClipboard, handleTraceClick, handleStreamClick }) {
   if (loading) {
     return (
       <div className="py-12 flex flex-col items-center ">
@@ -39,12 +39,38 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
     )
   }
 
+  const normalizedSearch = String(searchText || '').trim().toLowerCase()
+  const hasActiveFilter = normalizedSearch.length > 0
+
+  const filteredStreams = (queryResult?.data?.result || [])
+    .map((stream) => {
+      if (hasActiveFilter) {
+        const tokens = normalizedSearch.split(/\s+/).filter(Boolean)
+        const values = (stream?.values || []).filter((v) => {
+          const logText = typeof v[1] === 'string' ? v[1] : JSON.stringify(v[1])
+          const labelsText = stream.stream ? Object.values(stream.stream).join(' ') : ''
+          const hay = (logText + ' ' + labelsText).toLowerCase()
+          return tokens.every((t) => hay.includes(t))
+        })
+        return { stream, values }
+      }
+      const values = filterDisplayedLogs ? filterDisplayedLogs(stream) : (stream?.values || [])
+      return { stream, values }
+    })
+    .filter((entry) => entry.values && entry.values.length > 0)
+
+  if (hasActiveFilter && filteredStreams.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-lg text-sre-text-muted mb-2">No logs match your filter</p>
+        <p className="text-sm text-sre-text-subtle">Try a different search term</p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 overflow-auto p-3 scrollbar-thin h-[70rem]">
-      {queryResult?.data?.result.map((stream, streamIdx) => {
-        const filteredValues = filterDisplayedLogs(stream)
-        if (!filteredValues || filteredValues.length === 0) return null
-
+      {filteredStreams.map(({ stream, values: filteredValues }, streamIdx) => {
         const streamKey = stream.stream
           ? Object.entries(stream.stream).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => `${k}=${v}`).join('|')
           : `stream-${streamIdx}`
@@ -156,7 +182,8 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
 LogResults.propTypes = {
   queryResult: PropTypes.object,
   loading: PropTypes.bool,
-  filterDisplayedLogs: PropTypes.func.isRequired,
+  filterDisplayedLogs: PropTypes.func,
+  searchText: PropTypes.string,
   viewMode: PropTypes.string,
   expandedLogs: PropTypes.object,
   toggleLogExpand: PropTypes.func.isRequired,

@@ -36,7 +36,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    # Normalize token payload to TokenData model so callers can rely on attribute access
+    
     if isinstance(token_data, dict):
         try:
             token_data = TokenData(**token_data)

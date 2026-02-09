@@ -15,6 +15,30 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
     confirmPassword: ''
   })
 
+  const slides = [
+    {
+      body: 'In a world  of money driven monitoring tools, I wanted to create something that puts users first. Be Observant is designed to be simple, transparent, and user-friendly. Using open source components and a clean interface, it gives you powerful observability without the complexity and cost of traditional platforms.'
+    },
+    {
+      body: 'With Tempo, we got distributed tracing right at the core. It’s built to handle high volumes of trace data with ease, giving you deep insights into your applications without breaking the bank.'
+    },
+    {
+      body: 'You don’t need to be a logging expert to get value from your logs. With Loki, you can easily search and explore your logs alongside your traces and metrics, all in one place.'
+    },
+    {
+      body: 'With Alertmanager, you can set up powerful alerting rules and notifications to stay on top of your system’s health. It’s flexible, reliable, and integrates seamlessly with the rest of the platform.'
+    },
+    {
+      body: 'What about dashboards? Be Observant has you covered there too. With Grafana, you can create beautiful, customizable dashboards to visualize your data and share insights with your team.'
+    },
+    {
+      body: 'We thought about teams too. With robust user management and role-based access control, you can easily manage permissions and keep your data secure. Scope dashboards, channels to specific teams or projects, and ensure everyone has the right level of access.'
+    },
+    {
+      body: 'Best of all, Be Observant is open source and self-hosted, giving you full control over your data and your monitoring. No vendor lock-in, no hidden costs, just a powerful observability platform that puts you in the driver’s seat. Support us by starring the project on GitHub and sharing it with your friends and colleagues. Let’s build a better monitoring future together!'
+    }
+  ]
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     
@@ -86,24 +110,6 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
         <div className="space-y-4">
           <div className="">
             {(() => {
-              const slides = [
-                {
-                  title: 'Overview',
-                  body: 'Be Observant helps you monitor traces, logs, alerts and dashboards in a single place.'
-                },
-                {
-                  title: 'Traces (Tempo)',
-                  body: 'View distributed traces to investigate latency and errors across services.'
-                },
-                {
-                  title: 'Logs (Loki)',
-                  body: 'Search and explore logs with powerful queries and volume metrics.'
-                },
-                {
-                  title: 'Alerts & Dashboards',
-                  body: 'Manage alerts, silences and visualize metrics via Grafana dashboards.'
-                }
-              ]
               const slide = slides[slideIndex] || {}
               return (
                 <div>
@@ -115,11 +121,11 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="text-xs text-sre-text-muted">{slideIndex + 1} / 4</div>
+            <div className="text-xs text-sre-text-muted">{slideIndex + 1} / {slides.length}</div>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setSlideIndex(i => Math.max(0, i - 1))} disabled={slideIndex === 0}>Prev</Button>
-              {slideIndex < 3 ? (
-                <Button variant="primary" onClick={() => setSlideIndex(i => Math.min(3, i + 1))}>Next</Button>
+              {slideIndex < slides.length - 1 ? (
+                <Button variant="primary" onClick={() => setSlideIndex(i => Math.min(slides.length - 1, i + 1))}>Next</Button>
               ) : (
                 <Button variant="primary" onClick={() => { setShowTour(false); if (onClose) onClose(); }}>Done</Button>
               )}

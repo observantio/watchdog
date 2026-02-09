@@ -334,9 +334,9 @@ export default function LokiPage() {
     })
   }
 
-  async function fetchAndSetVolume(selectorForVolume, startNs, endNs, totalLogs, res){
+  async function fetchAndSetVolume(volumeQuery, startNs, endNs, totalLogs, res){
     try {
-      const volRes = await getLogVolume(selectorForVolume, {start: Math.round(startNs), end: Math.round(endNs), step: Math.max(60, Math.floor(rangeMinutes*60 / 60))})
+      const volRes = await getLogVolume(volumeQuery, {start: Math.round(startNs), end: Math.round(endNs), step: Math.max(60, Math.floor(rangeMinutes*60 / 60))})
       const vals = getVolumeValues(volRes)
       if(vals.some(v => v > 0)) {
         setVolume(vals)
@@ -364,12 +364,13 @@ export default function LokiPage() {
           setLoading(false)
           return
         }
-        selectorForVolume = buildSelector()
+        selectorForVolume = q
       } else {
         const selector = buildSelector()
         selectorForVolume = selector
         q = selector
         if(pattern) q += ` |= "${escapeLogQLValue(pattern)}"`
+        if(pattern) selectorForVolume = `${selector} |= "${escapeLogQLValue(pattern)}"`
       }
       
       const start = Date.now() - rangeMinutes*60*1000
@@ -433,12 +434,13 @@ export default function LokiPage() {
           setLoading(false)
           return
         }
-        selectorForVolume = buildSelectorFromFilters(filters)
+        selectorForVolume = q
       } else {
         const selector = buildSelectorFromFilters(filters)
         selectorForVolume = selector
         q = selector
         if(textPattern) q += ` |= "${escapeLogQLValue(textPattern)}"`
+        if(textPattern) selectorForVolume = `${selector} |= "${escapeLogQLValue(textPattern)}"`
       }
       
       const start = Date.now() - rangeMinutes*60*1000
@@ -603,9 +605,11 @@ export default function LokiPage() {
             </div>
 
             <LogResults
+              key={`log-results-${viewMode}`}
               queryResult={queryResult}
               loading={loading}
               filterDisplayedLogs={filterDisplayedLogs}
+              searchText={searchText}
               viewMode={viewMode}
               expandedLogs={expandedLogs}
               toggleLogExpand={toggleLogExpand}
