@@ -130,14 +130,14 @@ export default function LogQueryForm({
         {queryMode === 'builder' && (
           <>
             <Button type="button" onClick={addFilter} disabled={!selectedLabel || !selectedValue}>Add Filter</Button>
-            {selectedFilters.length > 0 && <Button type="button" variant="ghost" onClick={clearAllFilters}>Clear All</Button>}
+            {selectedFilters?.length > 0 && <Button type="button" variant="ghost" onClick={clearAllFilters}>Clear All</Button>}
           </>
         )}
         <div className="flex-1" />
         <Button type="submit" loading={!!loading} className="px-8">Run Query</Button>
       </div>
 
-      {selectedFilters.length > 0 && (
+      {selectedFilters?.length > 0 && (
         <div className="mt-2 flex gap-2 flex-wrap">
           {selectedFilters.map((f, i) => (
             <div key={`${f.label}-${f.value}-${i}`} className="inline-flex items-center gap-2 px-3 py-1.5 bg-sre-primary/10 border border-sre-primary/30 rounded-full">

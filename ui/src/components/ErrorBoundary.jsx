@@ -1,5 +1,3 @@
-// This component is used to catch JavaScript errors anywhere in the child component tree,
-
 import React from 'react'
 import PropTypes from 'prop-types'
 import { Alert, Button } from './ui'

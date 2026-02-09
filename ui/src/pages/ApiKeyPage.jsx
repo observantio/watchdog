@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Card, Input, Button, Alert, Badge, Select } from '../components/ui'
+import { Card, Input, Button, Alert, Select } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import * as api from '../api'
 
@@ -109,11 +109,12 @@ export default function ApiKeyPage() {
 
   useEffect(() => {
     if (user) {
-      setOrgId(user.org_id || 'default')
       setApiKeys(user.api_keys || [])
       const enabled = (user.api_keys || []).filter((k) => k.is_enabled)
       const initialKey = enabled[0] || (user.api_keys || [])[0]
       setYamlKeyId(initialKey?.id || '')
+      const defaultKey = (user.api_keys || []).find((k) => k.is_default)
+      setOrgId(defaultKey?.id || '')
     }
   }, [user])
 
@@ -132,7 +133,13 @@ export default function ApiKeyPage() {
     setMessage(null)
     setLoading(true)
     try {
-      await api.updateCurrentUser({ org_id: orgId })
+      if (!orgId) {
+        setError('Please select an API key')
+        setLoading(false)
+        return
+      }
+      // Set the selected API key as the default key
+      await api.updateApiKey(orgId, { is_default: true })
       await refreshUser()
       setMessage('Default API key updated successfully.')
     } catch (err) {
@@ -192,6 +199,7 @@ export default function ApiKeyPage() {
       await navigator.clipboard.writeText(value)
       setMessage(successMessage)
     } catch (err) {
+      console.error('Copy to clipboard failed:', err)
       setError('Failed to copy to clipboard')
     }
   }
@@ -204,12 +212,16 @@ export default function ApiKeyPage() {
     link.download = 'otel-agent.yaml'
     document.body.appendChild(link)
     link.click()
-    document.body.removeChild(link)
+    link.remove()
     URL.revokeObjectURL(url)
   }
 
   const yamlKey = useMemo(() => apiKeys.find((k) => k.id === yamlKeyId) || apiKeys[0], [apiKeys, yamlKeyId])
-  const yamlContent = useMemo(() => buildOtelYaml(yamlKey?.key || orgId || 'default'), [yamlKey, orgId])
+  const selectedOrgKeyValue = useMemo(() => {
+    const found = apiKeys.find((k) => k.id === orgId)
+    return found?.key || 'default'
+  }, [apiKeys, orgId])
+  const yamlContent = useMemo(() => buildOtelYaml(yamlKey?.key || selectedOrgKeyValue || 'default'), [yamlKey, selectedOrgKeyValue])
 
   const enabledCount = apiKeys.filter((k) => k.is_enabled).length
 
@@ -239,15 +251,25 @@ export default function ApiKeyPage() {
         <div className="grid gap-6 md:grid-cols-2">
           <Card title="Default API Key" subtitle="Default tenant identifier used by public agents" className="p-4 border border-sre-border rounded-lg shadow-sm bg-sre-surface">
             <form onSubmit={handleSaveOrgId} className="flex gap-3 items-start">
-              <Input
+              <Select
                 value={orgId}
                 onChange={(e) => setOrgId(e.target.value)}
-                placeholder="e.g., default or team-prod"
+                aria-label="Default API key select"
+                className="min-w-[240px]"
                 required
-              />
+              >
+                {apiKeys.length === 0 ? (
+                  <option value="">No API keys available</option>
+                ) : (
+                  apiKeys.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name} {k.is_default ? '(Default)' : ''}
+                    </option>
+                  ))
+                )}
+              </Select>
               <div className="flex flex-col gap-2">
-                <Button type="submit" loading={loading} className="whitespace-nowrap">Save</Button>
-                <Button type="button" variant="ghost" onClick={() => setOrgId(user?.org_id || 'default')}>Reset</Button>
+                <Button type="submit" loading={loading} disabled={apiKeys.length === 0} className="whitespace-nowrap">Save</Button>
               </div>
             </form>
           </Card>
@@ -298,7 +320,17 @@ export default function ApiKeyPage() {
                       <td className="py-3 px-4 text-xs text-sre-text-muted break-all">
                         <div className="flex items-center gap-3">
                           <div className="font-mono text-xs">
-                            {showKeyId === key.id ? key.key : (key.key ? `${key.key.slice(0, 6)}...${key.key.slice(-4)}` : '-')}
+                            {(() => {
+                              let displayKey;
+                              if (showKeyId === key.id) {
+                                displayKey = key.key;
+                              } else if (key.key) {
+                                displayKey = `${key.key.slice(0, 6)}...${key.key.slice(-4)}`;
+                              } else {
+                                displayKey = '-';
+                              }
+                              return displayKey;
+                            })()}
                           </div>
                           <div className="flex items-center gap-2">
                             <Button size="sm" variant="ghost" onClick={() => setShowKeyId(showKeyId === key.id ? null : key.id)}>
@@ -353,9 +385,26 @@ export default function ApiKeyPage() {
               ))}
             </Select>
 
-            <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => handleCopy(yamlContent, 'OTEL YAML copied to clipboard')}>Copy YAML</Button>
-              <Button variant="secondary" onClick={() => handleDownloadYaml(yamlContent)}>Download YAML</Button>
+            <div className="flex gap-3 items-center">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleCopy(yamlContent, 'OTEL YAML copied to clipboard')}
+                aria-label="Copy YAML"
+                title="Copy YAML"
+              >
+                <span className="material-icons">content_copy</span>
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleDownloadYaml(yamlContent)}
+                aria-label="Download YAML"
+                title="Download YAML"
+              >
+                <span className="material-icons">download</span>
+              </Button>
             </div>
 
             <div className="bg-sre-background p-3 rounded border border-sre-border text-xs overflow-auto max-h-72">

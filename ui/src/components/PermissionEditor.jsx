@@ -1,61 +1,67 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { Button, Card, Badge, Spinner, Modal } from './ui'
 import { useToast } from '../contexts/ToastContext'
 import * as api from '../api'
 
-const PERMISSIONS = {
-  alerts: [
-    { id: 'read:alerts', name: 'View Alerts', description: 'View alert rules and active alerts' },
-    { id: 'write:alerts', name: 'Create/Edit Alerts', description: 'Create and update alert rules' },
-    { id: 'delete:alerts', name: 'Delete Alerts', description: 'Delete alert rules' }
-  ],
-  channels: [
-    { id: 'read:channels', name: 'View Channels', description: 'View notification channels' },
-    { id: 'write:channels', name: 'Create/Edit Channels', description: 'Create and update notification channels' },
-    { id: 'delete:channels', name: 'Delete Channels', description: 'Delete notification channels' }
-  ],
-  logs: [
-    { id: 'read:logs', name: 'View Logs', description: 'Query and view logs in Loki' }
-  ],
-  traces: [
-    { id: 'read:traces', name: 'View Traces', description: 'Query and view traces in Tempo' }
-  ],
-  dashboards: [
-    { id: 'read:dashboards', name: 'View Dashboards', description: 'View Grafana dashboards' },
-    { id: 'write:dashboards', name: 'Create/Edit Dashboards', description: 'Create and update dashboards' },
-    { id: 'delete:dashboards', name: 'Delete Dashboards', description: 'Delete dashboards' }
-  ],
-  users: [
-    { id: 'read:users', name: 'View Users', description: 'View user information' },
-    { id: 'manage:users', name: 'Manage Users', description: 'Create, update, and delete users' }
-  ],
-  groups: [
-    { id: 'read:groups', name: 'View Groups', description: 'View group information' },
-    { id: 'manage:groups', name: 'Manage Groups', description: 'Create, update, and delete groups' }
-  ],
-  tenants: [
-    { id: 'manage:tenants', name: 'Manage Tenants', description: 'Manage tenant settings (superuser only)' }
-  ]
-}
-
-const ROLE_DEFAULTS = {
-  admin: Object.values(PERMISSIONS).flat().map(p => p.id),
-  user: [
-    'read:alerts', 'read:channels', 'read:logs', 'read:traces',
-    'read:dashboards', 'read:users', 'read:groups'
-  ],
-  viewer: []
-}
-
 export default function PermissionEditor({ user, groups, onClose, onSave }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false)
+  const [loadingPermissions, setLoadingPermissions] = useState(true)
+  const [permissionsList, setPermissionsList] = useState([])
+  const [permissionsByCategory, setPermissionsByCategory] = useState({})
+  const [roleDefaults, setRoleDefaults] = useState({})
   const [selectedPermissions, setSelectedPermissions] = useState(new Set())
   const [selectedGroups, setSelectedGroups] = useState(new Set(user.group_ids || []))
   const [role, setRole] = useState(user.role)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [computedPermissions, setComputedPermissions] = useState(new Set())
+
+  const roleBadgeVariant = useMemo(() => {
+    if (role === 'admin') return 'error'
+    if (role === 'user') return 'info'
+    return 'default'
+  }, [role])
+
+  const allPermissionNames = useMemo(
+    () => permissionsList.map((p) => p.name || p.id).filter(Boolean),
+    [permissionsList]
+  )
+
+  const getRoleDefaults = (roleName) => {
+    if (roleDefaults?.[roleName]?.length) return roleDefaults[roleName]
+    if (roleName === 'admin') return allPermissionNames
+    return []
+  }
+
+  useEffect(() => {
+    const loadPermissions = async () => {
+      try {
+        setLoadingPermissions(true)
+        const [perms, defaults] = await Promise.all([
+          api.getPermissions(),
+          api.getRoleDefaults()
+        ])
+        const permissions = Array.isArray(perms) ? perms : []
+        const grouped = permissions.reduce((acc, perm) => {
+          const key = perm.resource_type || 'general'
+          if (!acc[key]) acc[key] = []
+          acc[key].push(perm)
+          return acc
+        }, {})
+        setPermissionsList(permissions)
+        setPermissionsByCategory(grouped)
+        setRoleDefaults(defaults || {})
+      } catch (error) {
+        toast.error('Failed to load permissions')
+        console.error('Failed to load permissions:', error)
+      } finally {
+        setLoadingPermissions(false)
+      }
+    }
+
+    loadPermissions()
+  }, [toast])
 
   useEffect(() => {
     // Direct permissions are what we edit
@@ -65,7 +71,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     setSelectedPermissions(new Set(directPerms))
 
     // Compute all permissions (role + group + direct) for display
-    const rolePerms = ROLE_DEFAULTS[user.role] || []
+    const rolePerms = getRoleDefaults(user.role)
     const groupPerms = new Set()
     ;(user.group_ids || []).forEach(gid => {
       const group = groups.find(g => g.id === gid)
@@ -79,13 +85,13 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     
     const allPerms = new Set([...rolePerms, ...groupPerms, ...directPerms])
     setComputedPermissions(allPerms)
-  }, [user, groups])
+  }, [user, groups, roleDefaults, permissionsList])
 
   const handleRoleChange = (newRole) => {
     setRole(newRole)
     // Don't automatically clear direct permissions when role changes
     // Just update computed permissions for display
-    const rolePerms = ROLE_DEFAULTS[newRole] || []
+    const rolePerms = getRoleDefaults(newRole)
     const groupPerms = new Set()
     ;(selectedGroups || []).forEach(gid => {
       const group = groups.find(g => g.id === gid)
@@ -110,7 +116,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     setSelectedPermissions(newPerms)
 
     // Recompute computedPermissions so UI (checkbox checked state) updates immediately
-    const rolePerms = ROLE_DEFAULTS[role] || []
+    const rolePerms = getRoleDefaults(role)
     const groupPerms = new Set()
     ;(selectedGroups || []).forEach(gid => {
       const group = groups.find(g => g.id === gid)
@@ -135,7 +141,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     setSelectedGroups(newGroups)
     
     // Recompute permissions when groups change
-    const rolePerms = ROLE_DEFAULTS[role] || []
+    const rolePerms = getRoleDefaults(role)
     const groupPerms = new Set()
     newGroups.forEach(gid => {
       const group = groups.find(g => g.id === gid)
@@ -158,14 +164,14 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
   }
 
   const selectAllInCategory = (category) => {
-    const categoryPerms = PERMISSIONS[category].map(p => p.id)
+    const categoryPerms = (permissionsByCategory[category] || []).map((p) => p.name || p.id)
     const newPerms = new Set(selectedPermissions)
     categoryPerms.forEach(p => newPerms.add(p))
     setSelectedPermissions(newPerms)
   }
 
   const deselectAllInCategory = (category) => {
-    const categoryPerms = PERMISSIONS[category].map(p => p.id)
+    const categoryPerms = (permissionsByCategory[category] || []).map((p) => p.name || p.id)
     const newPerms = new Set(selectedPermissions)
     categoryPerms.forEach(p => newPerms.delete(p))
     setSelectedPermissions(newPerms)
@@ -235,7 +241,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
 
           {/* Group Membership */}
           <div>
-            <label className="block text-sm font-semibold text-sre-text mb-2">
+            <label htmlFor='group' className="block text-sm font-semibold text-sre-text mb-2">
               Group Membership
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -243,6 +249,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                 <div key={group.id} className="space-y-2">
                   <div className="flex items-center gap-2 p-3 bg-sre-bg-alt border border-sre-border rounded">
                     <input
+                      id={`group-${group.id}`}
                       type="checkbox"
                       checked={selectedGroups.has(group.id)}
                       onChange={() => toggleGroup(group.id)}
@@ -304,9 +311,14 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
               Direct Permissions (additive to role and group access)
             </label>
             <div id="direct-permissions" className="space-y-4">
-              {Object.entries(PERMISSIONS).map(([category, perms]) => {
-                const allSelected = perms.every(p => selectedPermissions.has(p.id))
-                const someSelected = perms.some(p => selectedPermissions.has(p.id))
+              {loadingPermissions && (
+                <div className="flex items-center gap-2 text-sre-text-muted">
+                  <Spinner size="sm" /> Loading permissions...
+                </div>
+              )}
+              {!loadingPermissions && Object.entries(permissionsByCategory).map(([category, perms]) => {
+                const allSelected = perms.every(p => selectedPermissions.has(p.name || p.id))
+                const someSelected = perms.some(p => selectedPermissions.has(p.name || p.id))
 
                 return (
                   <Card key={category} className="!p-4">
@@ -335,31 +347,35 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                     </div>
                     <div className="space-y-2">
                       {perms.map((perm) => {
-                        const isDirectlySet = selectedPermissions.has(perm.id)
-                        const isFromRoleOrGroup = computedPermissions.has(perm.id) && !isDirectlySet
-                        const isChecked = computedPermissions.has(perm.id)
+                        const permName = perm.name || perm.id
+                        const displayName = perm.display_name || perm.name || perm.id
+                        const description = perm.description || perm.name || ''
+                        const isDirectlySet = selectedPermissions.has(permName)
+                        const isFromRoleOrGroup = computedPermissions.has(permName) && !isDirectlySet
+                        const isChecked = computedPermissions.has(permName)
                         return (
                           <label
-                            key={perm.id} 
-                            htmlFor={`perm-${perm.id}`}
+                            key={permName} 
+                            htmlFor={`perm-${permName}`}
                             className="flex items-start gap-3 p-2 rounded hover:bg-sre-accent/5 cursor-pointer"
                           >
                             <input
                               type="checkbox"
-                              id={`perm-${perm.id}`}
+                              id={`perm-${permName}`}
                               checked={isChecked}
-                              onChange={() => togglePermission(perm.id)}
+                              onChange={() => togglePermission(permName)}
                               className="w-4 h-4 mt-0.5"
+                              aria-label={displayName}
                             />
                             <div className="flex-1">
                               <div className="font-medium text-sre-text text-sm flex items-center gap-2">
-                                {perm.name}
+                                {displayName}
                                 {isFromRoleOrGroup && (
                                   <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">from role/group</span>
                                 )}
                               </div>
                               <div className="text-xs text-sre-text-muted">
-                                {perm.description}
+                                {description}
                               </div>
                             </div>
                           </label>
@@ -376,7 +392,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
           <div className="p-4 bg-sre-accent/10 border border-sre-accent/30 rounded">
             <div className="text-sm font-semibold text-sre-text mb-2">Summary</div>
             <div className="text-sm text-sre-text-muted space-y-1">
-              <div>Role: <Badge variant={role === 'admin' ? 'error' : (role === 'user' ? 'info' : 'default')}>{role}</Badge></div>
+              <div>Role: <Badge variant={roleBadgeVariant}>{role}</Badge></div>
               <div>Groups: {selectedGroups.size} selected</div>
               <div>Permissions: {selectedPermissions.size} enabled</div>
             </div>

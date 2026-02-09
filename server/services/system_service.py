@@ -1,0 +1,178 @@
+import logging
+import os
+import psutil
+from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
+
+
+class SystemService:
+    """Service to collect system metrics using psutil for the beObservant process."""
+
+    def __init__(self):
+        """Initialize with current process."""
+        self.process = psutil.Process(os.getpid())
+
+    def get_cpu_metrics(self) -> Dict[str, Any]:
+        """Get CPU utilization metrics for the beObservant process."""
+        try:
+            # Get process CPU percent (percent of one CPU core)
+            cpu_percent = self.process.cpu_percent(interval=0.1)
+            cpu_count = psutil.cpu_count()
+            # Get number of threads
+            num_threads = self.process.num_threads()
+            
+            return {
+                "utilization": round(cpu_percent, 2),
+                "count": cpu_count,
+                "threads": num_threads,
+                "frequency_mhz": None  # Process-specific frequency not available
+            }
+        except Exception as e:
+            logger.error(f"Error getting CPU metrics: {e}")
+            return {
+                "utilization": 0,
+                "count": 0,
+                "threads": 0,
+                "frequency_mhz": None
+            }
+
+    def get_memory_metrics(self) -> Dict[str, Any]:
+        """Get memory utilization metrics for the beObservant process."""
+        try:
+            mem_info = self.process.memory_info()
+            mem_percent = self.process.memory_percent()
+            
+            # RSS (Resident Set Size) - actual physical memory used
+            rss_mb = mem_info.rss / (1024 ** 2)
+            # VMS (Virtual Memory Size) - total virtual memory
+            vms_mb = mem_info.vms / (1024 ** 2)
+            
+            return {
+                "rss_mb": round(rss_mb, 2),
+                "vms_mb": round(vms_mb, 2),
+                "utilization": round(mem_percent, 2)
+            }
+        except Exception as e:
+            logger.error(f"Error getting memory metrics: {e}")
+            return {
+                "rss_mb": 0,
+                "vms_mb": 0,
+                "utilization": 0
+            }
+
+    def get_disk_metrics(self) -> Dict[str, Any]:
+        """Get I/O metrics for the beObservant process."""
+        try:
+            io_counters = self.process.io_counters()
+            
+            return {
+                "read_mb": round(io_counters.read_bytes / (1024 ** 2), 2),
+                "write_mb": round(io_counters.write_bytes / (1024 ** 2), 2),
+                "read_count": io_counters.read_count,
+                "write_count": io_counters.write_count
+            }
+        except Exception as e:
+            logger.error(f"Error getting I/O metrics: {e}")
+            return {
+                "read_mb": 0,
+                "write_mb": 0,
+                "read_count": 0,
+                "write_count": 0
+            }
+
+    def get_network_metrics(self) -> Dict[str, Any]:
+        """Get network connection metrics for the beObservant process."""
+        try:
+            connections = self.process.connections(kind='inet')
+            
+            # Count connections by status
+            status_counts = {}
+            for conn in connections:
+                status = conn.status
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            return {
+                "total_connections": len(connections),
+                "established": status_counts.get('ESTABLISHED', 0),
+                "listen": status_counts.get('LISTEN', 0),
+                "time_wait": status_counts.get('TIME_WAIT', 0),
+                "close_wait": status_counts.get('CLOSE_WAIT', 0)
+            }
+        except Exception as e:
+            logger.error(f"Error getting network metrics: {e}")
+            return {
+                "total_connections": 0,
+                "established": 0,
+                "listen": 0,
+                "time_wait": 0,
+                "close_wait": 0
+            }
+
+    def determine_stress_status(self, cpu_percent: float, memory_percent: float, connections: int) -> Dict[str, Any]:
+        """Determine if the beObservant process is under stress."""
+        # Define thresholds for process metrics
+        HIGH_CPU_THRESHOLD = 50  # 50% of one core
+        HIGH_MEMORY_THRESHOLD = 80  # 80% of available memory
+        HIGH_CONNECTIONS_THRESHOLD = 100
+        
+        MODERATE_CPU_THRESHOLD = 25
+        MODERATE_MEMORY_THRESHOLD = 50
+        MODERATE_CONNECTIONS_THRESHOLD = 50
+        
+        issues = []
+        
+        # Check CPU (process can use up to 100% of one core)
+        if cpu_percent >= HIGH_CPU_THRESHOLD:
+            issues.append(f"High CPU usage ({cpu_percent}%)")
+        elif cpu_percent >= MODERATE_CPU_THRESHOLD:
+            issues.append(f"Moderate CPU usage ({cpu_percent}%)")
+        
+        # Check Memory
+        if memory_percent >= HIGH_MEMORY_THRESHOLD:
+            issues.append(f"High memory usage ({memory_percent}%)")
+        elif memory_percent >= MODERATE_MEMORY_THRESHOLD:
+            issues.append(f"Moderate memory usage ({memory_percent}%)")
+        
+        # Check Connections
+        if connections >= HIGH_CONNECTIONS_THRESHOLD:
+            issues.append(f"High connection count ({connections})")
+        elif connections >= MODERATE_CONNECTIONS_THRESHOLD:
+            issues.append(f"Moderate connection count ({connections})")
+        
+        # Determine overall status
+        if any("High" in issue for issue in issues):
+            status = "stressed"
+            message = "Process is under high stress"
+        elif issues:
+            status = "moderate"
+            message = "Process is under moderate load"
+        else:
+            status = "healthy"
+            message = "Process is operating normally"
+        
+        return {
+            "status": status,
+            "message": message,
+            "issues": issues
+        }
+
+    def get_all_metrics(self) -> Dict[str, Any]:
+        """Get all process metrics in one call."""
+        cpu = self.get_cpu_metrics()
+        memory = self.get_memory_metrics()
+        io = self.get_disk_metrics()
+        network = self.get_network_metrics()
+        stress = self.determine_stress_status(
+            cpu["utilization"],
+            memory["utilization"],
+            network["total_connections"]
+        )
+        
+        return {
+            "cpu": cpu,
+            "memory": memory,
+            "io": io,
+            "network": network,
+            "stress": stress
+        }

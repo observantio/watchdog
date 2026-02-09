@@ -40,45 +40,46 @@ async function promoteOrgId(orgId) {
     })
     userOrgIds = [orgId, ...userOrgIds.filter((id) => id !== orgId)]
   } catch (e) {
-    // ignore promotion errors
+    console.error('Failed to promote org ID', e)
   } finally {
     isPromotingOrgId = false
   }
 }
 
 async function requestWithHeaders(path, opts = {}, headers = {}) {
-  const merged = { ...headers, ...(opts.headers || {}) }
+  const merged = { ...headers, ...opts.headers }
   if (authToken) {
     merged['Authorization'] = `Bearer ${authToken}`
   }
   const res = await fetch(`${API_BASE}${path}`, { ...opts, headers: merged })
   if (!res.ok) {
     const text = await res.text()
+    let body
     try {
-      const body = (text && text.startsWith('{')) ? JSON.parse(text) : { message: text }
-      window.dispatchEvent(new CustomEvent('api-error', { detail: { status: res.status, body } }))
+      body = text?.startsWith('{') ? JSON.parse(text) : { message: text }
+      globalThis.window.dispatchEvent(new CustomEvent('api-error', { detail: { status: res.status, body } }))
     } catch (e) {
-      const fallbackBody = { message: text || res.statusText }
-      window.dispatchEvent(new CustomEvent('api-error', { detail: { status: res.status, body: fallbackBody } }))
-      var body = fallbackBody
+      body = { message: text || res.statusText }
+      globalThis.window.dispatchEvent(new CustomEvent('api-error', { detail: { status: res.status, body } }))
+      console.error('Failed to parse error response', e)
     }
 
     if (res.status === 401 && path !== '/api/auth/login') {
       authToken = null
       localStorage.removeItem('auth_token')
-      window.location.href = '/login'
+      globalThis.window.location.href = '/login'
     }
 
     const err = new Error(text || res.statusText)
     err.status = res.status
     try {
-      if (typeof body !== 'undefined') {
+      if (body !== undefined) {
         err.body = body
-      } else if (text && text.startsWith('{')) {
+      } else if (text?.startsWith('{')) {
         err.body = JSON.parse(text)
       }
     } catch (e) {
-      // ignore parse errors
+      console.error('Failed to parse error response', e)
     }
     throw err
   }
@@ -121,6 +122,10 @@ export async function fetchInfo() {
 }
 export async function fetchHealth() {
   return request(`/health`)
+}
+
+export async function fetchSystemMetrics() {
+  return request('/api/system/metrics')
 }
 
 export async function login(username, password) {
@@ -232,6 +237,17 @@ export async function deleteGroup(groupId) {
 // Permission Management
 export async function getPermissions() {
   return request('/api/auth/permissions')
+}
+
+export async function getRoleDefaults() {
+  return request('/api/auth/role-defaults')
+}
+
+export async function fetchTraceMetrics(params = {}) {
+  const search = new URLSearchParams(params)
+  const qs = search.toString()
+  const path = qs ? `/api/tempo/metrics?${qs}` : '/api/tempo/metrics'
+  return request(path)
 }
 
 export async function updateUserPermissions(userId, permissions) {

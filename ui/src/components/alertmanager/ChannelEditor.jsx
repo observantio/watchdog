@@ -218,11 +218,12 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
       {/* Visibility Settings */}
       <div className="border-t border-sre-border pt-4 space-y-3">
         <div>
-          <label className="block text-sm font-semibold text-sre-text mb-2">
-            <span className="material-icons text-sm align-middle mr-1">visibility</span>
+          <label htmlFor="channel-visibility" className="block text-sm font-semibold text-sre-text mb-2">
+            <span className="material-icons text-sm align-middle mr-1">visibility</span>{' '}
             Visibility
           </label>
           <Select
+            id="channel-visibility"
             value={formData.visibility || 'private'}
             onChange={(e) => {
               const newVisibility = e.target.value
@@ -244,12 +245,12 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
         </div>
 
         {/* Group Sharing - only show when visibility is 'group' */}
-        {formData.visibility === 'group' && groups.length > 0 && (
+        {formData.visibility === 'group' && groups?.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-sre-text mb-2">
+            <label htmlFor="channel-groups" className="block text-sm font-medium text-sre-text mb-2">
               Share with Groups
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-sre-border rounded bg-sre-surface">
+            <div id="channel-groups" className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-sre-border rounded bg-sre-surface">
               {groups.map((group) => (
                 <label
                   key={group.id}
@@ -294,6 +295,7 @@ ChannelEditor.propTypes = {
     type: PropTypes.string,
     enabled: PropTypes.bool,
     config: PropTypes.object,
+    sharedGroupIds: PropTypes.arrayOf(PropTypes.string),
   }),
   onSave: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,

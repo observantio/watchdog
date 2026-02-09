@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { fetchTempoServices, searchTraces, getTrace } from '../api'
 import { Card, Button, Select, Input, Alert, Badge, Spinner } from '../components/ui'
@@ -36,7 +36,7 @@ export default function TempoPage() {
 
   // If backend doesn't return services, derive them from loaded traces
   useEffect(() => {
-    if ((!services || services.length === 0) && traces?.data?.length) {
+    if (!services?.length && traces?.data?.length) {
       const discovered = new Set()
       traces.data.forEach(t => {
         (t.spans || []).forEach(s => {
@@ -78,7 +78,7 @@ export default function TempoPage() {
       })
 
       setTraces(res)
-      if ((!services || services.length === 0) && res?.data?.length) {
+      if (!services?.length && res?.data?.length) {
         const discovered = new Set()
         res.data.forEach(t => {
           (t.spans || []).forEach(s => {
@@ -86,7 +86,7 @@ export default function TempoPage() {
             if (name) discovered.add(name)
           })
         })
-        if (discovered.size) setServices(Array.from(discovered).sort())
+        if (discovered.size) setServices(Array.from(discovered).sort((a, b) => a.localeCompare(b)))
       }
     } catch (e) {
       setError(e.message)
@@ -163,7 +163,7 @@ export default function TempoPage() {
         <div>
           <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
             <span className="material-icons text-sre-primary text-3xl">timeline</span>
-            <span>Tempo — Distributed Tracing</span>
+            <span>Distributed Tracing</span>
           </h1>
           <p className="text-sre-text-muted">Search and analyze distributed traces across your services</p>
         </div>
@@ -225,7 +225,7 @@ export default function TempoPage() {
               onChange={(e) => setService(e.target.value)}
             >
               <option value="">-- All Services --</option>
-              {services && services.length > 0 ? (
+              {services?.length > 0 ? (
                 services.map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))
@@ -330,7 +330,7 @@ export default function TempoPage() {
         </form>
       </Card>
 
-      {viewMode === 'graph' && filteredTraces.length > 0 && (
+      {viewMode === 'graph' && filteredTraces?.length > 0 && (
         <div className="mb-6">
           <ServiceGraph traces={filteredTraces} />
         </div>

@@ -72,7 +72,6 @@ export default function UsersPage() {
       if (canManageUsers) {
         const usersData = await api.getUsers()
         setUsers(usersData)
-        // Load groups for user assignment in permission editor
         const groupsData = await api.getGroups()
         setGroups(groupsData)
       }
@@ -104,6 +103,7 @@ export default function UsersPage() {
           const parsed = JSON.parse(error?.message || '')
           return parsed.detail || parsed.message || error.message
         } catch (e) {
+          console.error('Failed to parse error message', e)
           return error?.message || 'Unknown error'
         }
       })()
@@ -328,7 +328,7 @@ export default function UsersPage() {
                       <div className="hidden sm:flex items-center gap-2">
                         <Badge variant={roleVariant}>{u.role}</Badge>
                         {!u.is_active && <Badge variant="warning">Inactive</Badge>}
-                        {u.group_ids && u.group_ids.length > 0 && (
+                        {u.group_ids?.length > 0 && (
                           <Badge variant="success">{u.group_ids.length} group{u.group_ids.length > 1 ? 's' : ''}</Badge>
                         )}
                       </div>

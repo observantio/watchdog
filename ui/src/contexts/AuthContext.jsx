@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import * as api from '../api'
 
@@ -18,20 +18,21 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     try {
       const userData = await api.getCurrentUser()
       setUser(userData)
       const enabledKeys = (userData.api_keys || []).filter((k) => k.is_enabled).map((k) => k.key)
-      api.setUserOrgIds(enabledKeys.length > 0 ? enabledKeys : [userData.org_id || 'default'])
+      api.setUserOrgIds(enabledKeys?.length > 0 ? enabledKeys : [userData.org_id || 'default'])
     } catch (error) {
+      console.error('Failed to load user:', error)
       logout()
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const login = async (username, password) => {
+  const login = useCallback(async (username, password) => {
     const response = await api.login(username, password)
     const { access_token } = response
     localStorage.setItem('auth_token', access_token)
@@ -39,40 +40,42 @@ export function AuthProvider({ children }) {
     api.setAuthToken(access_token)
     await loadUser()
     return response
-  }
+  }, [loadUser])
 
-  const register = async (username, email, password, fullName) => {
+  const register = useCallback(async (username, email, password, fullName) => {
     const response = await api.register(username, email, password, fullName)
     return response
-  }
+  }, [])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('auth_token')
     setToken(null)
     setUser(null)
     api.setAuthToken(null)
-  }
+  }, [])
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (token) {
       try {
         const userData = await api.getCurrentUser()
         setUser(userData)
         const enabledKeys = (userData.api_keys || []).filter((k) => k.is_enabled).map((k) => k.key)
-        api.setUserOrgIds(enabledKeys.length > 0 ? enabledKeys : [userData.org_id || 'default'])
+        api.setUserOrgIds(enabledKeys?.length > 0 ? enabledKeys : [userData.org_id || 'default'])
       } catch (error) {
         console.error('Failed to refresh user:', error)
       }
     }
-  }
+  }, [token])
 
-  const updateUser = (userData) => {
+  const updateUser = useCallback((userData) => {
     setUser(userData)
     const enabledKeys = (userData.api_keys || []).filter((k) => k.is_enabled).map((k) => k.key)
-    api.setUserOrgIds(enabledKeys.length > 0 ? enabledKeys : [userData.org_id || 'default'])
-  }
+    api.setUserOrgIds(enabledKeys?.length > 0 ? enabledKeys : [userData.org_id || 'default'])
+  }, [])
 
-  const value = {
+  const hasPermission = useCallback((permission) => user?.permissions?.includes(permission) || false, [user?.permissions])
+
+  const value = useMemo(() => ({
     user,
     token,
     loading,
@@ -82,8 +85,8 @@ export function AuthProvider({ children }) {
     refreshUser,
     updateUser,
     isAuthenticated: !!token && !!user,
-    hasPermission: (permission) => user?.permissions?.includes(permission) || false
-  }
+    hasPermission
+  }), [user, token, loading, login, register, logout, refreshUser, updateUser, hasPermission])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

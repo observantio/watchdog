@@ -43,15 +43,20 @@ class LokiService:
         return {"X-Scope-OrgID": tenant_id}
 
     def _normalize_service_label_query(self, query_str: str) -> str:
-        if SERVICE_NAME_ALIAS not in query_str or SERVICE_NAME_LABEL in query_str:
+        if SERVICE_NAME_LABEL not in query_str and SERVICE_NAME_ALIAS not in query_str:
             return query_str
 
         def replace_in_selector(match: re.Match) -> str:
             content = match.group(1)
             updated = re.sub(
-                rf'(?<![\w.]){SERVICE_NAME_ALIAS}(?=\s*(=|=~))',
-                SERVICE_NAME_LABEL,
+                rf'(?<![\w.]){SERVICE_NAME_LABEL}(?=\s*(=|=~))',
+                SERVICE_NAME_ALIAS,
                 content
+            )
+            updated = re.sub(
+                rf'(?<![\w.]){SERVICE_NAME_ALIAS}(?=\s*(=|=~))',
+                SERVICE_NAME_ALIAS,
+                updated
             )
             return "{" + updated + "}"
 
@@ -449,8 +454,8 @@ class LokiService:
         candidates = [query_str]
         candidates.extend(self._build_service_fallback_queries(query_str))
         if "service_name" in query_str or "service.name" in query_str:
+            candidates.append(query_str.replace("service.name", "service_name"))
             candidates.append(query_str.replace("service_name", "service"))
-            candidates.append(query_str.replace("service.name", "service"))
             candidates.append('{service=~".+"}')
         candidates.append("{}")
 

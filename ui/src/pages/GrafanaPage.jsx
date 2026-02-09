@@ -121,6 +121,9 @@ export default function GrafanaPage() { // NOSONAR
     variant: 'danger'
   })
 
+  // Determine default API key for the current user
+  const defaultKey = (user?.api_keys || []).find((k) => k.is_default) || (user?.api_keys || [])[0]
+
   useEffect(() => {
     loadData()
     loadGroups()
@@ -248,7 +251,7 @@ export default function GrafanaPage() { // NOSONAR
       const params = new URLSearchParams({
         visibility: dashboardForm.visibility,
       })
-      if (dashboardForm.visibility === 'group' && dashboardForm.sharedGroupIds.length > 0) {
+      if (dashboardForm.visibility === 'group' && dashboardForm.sharedGroupIds?.length > 0) {
         dashboardForm.sharedGroupIds.forEach(gid => params.append('shared_group_ids', gid))
       }
 
@@ -349,7 +352,7 @@ export default function GrafanaPage() { // NOSONAR
       const params = new URLSearchParams({
         visibility: datasourceForm.visibility,
       })
-      if (datasourceForm.visibility === 'group' && datasourceForm.sharedGroupIds.length > 0) {
+      if (datasourceForm.visibility === 'group' && datasourceForm.sharedGroupIds?.length > 0) {
         datasourceForm.sharedGroupIds.forEach(gid => params.append('shared_group_ids', gid))
       }
 
@@ -584,10 +587,10 @@ export default function GrafanaPage() { // NOSONAR
 
             {dashboardForm.visibility === 'group' && (
               <div className="mt-4">
-                <label className="block text-sm font-medium text-sre-text mb-2">
+                <label htmlFor="shared-groups" className="block text-sm font-medium text-sre-text mb-2">
                   Shared Groups
                 </label>
-                <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
+                <div id="shared-groups" className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
                   {groups.map(group => (
                     <Checkbox
                       key={group.id}
@@ -693,16 +696,33 @@ export default function GrafanaPage() { // NOSONAR
                 required
                 helperText="Select which API key to use for multi-tenant data isolation."
               >
-                {(user?.api_keys || []).map((key) => (
+                {defaultKey && (
+                  <option key={defaultKey.id} value={defaultKey.id}>
+                    Default — {defaultKey.name}
+                  </option>
+                )}
+                {(user?.api_keys || []).filter(k => !k.is_default).map((key) => (
                   <option key={key.id} value={key.id}>
                     {key.name}
                   </option>
                 ))}
               </Select>
-              <div className="mt-2 text-xs text-sre-text-muted">
-                <span className="material-icons text-sm align-middle mr-1">info</span>
-                This datasource will only query data tagged with this API key in {datasourceForm.type === 'prometheus' ? 'Mimir' : datasourceForm.type === 'loki' ? 'Loki' : 'Tempo'}.
-              </div>
+              {(() => {
+                let datasourceName;
+                if (datasourceForm.type === 'prometheus') {
+                  datasourceName = 'Mimir';
+                } else if (datasourceForm.type === 'loki') {
+                  datasourceName = 'Loki';
+                } else {
+                  datasourceName = 'Tempo';
+                }
+                return (
+                  <div className="mt-2 text-xs text-sre-text-muted">
+                    <span className="material-icons text-sm align-middle mr-1">info</span>
+                    This datasource will only query data tagged with this API key in {datasourceName}.
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -728,10 +748,10 @@ export default function GrafanaPage() { // NOSONAR
 
             {datasourceForm.visibility === 'group' && (
               <div className="mt-4">
-                <label className="block text-sm font-medium text-sre-text mb-2">
+                <label htmlFor="shared-groups" className="block text-sm font-medium text-sre-text mb-2">
                   Shared Groups
                 </label>
-                <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
+                <div id="shared-groups" className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
                   {groups.map(group => (
                     <Checkbox
                       key={group.id}

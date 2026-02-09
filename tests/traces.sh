@@ -6,7 +6,6 @@ COUNT=500
 DELAY=0.03
 RETRIES=2
 INSECURE=true
-TENANT_ID="default"
 
 _required=(docker sleep head od tr awk openssl)
 _missing=()
@@ -126,7 +125,7 @@ send_span(){
   local status=$6
   local attrs=$7
 
-  attrs_with_ids="$attrs,trace_id=\"$trace\",tenant_id=\"$TENANT_ID\""
+  attrs_with_ids="$attrs,trace_id=\"$trace\""
   if [ -n "$parent" ]; then attrs_with_ids="$attrs_with_ids,parent_span_id=\"$parent\""; fi
   attrs_with_ids="$attrs_with_ids,span.name=\"$name\""
 

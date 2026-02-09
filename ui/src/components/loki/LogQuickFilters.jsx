@@ -8,7 +8,7 @@ export default function LogQuickFilters({ labelValuesCache, topTerms, onSelectLa
     <Card title="Quick Filters" subtitle="Filter by labels">
       <div className="space-y-3">
         {Object.entries(labelValuesCache || {}).map(([label, values]) => (
-          Array.isArray(values) && values.length > 0 && (
+          Array.isArray(values) && values?.length > 0 && (
             <div key={label}>
               <div className="text-xs text-sre-text-muted mb-2 font-medium capitalize">{label.replaceAll('_', ' ')}</div>
               <div className="space-y-1">
@@ -34,7 +34,7 @@ export default function LogQuickFilters({ labelValuesCache, topTerms, onSelectLa
           <div>
             <div className="text-xs text-sre-text-muted mb-2 font-medium">Text Search</div>
             <div className="space-y-1">
-              {topTerms && topTerms.length > 0 ? (
+              {topTerms?.length > 0 ? (
                 topTerms.map((t) => (
                   <button
                     key={t.term}

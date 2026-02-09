@@ -39,7 +39,12 @@ class TempoService:
     
     @with_retry()
     @with_timeout()
-    async def search_traces(self, query: TraceQuery, tenant_id: str = config.DEFAULT_ORG_ID) -> TraceResponse:
+    async def search_traces(
+        self,
+        query: TraceQuery,
+        tenant_id: str = config.DEFAULT_ORG_ID,
+        fetch_full_traces: bool = True
+    ) -> TraceResponse:
         """Search for traces matching query parameters.
         
         Args:
@@ -67,16 +72,26 @@ class TempoService:
                     for trace_data in data["traces"]:
                         trace_id = trace_data.get("traceID")
                         if trace_id:
-                            full_trace = await self.get_trace(trace_id, tenant_id=tenant_id)
-                            if full_trace:
-                                traces.append(full_trace)
+                            if fetch_full_traces:
+                                full_trace = await self.get_trace(trace_id, tenant_id=tenant_id)
+                                if full_trace:
+                                    traces.append(full_trace)
+                                else:
+                                    traces.append(
+                                        Trace(
+                                            traceID=trace_id,
+                                            spans=[],
+                                            processes={},
+                                            warnings=["Trace details unavailable"]
+                                        )
+                                    )
                             else:
                                 traces.append(
                                     Trace(
                                         traceID=trace_id,
                                         spans=[],
                                         processes={},
-                                        warnings=["Trace details unavailable"]
+                                        warnings=["Trace details not fetched"]
                                     )
                                 )
                 
@@ -246,34 +261,39 @@ class TempoService:
         Returns:
             Dictionary with trace metrics
         """
-        query = TraceQuery(service=service, start=start, end=end, limit=1000)
-        response = await self.search_traces(query, tenant_id=tenant_id)
-        
-        total_spans = sum(len(trace.spans) for trace in response.data)
-        durations = []
-        error_count = 0
-        
-        for trace in response.data:
-            for span in trace.spans:
-                durations.append(span.duration)
-                for tag in span.tags:
-                    if tag.key == "error" and tag.value is True:
-                        error_count += 1
-                        break
-        
-        avg_duration = sum(durations) / len(durations) if durations else 0
-        max_duration = max(durations) if durations else 0
-        min_duration = min(durations) if durations else 0
-        
+        safe_limit = min(config.MAX_QUERY_LIMIT, 1000)
+        query = TraceQuery(service=service, start=start, end=end, limit=safe_limit)
+        response = await self.search_traces(query, tenant_id=tenant_id, fetch_full_traces=False)
+
         return {
             "total_traces": response.total,
-            "total_spans": total_spans,
-            "error_count": error_count,
-            "avg_duration_us": int(avg_duration),
-            "max_duration_us": max_duration,
-            "min_duration_us": min_duration,
+            "total_spans": None,
+            "error_count": None,
+            "avg_duration_us": None,
+            "max_duration_us": None,
+            "min_duration_us": None,
             "service": service
         }
+
+    async def count_traces(
+        self,
+        query: TraceQuery,
+        tenant_id: str = config.DEFAULT_ORG_ID
+    ) -> int:
+        """Count traces without fetching full trace details."""
+        safe_limit = min(query.limit, 1000)
+        query = TraceQuery(
+            service=query.service,
+            operation=query.operation,
+            min_duration=query.min_duration,
+            max_duration=query.max_duration,
+            start=query.start,
+            end=query.end,
+            tags=query.tags,
+            limit=safe_limit
+        )
+        response = await self.search_traces(query, tenant_id=tenant_id, fetch_full_traces=False)
+        return response.total
     
     def _build_search_params(self, query: TraceQuery) -> Dict[str, Any]:
         """Build search query parameters for Tempo API.

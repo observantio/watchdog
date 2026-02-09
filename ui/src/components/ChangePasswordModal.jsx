@@ -7,6 +7,8 @@ import * as api from '../api'
 export default function ChangePasswordModal({ isOpen, onClose, userId, isForced = false }) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
+  const [showTour, setShowTour] = useState(false)
+  const [slideIndex, setSlideIndex] = useState(0)
   const [formData, setFormData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -34,7 +36,12 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
       })
       toast.success('Password updated successfully')
       setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' })
-      onClose()
+      if (isForced) {
+        setShowTour(true)
+        setSlideIndex(0)
+      } else {
+        onClose()
+      }
     } finally {
       setLoading(false)
     }
@@ -44,20 +51,82 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
+  let modalTitle;
+  if (showTour) {
+    modalTitle = 'Welcome to Be Observant';
+  } else if (isForced) {
+    modalTitle = 'Password Change Required';
+  } else {
+    modalTitle = 'Change Password';
+  }
+
+  let modalOnClose;
+  if (isForced && showTour) {
+    modalOnClose = undefined;
+  } else if (isForced) {
+    modalOnClose = undefined;
+  } else {
+    modalOnClose = onClose;
+  }
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={isForced ? undefined : onClose}
-      title={isForced ? 'Password Change Required' : 'Change Password'}
+      onClose={modalOnClose}
+      title={modalTitle}
       size="md"
       className="bg-sre-bg-card rounded-xl shadow-2xl w-full mx-auto border border-sre-border/50 animate-slide-up flex flex-col max-w-2xl"
     >
-      {isForced && (
+      {isForced && !showTour && (
         <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500 rounded text-yellow-500 text-sm">
           You must change your password before continuing. Please choose a secure password with at least 8 characters.
         </div>
       )}
-      
+      {showTour ? (
+        <div className="space-y-4">
+          <div className="">
+            {(() => {
+              const slides = [
+                {
+                  title: 'Overview',
+                  body: 'Be Observant helps you monitor traces, logs, alerts and dashboards in a single place.'
+                },
+                {
+                  title: 'Traces (Tempo)',
+                  body: 'View distributed traces to investigate latency and errors across services.'
+                },
+                {
+                  title: 'Logs (Loki)',
+                  body: 'Search and explore logs with powerful queries and volume metrics.'
+                },
+                {
+                  title: 'Alerts & Dashboards',
+                  body: 'Manage alerts, silences and visualize metrics via Grafana dashboards.'
+                }
+              ]
+              const slide = slides[slideIndex] || {}
+              return (
+                <div>
+                  <div className="text-lg font-semibold text-sre-text">{slide.title}</div>
+                  <div className="text-sm text-sre-text-muted mt-2">{slide.body}</div>
+                </div>
+              )
+            })()}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-sre-text-muted">{slideIndex + 1} / 4</div>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setSlideIndex(i => Math.max(0, i - 1))} disabled={slideIndex === 0}>Prev</Button>
+              {slideIndex < 3 ? (
+                <Button variant="primary" onClick={() => setSlideIndex(i => Math.min(3, i + 1))}>Next</Button>
+              ) : (
+                <Button variant="primary" onClick={() => { setShowTour(false); if (onClose) onClose(); }}>Done</Button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="currentPassword" className="block text-sm font-medium text-sre-text mb-1">
@@ -115,6 +184,7 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
           </Button>
         </div>
       </form>
+      )}
     </Modal>
   )
 }

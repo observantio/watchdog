@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from config import config, constants
-from routers import tempo_router, loki_router, alertmanager_router, grafana_router, auth_router, agents_router
+from routers import tempo_router, loki_router, alertmanager_router, grafana_router, auth_router, agents_router, system_router
 from database import init_database, init_db
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -82,6 +82,7 @@ async def general_exception_handler(
 
 app.include_router(auth_router.router)
 app.include_router(agents_router.router)
+app.include_router(system_router.router)
 app.include_router(tempo_router.router)
 app.include_router(loki_router.router)
 app.include_router(alertmanager_router.router)

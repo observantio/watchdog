@@ -39,6 +39,10 @@ def require_read_traces():
     return require_permission(Permission.READ_TRACES)
 
 
+def require_read_agents():
+    return require_permission(Permission.READ_AGENTS)
+
+
 def require_read_dashboards():
     return require_permission(Permission.READ_DASHBOARDS)
 

@@ -469,3 +469,12 @@ async def update_group_permissions(
 async def list_all_permissions(current_user: TokenData = Depends(get_current_user)):
     """List all available permissions."""
     return auth_service.list_all_permissions()
+
+
+@router.get("/role-defaults")
+async def list_role_defaults(current_user: TokenData = Depends(get_current_user)):
+    """List role default permissions."""
+    return {
+        role.value: [perm.value for perm in perms]
+        for role, perms in ROLE_PERMISSIONS.items()
+    }

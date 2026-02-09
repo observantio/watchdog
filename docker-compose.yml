@@ -33,7 +33,7 @@ services:
     volumes:
       - ./configs/otel-agent.yaml:/etc/otel/agent.yaml:ro
     environment:
-      OTEL_AGENT_API_KEY: "${OTEL_AGENT_API_KEY:-public}"
+      OTEL_AGENT_API_KEY: "${OTEL_AGENT_API_KEY:-Av45ZchZsQdKjN8XyG}"
     depends_on:
       loki:
         condition: service_started
@@ -45,6 +45,51 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
+    restart: unless-stopped
+
+  chaos-stress:
+    image: alpine:latest
+    command: >
+      sh -c "apk add --no-cache stress-ng &&
+             while true; do
+               WAIT=$$((60 + RANDOM % 120));
+               echo \"Waiting $${WAIT}s before next stress...\";
+               sleep $$WAIT;
+               echo 'Starting 45s stress on OTel agent container...';
+               stress-ng --cpu 2 --vm 1 --vm-bytes 384M --timeout 45s --metrics-brief || true;
+             done"
+    pid: "container:beobservant-otel-agent-1"
+    depends_on:
+      - otel-agent
+    networks: [obs]
+    restart: unless-stopped
+
+  trace-generator:
+    image: alpine:latest
+    network_mode: host
+    volumes:
+      - ./tests/traces.sh:/app/script.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    command: >
+      sh -c "apk add --no-cache bash docker-cli openssl &&
+             bash script.sh"
+    depends_on:
+      - otel-agent
+    restart: unless-stopped
+
+  log-generator:
+    image: alpine:latest
+    network_mode: host
+    volumes:
+      - ./tests/logs.sh:/app/script.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    command: >
+      sh -c "apk add --no-cache bash docker-cli &&
+             bash script.sh"
+    depends_on:
+      - otel-agent
     restart: unless-stopped
 
   loki:

@@ -42,7 +42,7 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
   return (
     <div className="space-y-4 overflow-auto p-3 scrollbar-thin h-[70rem]">
       {queryResult?.data?.result.map((stream, streamIdx) => {
-        const filteredValues = filterDisplayedLogs(stream.values)
+        const filteredValues = filterDisplayedLogs(stream)
         if (!filteredValues || filteredValues.length === 0) return null
 
         const streamKey = stream.stream

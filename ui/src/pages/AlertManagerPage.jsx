@@ -60,14 +60,10 @@ export default function AlertManagerPage() {
 
   const [testDialog, setTestDialog] = useState({ isOpen: false, title: '', message: '' })
 
-  // Centralized API error handling for this page.
-  // Permission errors (403) are already shown globally via toast; avoid duplicating them here.
   function handleApiError(e) {
     if (!e) return
-    // If permission error, toast already shown globally
     if (e.status === 403) return
-    // If this is the test notification failure, it's already shown as a toast
-    if (e.message && e.message.includes('Error sending test notification')) return
+    if (e.message?.includes('Error sending test notification')) return
     setError(e.message || String(e))
   }
 
@@ -304,7 +300,7 @@ export default function AlertManagerPage() {
           {activeTab === 'alerts' && (
             <Card 
               title="Active Alerts" 
-              subtitle={`${filteredAlerts.length} alert${filteredAlerts.length === 1 ? '' : 's'}`}
+              subtitle={`You've got ${filteredAlerts.length} alert${filteredAlerts.length === 1 ? '' : 's'} firing`}
               action={
                 <Select value={filterSeverity} onChange={(e) => setFilterSeverity(e.target.value)}>
                   <option value="all">All Severities</option>
@@ -597,7 +593,7 @@ export default function AlertManagerPage() {
                               <div className="text-xs text-sre-text-muted mb-2">
                                 <span className="font-mono">ID: {s.id}</span>
                               </div>
-                              {s.matchers && s.matchers.length > 0 && (
+                              {s.matchers?.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                   {s.matchers.map((m) => (
                                     <span

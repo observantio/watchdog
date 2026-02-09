@@ -108,7 +108,6 @@ class DatabaseAuthService:
     def _ensure_permissions(self, db: Session):
         """Create all predefined permissions."""
         permission_defs = [
-            
             ("read:alerts", "Read Alerts", "View alert rules and active alerts", "alerts", "read"),
             ("write:alerts", "Write Alerts", "Create and update alert rules", "alerts", "write"),
             ("delete:alerts", "Delete Alerts", "Delete alert rules", "alerts", "delete"),
@@ -128,6 +127,8 @@ class DatabaseAuthService:
             ("read:dashboards", "Read Dashboards", "View Grafana dashboards", "dashboards", "read"),
             ("write:dashboards", "Write Dashboards", "Create and update dashboards", "dashboards", "write"),
             ("delete:dashboards", "Delete Dashboards", "Delete dashboards", "dashboards", "delete"),
+            
+            ("read:agents", "Read Agents", "View OTEL agents and system metrics", "agents", "read"),
             
             
             ("manage:users", "Manage Users", "Create, update, and delete users", "users", "manage"),
@@ -573,6 +574,22 @@ class DatabaseAuthService:
 
             if key_update.name is not None:
                 api_key.name = key_update.name
+
+            if key_update.is_default is not None and key_update.is_default:
+                db.query(UserApiKey).filter(
+                    UserApiKey.user_id == user_id,
+                    UserApiKey.id != key_id,
+                    UserApiKey.is_default.is_(True)
+                ).update({"is_default": False, "updated_at": datetime.now(timezone.utc)})
+
+                api_key.is_default = True
+                api_key.is_enabled = True
+
+                user = db.query(User).filter_by(id=user_id).first()
+                if user:
+                    user.org_id = api_key.key
+                    user.updated_at = datetime.now(timezone.utc)
+                db.flush()
 
             if key_update.is_enabled is not None:
                 if api_key.is_default and not key_update.is_enabled:

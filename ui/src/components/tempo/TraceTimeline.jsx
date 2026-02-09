@@ -48,14 +48,16 @@ export default function TraceTimeline({ trace, onClose }) {
   return (
     <div
       className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={`trace-timeline-title-${traceId}`}
-      tabIndex={-1}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
+      role="button"
+      tabIndex="-1"
     >
-      <div className="bg-sre-bg w-full max-w-6xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden">
+      <div className="bg-sre-bg w-full max-w-6xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`trace-timeline-title-${traceId}`}
+      >
         <div className="bg-sre-surface border-b border-sre-border px-6 py-4 flex items-center justify-between">
           <div>
             <h2 id={`trace-timeline-title-${traceId}`} className="text-xl font-bold text-sre-text flex items-center gap-2">

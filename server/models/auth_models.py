@@ -22,6 +22,7 @@ class Permission(str, Enum):
     READ_DASHBOARDS = "read:dashboards"
     WRITE_DASHBOARDS = "write:dashboards"
     DELETE_DASHBOARDS = "delete:dashboards"
+    READ_AGENTS = "read:agents"
     MANAGE_USERS = "manage:users"
     READ_USERS = "read:users"
     MANAGE_GROUPS = "manage:groups"
@@ -36,6 +37,7 @@ ROLE_PERMISSIONS = {
         Permission.READ_LOGS,
         Permission.READ_TRACES,
         Permission.READ_DASHBOARDS,
+        Permission.READ_AGENTS,
         Permission.READ_USERS,
         Permission.READ_GROUPS
     ],
@@ -120,6 +122,7 @@ class ApiKeyCreate(ApiKeyBase):
 class ApiKeyUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     is_enabled: Optional[bool] = None
+    is_default: Optional[bool] = None
 
 
 class ApiKey(ApiKeyBase):

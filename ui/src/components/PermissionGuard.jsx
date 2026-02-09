@@ -4,20 +4,18 @@ import { useAuth } from '../contexts/AuthContext'
 export default function PermissionGuard({ any = [], all = [], children, fallback = null }) {
   const { hasPermission } = useAuth()
 
-  // If `all` is provided, require every permission; if `any`, require at least one.
-  if (all.length > 0) {
+  if (all?.length > 0) {
     const ok = all.every(p => hasPermission(p))
     if (!ok) return fallback
     return children
   }
 
-  if (any.length > 0) {
+  if (any?.length > 0) {
     const ok = any.some(p => hasPermission(p))
     if (!ok) return fallback
     return children
   }
 
-  // no requirements -> allow
   return children
 }
 

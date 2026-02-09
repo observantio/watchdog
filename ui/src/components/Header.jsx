@@ -40,8 +40,7 @@ export default function Header() {
                   }`
                 }
               >
-                <span className="material-icons text-sm leading-none" aria-hidden>dashboard</span>
-                Dashboard
+                <span className="material-icons text-sm leading-none" aria-hidden>dashboard</span>{' '}Dashboard
               </NavLink>
                 {hasPermission('read:traces') && (
                 <NavLink
@@ -54,8 +53,7 @@ export default function Header() {
                     }`
                   }
                 >
-                  <span className="material-icons text-sm leading-none" aria-hidden>timeline</span>
-                  Tempo
+                  <span className="material-icons text-sm leading-none" aria-hidden>timeline</span>{' '}Tempo
                 </NavLink>
                 )}
               {hasPermission('read:logs') && (
@@ -69,8 +67,7 @@ export default function Header() {
                   }`
                 }
               >
-                <span className="material-icons text-sm leading-none" aria-hidden>search</span>
-                Loki
+                <span className="material-icons text-sm leading-none" aria-hidden>search</span>{' '}Loki
               </NavLink>
               )}
               {hasPermission('read:alerts') && (
@@ -84,8 +81,7 @@ export default function Header() {
                   }`
                 }
               >
-                <span className="material-icons text-sm leading-none" aria-hidden>notifications</span>
-                AlertManager
+                <span className="material-icons text-sm leading-none" aria-hidden>notifications</span>{' '}AlertManager
               </NavLink>
               )}
               {hasPermission('read:dashboards') && (
@@ -99,11 +95,10 @@ export default function Header() {
                   }`
                 }
               >
-                <span className="material-icons text-sm leading-none" aria-hidden>analytics</span>
-                Grafana
+                <span className="material-icons text-sm leading-none" aria-hidden>analytics</span>{' '}Grafana
               </NavLink>
               )}
-              {/* Users and Groups moved into user dropdown */}
+              
             </nav>
 
               <div className="flex items-center gap-3">
@@ -133,8 +128,7 @@ export default function Header() {
               }`
             }
           >
-            <span className="material-icons text-sm leading-none" aria-hidden>dashboard</span>
-            Dashboard
+            <span className="material-icons text-sm leading-none" aria-hidden>dashboard</span>{' '}Dashboard
           </NavLink>
           {hasPermission('read:traces') && (
           <NavLink
@@ -147,8 +141,7 @@ export default function Header() {
               }`
             }
           >
-            <span className="material-icons text-sm leading-none" aria-hidden>timeline</span>
-            Tempo
+            <span className="material-icons text-sm leading-none" aria-hidden>timeline</span>{' '}Tempo
           </NavLink>
           )}
           {hasPermission('read:logs') && (
@@ -162,8 +155,7 @@ export default function Header() {
               }`
             }
           >
-            <span className="material-icons text-sm leading-none" aria-hidden>search</span>
-            Loki
+            <span className="material-icons text-sm leading-none" aria-hidden>search</span>{' '}Loki
           </NavLink>
           )}
           {hasPermission('read:alerts') && (
@@ -177,8 +169,7 @@ export default function Header() {
               }`
             }
           >
-            <span className="material-icons text-sm leading-none" aria-hidden>notifications</span>
-            AlertManager
+            <span className="material-icons text-sm leading-none" aria-hidden>notifications</span>{' '}AlertManager
           </NavLink>
           )}
           {hasPermission('read:dashboards') && (
@@ -192,8 +183,7 @@ export default function Header() {
               }`
             }
           >
-            <span className="material-icons text-sm leading-none" aria-hidden>analytics</span>
-            Grafana
+            <span className="material-icons text-sm leading-none" aria-hidden>analytics</span>{' '}Grafana
           </NavLink>
           )}
         </div>
@@ -257,32 +247,27 @@ function UserMenu({ user, logout, hasPermission, openChangePassword }) {
         >
           {hasPermission('manage:users') && (
             <NavLink to="/users" role="menuitem" tabIndex={0} className="block px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50" onClick={() => setOpen(false)}>
-              <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>people</span>
-              Users
+              <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>people</span>{' '}Users
             </NavLink>
           )}
           {hasPermission('manage:groups') && (
             <NavLink to="/groups" role="menuitem" tabIndex={0} className="block px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50" onClick={() => setOpen(false)}>
-              <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>groups</span>
-              Groups
+              <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>groups</span>{' '}Groups
             </NavLink>
           )}
 
           <div className="border-t border-sre-border my-1" />
 
           <NavLink to="/apikey" role="menuitem" tabIndex={0} className="block px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50" onClick={() => setOpen(false)}>
-            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>key</span>
-            API Key
+            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>key</span>{' '}API Key
           </NavLink>
 
           <button type="button" role="menuitem" onClick={() => { setOpen(false); openChangePassword?.(); }} className="w-full text-left px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50">
-            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>lock</span>
-            Password
+            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>lock</span>{' '}Password
           </button>
 
           <button type="button" role="menuitem" onClick={handleLogout} className="w-full text-left px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50">
-            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>logout</span>
-            Logout
+            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>logout</span>{' '}Logout
           </button>
         </div>
       )}
@@ -293,6 +278,7 @@ function UserMenu({ user, logout, hasPermission, openChangePassword }) {
 UserMenu.propTypes = {
   user: PropTypes.object,
   logout: PropTypes.func.isRequired,
-  hasPermission: PropTypes.func.isRequired
+  hasPermission: PropTypes.func.isRequired,
+  openChangePassword: PropTypes.func,
 }
 

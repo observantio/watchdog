@@ -106,9 +106,8 @@ async def _key_activity(key_value: str) -> Dict[str, Any]:
         logs_active = False
 
     try:
-        query = TraceQuery(start=start_us, end=end_us, limit=1000)
-        res = await tempo_service.search_traces(query, tenant_id=key_value)
-        traces_count = res.total if res else 0
+        query = TraceQuery(start=start_us, end=end_us, limit=config.MAX_QUERY_LIMIT)
+        traces_count = await tempo_service.count_traces(query, tenant_id=key_value)
         traces_active = traces_count > 0
     except Exception:
         traces_active = False

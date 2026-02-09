@@ -114,7 +114,7 @@ export default function RuleEditor({ rule, channels, onSave, onCancel }) {
           Notification Channels {formData.notificationChannels?.length > 0 ? `(${formData.notificationChannels.length} selected)` : '(All channels)'}
         </label>
         <div className="space-y-2 max-h-48 overflow-y-auto border border-sre-border rounded p-3 bg-sre-surface">
-          {channels && channels.length > 0 ? (
+          {channels?.length > 0 ? (
             <>
               <div className="flex items-center gap-2 pb-2 border-b border-sre-border">
                 <input
@@ -182,11 +182,11 @@ export default function RuleEditor({ rule, channels, onSave, onCancel }) {
       {/* Visibility Settings */}
       <div className="border-t border-sre-border pt-4 space-y-3">
         <div>
-          <label className="block text-sm font-semibold text-sre-text mb-2">
-            <span className="material-icons text-sm align-middle mr-1">visibility</span>
-            Visibility
+          <label htmlFor="rule-visibility" className="block text-sm font-semibold text-sre-text mb-2">
+            <span className="material-icons text-sm align-middle mr-1">visibility</span> Visibility
           </label>
           <Select
+            id="rule-visibility"
             value={formData.visibility || 'private'}
             onChange={(e) => {
               const newVisibility = e.target.value
@@ -208,12 +208,12 @@ export default function RuleEditor({ rule, channels, onSave, onCancel }) {
         </div>
 
         {/* Group Sharing - only show when visibility is 'group' */}
-        {formData.visibility === 'group' && groups.length > 0 && (
+        {formData.visibility === 'group' && groups?.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-sre-text mb-2">
+            <label htmlFor="rule-groups" className="block text-sm font-medium text-sre-text mb-2">
               Share with Groups
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-sre-border rounded bg-sre-surface">
+            <div id="rule-groups" className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-sre-border rounded bg-sre-surface">
               {groups.map((group) => (
                 <label
                   key={group.id}
@@ -266,6 +266,7 @@ RuleEditor.propTypes = {
     enabled: PropTypes.bool,
     group: PropTypes.string,
     notificationChannels: PropTypes.arrayOf(PropTypes.string),
+    sharedGroupIds: PropTypes.arrayOf(PropTypes.string),
   }),
   channels: PropTypes.arrayOf(PropTypes.object),
   onSave: PropTypes.func.isRequired,

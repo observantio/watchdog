@@ -9,6 +9,15 @@ logger = logging.getLogger(__name__)
 
 class AgentService:
     """In-memory registry of recently active OTLP agents."""
+    
+    DEFAULT_AGENT_NAME = "otel-agent"
+    ATTR_SERVICE_NAME = "service.name"
+    ATTR_HOST_NAME = "host.name"
+    ATTR_SERVICE_INSTANCE_ID = "service.instance.id"
+    ATTR_HOST_HOSTNAME = "host.hostname"
+    ATTR_TENANT_ID = "tenant_id"
+    ATTR_TENANT_ID_ALT = "tenant.id"
+    DEFAULT_TENANT = "default"
 
     def __init__(self):
         self._agents: Dict[str, AgentInfo] = {}
@@ -18,13 +27,13 @@ class AgentService:
 
     def update_from_resource(self, attributes: Dict[str, Any], signal: str) -> None:
         name = (
-            attributes.get("service.name")
-            or attributes.get("host.name")
-            or attributes.get("service.instance.id")
-            or "otel-agent"
+            attributes.get(self.ATTR_SERVICE_NAME)
+            or attributes.get(self.ATTR_HOST_NAME)
+            or attributes.get(self.ATTR_SERVICE_INSTANCE_ID)
+            or self.DEFAULT_AGENT_NAME
         )
-        host_name = attributes.get("host.name") or attributes.get("host.hostname")
-        tenant_id = attributes.get("tenant_id") or attributes.get("tenant.id") or "default"
+        host_name = attributes.get(self.ATTR_HOST_NAME) or attributes.get(self.ATTR_HOST_HOSTNAME)
+        tenant_id = attributes.get(self.ATTR_TENANT_ID) or attributes.get(self.ATTR_TENANT_ID_ALT) or self.DEFAULT_TENANT
         agent_id = self._make_agent_id(str(name), str(tenant_id))
 
         info = self._agents.get(agent_id)
@@ -49,7 +58,7 @@ class AgentService:
     def update_from_heartbeat(self, heartbeat: AgentHeartbeat) -> None:
         ts = heartbeat.timestamp or datetime.now(timezone.utc)
         agent_id = self._make_agent_id(heartbeat.name, heartbeat.tenant_id)
-        host_name = (heartbeat.attributes or {}).get("host.name") or (heartbeat.attributes or {}).get("host.hostname")
+        host_name = (heartbeat.attributes or {}).get(self.ATTR_HOST_NAME) or (heartbeat.attributes or {}).get(self.ATTR_HOST_HOSTNAME)
         info = self._agents.get(agent_id)
         if not info:
             info = AgentInfo(

@@ -6,7 +6,6 @@ DURATION_MINUTES=60
 DELAY=0.05
 RETRIES=2
 INSECURE=true
-TENANT_ID="default"
 
 # Use an array for the insecure flag to avoid word splitting when expanding into the command
 if [ "$INSECURE" = true ]; then
@@ -66,7 +65,7 @@ while [ "$SECONDS" -lt "$END_TIME" ]; do
       --otlp-endpoint "$ENDPOINT" \
       "${INSECURE_FLAG[@]}" \
       --logs 1 \
-      --otlp-attributes "service.name=\"$SVC\",env=\"$ENV\",cloud.region=\"$REGION\",log.level=\"$LEVEL\",tenant_id=\"$TENANT_ID\"" \
+      --otlp-attributes "service.name=\"$SVC\",env=\"$ENV\",cloud.region=\"$REGION\",log.level=\"$LEVEL\"" \
       >/dev/null 2>&1
     CODE=$?
     set -e

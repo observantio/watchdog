@@ -159,7 +159,7 @@ function buildFallbackVolume(res, totalLogs){
     }
   }
   const volumeData = Object.values(buckets).slice(-60)
-  if(volumeData.length > 0) return volumeData
+  if(volumeData?.length > 0) return volumeData
   if(totalLogs > 0) return new Array(10).fill(Math.ceil(totalLogs / 10))
   return [0]
 }
@@ -219,7 +219,7 @@ export default function LokiPage() {
       console.log('[LokiPage] Setting labels:', labelsArray)
       setLabels(labelsArray)
       
-      if(labelsArray.length > 0){
+      if(labelsArray?.length > 0){
         for(const label of labelsArray){
           try {
             const vals = await getLabelValues(label)
@@ -321,12 +321,16 @@ export default function LokiPage() {
     URL.revokeObjectURL(url)
   }
   
-  function filterDisplayedLogs(logs){
-    if(!searchText) return logs
-    const search = searchText.toLowerCase()
-    return logs.filter(v => {
+  function filterDisplayedLogs(stream){
+    if(!stream?.values) return []
+    if(!searchText) return stream.values
+
+    const tokens = String(searchText).toLowerCase().split(/\s+/).filter(Boolean)
+    return stream.values.filter(v => {
       const logText = typeof v[1] === 'string' ? v[1] : JSON.stringify(v[1])
-      return logText.toLowerCase().includes(search)
+      const labelsText = stream.stream ? Object.values(stream.stream).join(' ') : ''
+      const hay = (logText + ' ' + labelsText).toLowerCase()
+      return tokens.every(t => hay.includes(t))
     })
   }
 
@@ -469,7 +473,6 @@ export default function LokiPage() {
   
   function buildSelectorFromFilters(filters){
     if(!filters?.length) {
-      // Use first available label or fallback to common label
       const firstLabel = labels[0] || 'service_name'
       return `{${firstLabel}=~".+"}`  
     }
@@ -512,7 +515,7 @@ export default function LokiPage() {
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-sre-text mb-2"><span className="material-icons text-blue-600 text-3xl align-middle">search</span> Loki — Log Aggregation</h1>
+            <h1 className="text-3xl font-bold text-sre-text mb-2"><span className="material-icons text-blue-600 text-3xl align-middle">search</span>{' '}Logs</h1>
             <p className="text-sre-text-muted">Query and analyze logs using LogQL</p>
           </div>
         </div>
@@ -612,7 +615,7 @@ export default function LokiPage() {
         </div>
 
         <div className="space-y-6">
-          {volume.length > 0 && <LogVolume volume={volume} />}
+          {volume?.length > 0 && <LogVolume volume={volume} />}
           <LogQuickFilters
             labelValuesCache={labelValuesCache}
             topTerms={topTerms}

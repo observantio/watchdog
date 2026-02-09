@@ -3,6 +3,13 @@ receivers:
     collection_interval: 1s
     scrapers:
       cpu:
+      memory:
+      disk:
+      filesystem:
+      network:
+      paging:
+      process:
+      system:
 
   otlp:
     protocols:

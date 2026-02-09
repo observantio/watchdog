@@ -75,27 +75,30 @@ Button.propTypes = {
  * @param {React.ReactNode} props.action - Card action element
  */
 export function Card({ children, className, title, subtitle, action, ...props }) {
+  const isInteractive = props.draggable || props.onClick || props.onDragStart || props.onDragOver || props.onDrop || props.onDragEnd
+  const Component = isInteractive ? 'button' : 'div'
   return (
-    <div
+    <Component
       className={clsx(
         'bg-sre-surface/50 rounded-xl',
         'transition-all duration-300',
         'hover:border-sre-border/80',
         className
       )}
+      {...(isInteractive ? { type: 'button' } : {})}
       {...props}
     >
       {(title || action) && (
         <div className="flex items-start justify-between mb-4">
           <div>
-            {title && <h3 className="text-lg font-semibold text-sre-text">{title}</h3>}
-            {subtitle && <p className="text-sm text-sre-text-muted mt-1">{subtitle}</p>}
+            {title && <h3 className="text-lg font-semibold text-sre-text text-left">{title}</h3>}
+            {subtitle && <p className="text-sm text-sre-text-muted mt-1 text-left">{subtitle}</p>}
           </div>
           {action && <div>{action}</div>}
         </div>
       )}
       {children}
-    </div>
+    </Component>
   )
 }
 

@@ -63,7 +63,7 @@ export default function GroupsPage() {
       const newGroup = await api.createGroup(formData);
       
       // If permissions are selected, update them
-      if (groupPermissions.length > 0) {
+      if (groupPermissions?.length > 0) {
         await api.updateGroupPermissions(newGroup.id, groupPermissions);
       }
       

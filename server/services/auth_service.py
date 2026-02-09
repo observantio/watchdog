@@ -346,6 +346,27 @@ class AuthService:
         if key_update.name is not None:
             key_dict["name"] = key_update.name
 
+        # Handle setting a new default key
+        if key_update.is_default is not None and key_update.is_default:
+            # Unset previous default key
+            for k in api_keys:
+                if k["id"] != key_id and k.get("is_default"):
+                    k["is_default"] = False
+                    k["updated_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Set this key as default
+            key_dict["is_default"] = True
+            key_dict["is_enabled"] = True
+            
+            # Update org_id to match the new default key
+            user_dict["org_id"] = key_dict["key"]
+            
+            # Ensure the key is in selected_api_key_ids
+            selected_ids = user_dict.get("selected_api_key_ids", [])
+            if key_id not in selected_ids:
+                selected_ids.append(key_id)
+            user_dict["selected_api_key_ids"] = selected_ids
+
         if key_update.is_enabled is not None:
             if key_dict.get("is_default") and not key_update.is_enabled:
                 raise ValueError("Default key cannot be disabled")
@@ -453,3 +474,60 @@ class AuthService:
 
         self._save_groups(groups)
         return Group(**group_dict)
+
+    def list_all_permissions(self) -> List[Dict[str, Any]]:
+        """List all available permissions with metadata."""
+        permissions = [
+            # Alerts
+            {"id": "read:alerts", "name": "read:alerts", "display_name": "Read Alerts", 
+             "description": "View alert rules and active alerts", "resource_type": "alerts", "action": "read"},
+            {"id": "write:alerts", "name": "write:alerts", "display_name": "Write Alerts",
+             "description": "Create and update alert rules", "resource_type": "alerts", "action": "write"},
+            {"id": "delete:alerts", "name": "delete:alerts", "display_name": "Delete Alerts",
+             "description": "Delete alert rules", "resource_type": "alerts", "action": "delete"},
+            
+            # Channels
+            {"id": "read:channels", "name": "read:channels", "display_name": "Read Channels",
+             "description": "View notification channels", "resource_type": "channels", "action": "read"},
+            {"id": "write:channels", "name": "write:channels", "display_name": "Write Channels",
+             "description": "Create and update notification channels", "resource_type": "channels", "action": "write"},
+            {"id": "delete:channels", "name": "delete:channels", "display_name": "Delete Channels",
+             "description": "Delete notification channels", "resource_type": "channels", "action": "delete"},
+            
+            # Logs
+            {"id": "read:logs", "name": "read:logs", "display_name": "Read Logs",
+             "description": "Query and view logs in Loki", "resource_type": "logs", "action": "read"},
+            
+            # Traces
+            {"id": "read:traces", "name": "read:traces", "display_name": "Read Traces",
+             "description": "Query and view traces in Tempo", "resource_type": "traces", "action": "read"},
+            
+            # Dashboards
+            {"id": "read:dashboards", "name": "read:dashboards", "display_name": "Read Dashboards",
+             "description": "View Grafana dashboards", "resource_type": "dashboards", "action": "read"},
+            {"id": "write:dashboards", "name": "write:dashboards", "display_name": "Write Dashboards",
+             "description": "Create and update dashboards", "resource_type": "dashboards", "action": "write"},
+            {"id": "delete:dashboards", "name": "delete:dashboards", "display_name": "Delete Dashboards",
+             "description": "Delete dashboards", "resource_type": "dashboards", "action": "delete"},
+            
+            # Agents
+            {"id": "read:agents", "name": "read:agents", "display_name": "Read Agents",
+             "description": "View OTEL agents and system metrics", "resource_type": "agents", "action": "read"},
+            
+            # Users
+            {"id": "read:users", "name": "read:users", "display_name": "Read Users",
+             "description": "View user information", "resource_type": "users", "action": "read"},
+            {"id": "manage:users", "name": "manage:users", "display_name": "Manage Users",
+             "description": "Create, update, and delete users", "resource_type": "users", "action": "manage"},
+            
+            # Groups
+            {"id": "read:groups", "name": "read:groups", "display_name": "Read Groups",
+             "description": "View group information", "resource_type": "groups", "action": "read"},
+            {"id": "manage:groups", "name": "manage:groups", "display_name": "Manage Groups",
+             "description": "Create, update, and delete groups", "resource_type": "groups", "action": "manage"},
+            
+            # Tenants
+            {"id": "manage:tenants", "name": "manage:tenants", "display_name": "Manage Tenants",
+             "description": "Manage tenant settings (superuser only)", "resource_type": "tenants", "action": "manage"},
+        ]
+        return permissions
