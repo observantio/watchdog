@@ -552,6 +552,11 @@ class DatabaseAuthService:
                 raise ValueError("User not found")
 
             key_value = key_create.key or str(uuid.uuid4())
+            db.query(UserApiKey).filter(
+                UserApiKey.user_id == user_id,
+                UserApiKey.is_enabled.is_(True)
+            ).update({"is_enabled": False, "updated_at": datetime.now(timezone.utc)})
+
             api_key = UserApiKey(
                 tenant_id=tenant_id,
                 user_id=user_id,
@@ -585,6 +590,12 @@ class DatabaseAuthService:
                 api_key.is_default = True
                 api_key.is_enabled = True
 
+                db.query(UserApiKey).filter(
+                    UserApiKey.user_id == user_id,
+                    UserApiKey.id != key_id,
+                    UserApiKey.is_enabled.is_(True)
+                ).update({"is_enabled": False, "updated_at": datetime.now(timezone.utc)})
+
                 user = db.query(User).filter_by(id=user_id).first()
                 if user:
                     user.org_id = api_key.key
@@ -594,11 +605,15 @@ class DatabaseAuthService:
             if key_update.is_enabled is not None:
                 if api_key.is_default and not key_update.is_enabled:
                     raise ValueError("Default key cannot be disabled")
-                api_key.is_enabled = key_update.is_enabled
-                db.flush()
-                enabled_count = db.query(UserApiKey).filter_by(user_id=user_id, is_enabled=True).count()
-                if enabled_count == 0:
+                if not key_update.is_enabled:
                     raise ValueError("At least one API key must be enabled")
+                api_key.is_enabled = True
+                db.flush()
+                db.query(UserApiKey).filter(
+                    UserApiKey.user_id == user_id,
+                    UserApiKey.id != key_id,
+                    UserApiKey.is_enabled.is_(True)
+                ).update({"is_enabled": False, "updated_at": datetime.now(timezone.utc)})
 
             api_key.updated_at = datetime.now(timezone.utc)
             db.commit()

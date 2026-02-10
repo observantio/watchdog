@@ -98,6 +98,8 @@ services:
     volumes:
       - ./configs/loki.yaml:/etc/loki/loki.yaml:ro
     networks: [obs]
+    ports:
+      - "3100:3100"
     restart: unless-stopped
 
   tempo:
@@ -106,6 +108,8 @@ services:
     volumes:
       - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
     networks: [obs]
+    ports:
+      - "3200:3200"
     restart: unless-stopped
 
   beobservant:
@@ -136,7 +140,6 @@ services:
       postgres:
         condition: service_healthy
     deploy:
-      replicas: 1
       resources:
         limits:
           cpus: '1.0'

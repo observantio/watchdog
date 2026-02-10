@@ -1,16 +1,23 @@
-import  { useState } from 'react'
+import  { useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import { Button, Input } from '../ui'
+import { useAuth } from '../../contexts/AuthContext'
 
 /**
  * SilenceForm component
  * @param {object} props - Component props
  */
 export default function SilenceForm({ onSave, onCancel }) {
+  const { user } = useAuth()
   const genId = () => Math.random().toString(36).slice(2, 9)
   const [matchers, setMatchers] = useState([{ id: genId(), name: 'alertname', value: '', isRegex: false, isEqual: true }])
   const [duration, setDuration] = useState('1')
   const [comment, setComment] = useState('')
+  const [createdBy, setCreatedBy] = useState('')
+
+  useEffect(() => {
+    if (user?.username) setCreatedBy(user.username)
+  }, [user])
 
   const addMatcher = () => {
     setMatchers([...matchers, { id: genId(), name: '', value: '', isRegex: false, isEqual: true }])
@@ -33,6 +40,7 @@ export default function SilenceForm({ onSave, onCancel }) {
       startsAt: now.toISOString(),
       endsAt: endsAt.toISOString(),
       comment,
+      createdBy,
     })
   }
 
@@ -83,6 +91,16 @@ export default function SilenceForm({ onSave, onCancel }) {
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="Reason for silence"
+          required
+        />
+      </div>
+
+      <div>
+        <Input
+          label="Created By"
+          value={createdBy}
+          onChange={(e) => setCreatedBy(e.target.value)}
+          placeholder="Your name"
           required
         />
       </div>

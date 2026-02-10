@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENDPOINT="localhost:4318"
+ENDPOINT="host.docker.internal:4318"
 DURATION_MINUTES=60
 DELAY=0.05
 RETRIES=2
@@ -14,7 +14,7 @@ else
 fi
 
 TELEMETRYGEN_IMG="ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest"
-DOCKER_RUN="docker run --rm --network host"
+DOCKER_RUN="docker run --rm"
 
 SERVICES=(
   "api-gateway"

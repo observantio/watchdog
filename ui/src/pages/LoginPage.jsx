@@ -32,7 +32,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 w-16 h-16 rounded-lg flex items-center justify-center">
-            <span className="material-icons text-7xl text-white" aria-hidden>visibility</span>
+            <span className="material-icons text-7xl text-white eye-blink" aria-hidden>visibility</span>
           </div>
           <h1 className="text-3xl font-bold text-sre-text mb-2">
             Be Observant

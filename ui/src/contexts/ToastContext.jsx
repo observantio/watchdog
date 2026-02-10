@@ -20,10 +20,46 @@ export function ToastProvider({ children }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const formatMessage = (m) => {
+    if (m == null) return ''
+    if (typeof m === 'string') return m
+    if (typeof m === 'number' || typeof m === 'boolean') return String(m)
+    // Error object
+    if (m instanceof Error) return m.message || String(m)
+    // Common server error shapes
+    if (typeof m === 'object') {
+      // Pydantic / validation error shape: { detail: [ { msg, loc, ... } ], body: {...} }
+      if (Array.isArray(m.detail) && m.detail.length > 0) {
+        try {
+          const parts = m.detail.map(d => {
+            const msg = d.msg || d.message || JSON.stringify(d)
+            const loc = Array.isArray(d.loc) ? d.loc.join('.') : (d.loc ? String(d.loc) : '')
+            return loc ? `${msg} at ${loc}` : msg
+          })
+          return parts.join('; ')
+        } catch (ex) {
+          // fallthrough to JSON stringify
+        }
+      }
+
+      if (m.message) return String(m.message)
+      if (m.msg) return String(m.msg)
+      if (m.error) return String(m.error)
+      // Try to JSON serialize, but guard against circular refs
+      try {
+        return JSON.stringify(m)
+      } catch (ex) {
+        return String(m)
+      }
+    }
+    return String(m)
+  }
+
   const showToast = useCallback((message, type = 'info', duration = 4000) => {
     const id = Date.now() + Math.random();
-    const toast = { id, message, type, duration };
-    
+    const text = formatMessage(message)
+    const toast = { id, message: text, type, duration };
+
     setToasts(prev => [...prev, toast]);
 
     if (duration > 0) {
@@ -40,7 +76,8 @@ export function ToastProvider({ children }) {
   useEffect(() => {
     const handler = (e) => {
       const { status, body } = e.detail || {}
-      const msg = (body && (body.detail || body.message || body.error || JSON.stringify(body))) || 'API error'
+      const raw = (body && (body.detail || body.message || body.error || body)) || 'API error'
+      const msg = formatMessage(raw)
       if (status >= 400) {
         try {
           const key = `${status}:${msg}`

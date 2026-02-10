@@ -1,26 +1,50 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Card, Button, Badge } from '../ui'
+import { Card, Button, Badge, Input } from '../ui'
+import { useState, useMemo } from 'react'
 
 export default function DatasourcesTab({ datasources, openDatasourceEditor, onDeleteDatasource, getDatasourceIcon }) {
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return datasources
+    const q = query.toLowerCase()
+    return datasources.filter(ds => (
+      (ds.name || '').toLowerCase().includes(q) ||
+      (ds.type || '').toLowerCase().includes(q) ||
+      (ds.url || '').toLowerCase().includes(q)
+    ))
+  }, [datasources, query])
+
   return (
     <>
-      <div className="mb-6 flex justify-end">
-        <Button onClick={() => openDatasourceEditor()} variant="primary">
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Datasource
-        </Button>
+      <div className="mb-6 flex gap-3">
+        <form onSubmit={(e) => { e.preventDefault() }} className="flex gap-3 flex-1">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search datasources by name, type or URL..."
+            className="flex-1"
+          />
+          <Button type="button" onClick={() => setQuery('')}>Clear</Button>
+        </form>
+        {datasources.length ? (
+          <Button onClick={() => openDatasourceEditor()} variant="primary">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Datasource
+          </Button>
+        ) : null}
       </div>
 
       <Card
         title="Datasources"
         subtitle={`${datasources.length} datasource${datasources.length === 1 ? '' : 's'} configured`}
       >
-        {datasources.length ? (
+        {filtered.length ? (
           <div className="space-y-3">
-            {datasources.map((ds) => (
+            {filtered.map((ds) => (
               <div
                 key={ds.uid}
                 className="p-4 bg-sre-bg-alt border border-sre-border rounded-lg hover:border-sre-accent/50 transition-all"

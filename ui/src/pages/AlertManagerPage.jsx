@@ -244,31 +244,31 @@ export default function AlertManagerPage() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4">
+        <Card className="p-4 pl-0">
           <div className="text-sre-text-muted text-xs mb-1">Active Alerts</div>
           <div className="text-2xl font-bold text-sre-text">{stats.totalAlerts}</div>
           <div className="text-xs text-sre-text-muted mt-1">
             <span className="text-red-500">{stats.critical} critical</span> · <span className="text-yellow-500">{stats.warning} warning</span>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 pl-0">
           <div className="text-sre-text-muted text-xs mb-1">Alert Rules</div>
           <div className="text-2xl font-bold text-sre-text">{stats.enabledRules}/{stats.totalRules}</div>
           <div className="text-xs text-sre-text-muted mt-1">enabled</div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 pl-0">
           <div className="text-sre-text-muted text-xs mb-1">Notification Channels</div>
           <div className="text-2xl font-bold text-sre-text">{stats.enabledChannels}/{stats.totalChannels}</div>
           <div className="text-xs text-sre-text-muted mt-1">active</div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 pl-0">
           <div className="text-sre-text-muted text-xs mb-1">Active Silences</div>
           <div className="text-2xl font-bold text-sre-text">{stats.activeSilences}</div>
           <div className="text-xs text-sre-text-muted mt-1">muting alerts</div>
         </Card>
       </div>
 
-      <div className="mb-6 flex gap-2 border-b border-sre-border">
+      <div className="mb-6 flex gap-2 border-b border-sre-border justify-start items-center">
         {[
           { key: 'alerts', label: 'Alerts', icon: 'notification_important' },
           { key: 'rules', label: 'Rules', icon: 'rule' },
@@ -385,11 +385,11 @@ export default function AlertManagerPage() {
                 <Card
                   title="Alert Rules"
                   subtitle={`${rules.length} rule${rules.length === 1 ? '' : 's'} configured`}
-                  action={
+                  action={rules.length ? (
                     <Button onClick={() => setShowRuleEditor(true)}>
                       <span className="material-icons text-sm mr-2">add</span>{' '}Create Rule
                     </Button>
-                  }
+                  ) : null}
                 >
                   {rules.length ? (
                     <div className="space-y-3">
@@ -479,11 +479,11 @@ export default function AlertManagerPage() {
                 <Card
                   title="Notification Channels"
                   subtitle={`${channels.length} channel${channels.length === 1 ? '' : 's'} configured`}
-                  action={
+                  action={channels.length ? (
                     <Button onClick={() => setShowChannelEditor(true)}>
                       <span className="material-icons text-sm mr-2">add</span>{' '}Create Channel
                     </Button>
-                  }
+                  ) : null}
                 >
                   {channels.length ? (
                     <div className="space-y-3">
@@ -570,11 +570,11 @@ export default function AlertManagerPage() {
                 <Card
                   title="Active Silences"
                   subtitle={`${silences.length} silence${silences.length === 1 ? '' : 's'} active`}
-                  action={
+                  action={silences.length ? (
                     <Button onClick={() => setShowSilenceForm(true)}>
                       <span className="material-icons text-sm mr-2">add</span>{' '}Create Silence
                     </Button>
-                  }
+                  ) : null}
                 >
                   {silences.length ? (
                     <div className="space-y-3">

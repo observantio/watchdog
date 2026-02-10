@@ -716,7 +716,10 @@ const layoutComponents = [
   return (
     <div className="animate-fade-in">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-sre-text mb-2 text-left">
+        <h1 className="text-3xl font-bold text-sre-text mb-2 text-left flex items-center gap-3">
+          <svg className="w-7 h-7 text-sre-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l2.09 6.26L20 9.27l-5 3.64L16.18 20 12 16.9 7.82 20 9 12.91 4 9.27l5.91-.99L12 2z" />
+          </svg>
           Observability
         </h1>
         <p className="text-sre-text-muted text-left">
@@ -765,7 +768,7 @@ const layoutComponents = [
           return (
             <div
               key={component.id}
-              className={`transition-all duration-200 hover:shadow-lg ${
+              className={`transition-all duration-200 ${
                 draggedIndex === displayIndex ? 'opacity-50 scale-95 shadow-xl' : ''
               }`}
             >

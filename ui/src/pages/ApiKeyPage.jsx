@@ -173,11 +173,11 @@ export default function ApiKeyPage() {
     }
   }
 
-  const handleToggleKey = async (key) => {
+  const handleActivateKey = async (key) => {
     setError(null)
     setMessage(null)
     try {
-      await api.updateApiKey(key.id, { is_enabled: !key.is_enabled })
+      await api.updateApiKey(key.id, { is_enabled: true })
       await refreshUser()
     } catch (err) {
       setError(err.body?.detail || err.message || 'Failed to update API key')
@@ -347,14 +347,14 @@ export default function ApiKeyPage() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <input
-                            type="checkbox"
+                            type="radio"
+                            name="active-api-key"
                             className="h-4 w-4"
                             checked={key.is_enabled}
-                            disabled={key.is_default}
-                            onChange={() => handleToggleKey(key)}
+                            onChange={() => handleActivateKey(key)}
                           />
                           <div className="text-sm">
-                            {key.is_enabled ? <span className="text-green-600">Enabled</span> : <span className="text-sre-text-muted">Disabled</span>}
+                            {key.is_enabled ? <span className="text-green-600">Active</span> : <span className="text-sre-text-muted">Inactive</span>}
                           </div>
                         </div>
                       </td>

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, Button, Input, Badge, Spinner, Modal, Checkbox } from '../components/ui'
+import CreateUserModal from '../components/users/CreateUserModal'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import PermissionEditor from '../components/PermissionEditor'
@@ -11,7 +12,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState([])
   const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showUserForm, setShowUserForm] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editUserData, setEditUserData] = useState({
@@ -29,42 +30,11 @@ export default function UsersPage() {
     message: '',
     onConfirm: null
   })
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    full_name: '',
-    role: 'user'
-  })
+  
   const { user: currentUser, hasPermission } = useAuth()
 
   const canManageUsers = hasPermission('manage:users')
 
-  const generatePassword = () => {
-    const length = 16;
-    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < length; i++) {
-      password += charset.charAt(Math.floor(Math.random() * charset.length));
-    }
-    return password;
-  };
-
-  const handleGeneratePassword = () => {
-    const newPassword = generatePassword();
-    setFormData({ ...formData, password: newPassword });
-    toast.success('Password generated successfully');
-  };
-
-  const handleCopyPassword = async () => {
-    try {
-      await navigator.clipboard.writeText(formData.password);
-      toast.success('Password copied to clipboard');
-    } catch (err) {
-      toast.error('Failed to copy password: ' + (err?.message || 'Unknown error'));
-      console.error('Failed to copy password:', err);
-    }
-  };
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -89,27 +59,7 @@ export default function UsersPage() {
     loadData()
   }, [loadData])
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault()
-    try {
-      await api.createUser(formData)
-      setShowUserForm(false)
-      setFormData({ username: '', email: '', password: '', full_name: '', role: 'user' })
-      toast.success('User created successfully');
-      loadData()
-    } catch (error) {
-      const msg = error?.body?.detail || error?.body?.message || (() => {
-        try {
-          const parsed = JSON.parse(error?.message || '')
-          return parsed.detail || parsed.message || error.message
-        } catch (e) {
-          console.error('Failed to parse error message', e)
-          return error?.message || 'Unknown error'
-        }
-      })()
-      toast.error('Error creating user: ' + msg);
-    }
-  }
+  
 
   const handleDeleteUser = async (userId) => {
     setConfirmDialog({
@@ -224,81 +174,12 @@ export default function UsersPage() {
         title="Users"
         subtitle={`Returned ${filteredUsers.length} user${filteredUsers.length === 1 ? '' : 's'}${searchQuery ? ' (filtered)' : ''} from the database.`}
         action={
-          <Button onClick={() => setShowUserForm(!showUserForm)} size="sm">
-            {showUserForm ? 'Cancel' : 'Add User'}
+          <Button onClick={() => setShowCreateModal(true)} size="sm">
+            Create User
           </Button>
         }
       >
-            {showUserForm && (
-              <form onSubmit={handleCreateUser} className="mb-6 p-4 bg-sre-bg-alt rounded border border-sre-border space-y-3">
-                <Input
-                  placeholder="Username"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  required
-                />
-                <Input
-                  placeholder="Email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                />
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Password (min 8 characters)"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleGeneratePassword}
-                      className="flex-1"
-                    >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Generate
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleCopyPassword}
-                      disabled={!formData.password}
-                      className="flex-1"
-                    >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      Copy
-                    </Button>
-                  </div>
-                </div>
-                <Input
-                  placeholder="Full Name (optional)"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                />
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full px-3 pr-10 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
-                >
-                  <option value="viewer">Viewer</option>
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <Button type="submit" variant="primary" className="w-full">
-                  Create User
-                </Button>
-              </form>
-            )}
+        <CreateUserModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={loadData} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredUsers.length === 0 ? (

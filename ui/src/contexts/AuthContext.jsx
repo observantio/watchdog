@@ -22,8 +22,8 @@ export function AuthProvider({ children }) {
     try {
       const userData = await api.getCurrentUser()
       setUser(userData)
-      const enabledKeys = (userData.api_keys || []).filter((k) => k.is_enabled).map((k) => k.key)
-      api.setUserOrgIds(enabledKeys?.length > 0 ? enabledKeys : [userData.org_id || 'default'])
+      const enabledKey = (userData.api_keys || []).find((k) => k.is_enabled)?.key
+      api.setUserOrgIds(enabledKey || userData.org_id || '')
     } catch (error) {
       console.error('Failed to load user:', error)
       logout()
@@ -59,8 +59,8 @@ export function AuthProvider({ children }) {
       try {
         const userData = await api.getCurrentUser()
         setUser(userData)
-        const enabledKeys = (userData.api_keys || []).filter((k) => k.is_enabled).map((k) => k.key)
-        api.setUserOrgIds(enabledKeys?.length > 0 ? enabledKeys : [userData.org_id || 'default'])
+        const enabledKey = (userData.api_keys || []).find((k) => k.is_enabled)?.key
+        api.setUserOrgIds(enabledKey || userData.org_id || '')
       } catch (error) {
         console.error('Failed to refresh user:', error)
       }
@@ -69,8 +69,8 @@ export function AuthProvider({ children }) {
 
   const updateUser = useCallback((userData) => {
     setUser(userData)
-    const enabledKeys = (userData.api_keys || []).filter((k) => k.is_enabled).map((k) => k.key)
-    api.setUserOrgIds(enabledKeys?.length > 0 ? enabledKeys : [userData.org_id || 'default'])
+    const enabledKey = (userData.api_keys || []).find((k) => k.is_enabled)?.key
+    api.setUserOrgIds(enabledKey || userData.org_id || '')
   }, [])
 
   const hasPermission = useCallback((permission) => user?.permissions?.includes(permission) || false, [user?.permissions])

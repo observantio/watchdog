@@ -5,10 +5,63 @@ import PropTypes from 'prop-types'
 import ThemeToggle from './ThemeToggle'
 import { Badge } from './ui'
 import ChangePasswordModal from './ChangePasswordModal'
+import * as api from '../api'
 
 export default function Header() {
-  const { user, logout, hasPermission } = useAuth()
+  const { user, logout, hasPermission, refreshUser } = useAuth()
   const [showChangePassword, setShowChangePassword] = useState(false)
+  const [activeKeyId, setActiveKeyId] = useState('')
+  const [switchingKey, setSwitchingKey] = useState(false)
+
+  useEffect(() => {
+    if (!user?.api_keys?.length) {
+      setActiveKeyId('')
+      return
+    }
+    const enabledKey = user.api_keys.find((k) => k.is_enabled)
+    setActiveKeyId(enabledKey?.id || '')
+  }, [user])
+
+  const handleActiveKeyChange = async (e) => {
+    const nextId = e.target.value
+    if (!nextId || nextId === activeKeyId) return
+    setActiveKeyId(nextId)
+    setSwitchingKey(true)
+    try {
+      await api.updateApiKey(nextId, { is_enabled: true })
+      await refreshUser()
+    } catch (err) {
+      console.error('Failed to switch API key', err)
+      await refreshUser()
+    } finally {
+      setSwitchingKey(false)
+    }
+  }
+
+  const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false)
+  const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false)
+  const desktopRef = useRef(null)
+  const mobileRef = useRef(null)
+
+  useEffect(() => {
+    const onClick = (e) => {
+      if (!desktopRef.current) return
+      if (!desktopRef.current.contains(e.target)) setDesktopDropdownOpen(false)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
+
+  useEffect(() => {
+    const onClick = (e) => {
+      if (!mobileRef.current) return
+      if (!mobileRef.current.contains(e.target)) setMobileDropdownOpen(false)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
+
+  const selectedKey = user?.api_keys?.find(k => k.id === activeKeyId)
 
   return (
     <header className="sticky top-0 z-50 bg-sre-surface/80 backdrop-blur-xl border-b border-sre-border shadow-lg">
@@ -17,7 +70,7 @@ export default function Header() {
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-sre-text eye-blink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zm11 3a3 3 0 100-6 3 3 0 000 6z" />
                   </svg>
                 </div>
@@ -104,6 +157,47 @@ export default function Header() {
               <div className="flex items-center gap-3">
               <ThemeToggle />
 
+              {user?.api_keys?.length > 0 && (
+                <div ref={desktopRef} className="hidden sm:flex items-center gap-2">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setDesktopDropdownOpen(v => !v)}
+                      disabled={switchingKey}
+                      className="px-3 py-2 min-w-[190px] text-xs bg-sre-surface border border-sre-border rounded text-sre-text flex items-center justify-between"
+                      aria-haspopup="listbox"
+                      aria-expanded={desktopDropdownOpen}
+                    >
+                      <span>{selectedKey?.name || 'Select API Key'}</span>
+                      <svg className="w-4 h-4 text-sre-text-muted" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    {desktopDropdownOpen && (
+                      <ul
+                        role="listbox"
+                        className="absolute top-full mt-1 w-full bg-sre-bg-card border border-sre-border rounded shadow-lg z-50 py-1 max-h-60 overflow-y-auto"
+                      >
+                        {user.api_keys.map((k) => (
+                          <li key={k.id} role="option" aria-selected={k.id === activeKeyId}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleActiveKeyChange({ target: { value: k.id } })
+                                setDesktopDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs text-sre-text hover:bg-sre-surface/50"
+                            >
+                              {k.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <UserMenu user={user} logout={logout} hasPermission={hasPermission} openChangePassword={() => setShowChangePassword(true)} />
                 <ChangePasswordModal
@@ -185,6 +279,46 @@ export default function Header() {
           >
             <span className="material-icons text-sm leading-none" aria-hidden>analytics</span>{' '}Grafana
           </NavLink>
+          )}
+          {user?.api_keys?.length > 0 && (
+            <div ref={mobileRef} className="flex items-center gap-2 ml-auto">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMobileDropdownOpen(v => !v)}
+                  disabled={switchingKey}
+                  className="px-2 py-1 text-xs bg-sre-surface border border-sre-border rounded text-sre-text flex items-center justify-between"
+                  aria-haspopup="listbox"
+                  aria-expanded={mobileDropdownOpen}
+                >
+                  <span>{selectedKey?.name || 'Select'}</span>
+                  <svg className="w-3 h-3 text-sre-text-muted" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {mobileDropdownOpen && (
+                  <ul
+                    role="listbox"
+                    className="absolute top-full mt-1 w-full bg-sre-bg-card border border-sre-border rounded shadow-lg z-50 py-1 max-h-60 overflow-y-auto"
+                  >
+                    {user.api_keys.map((k) => (
+                      <li key={k.id} role="option" aria-selected={k.id === activeKeyId}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleActiveKeyChange({ target: { value: k.id } })
+                            setMobileDropdownOpen(false)
+                          }}
+                          className="w-full text-left px-2 py-1 text-xs text-sre-text hover:bg-sre-surface/50"
+                        >
+                          {k.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </header>

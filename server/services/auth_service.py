@@ -326,8 +326,12 @@ class AuthService:
             "updated_at": now
         }
 
-        user_dict.setdefault("api_keys", []).append(api_key)
-        user_dict.setdefault("selected_api_key_ids", []).append(api_key["id"])
+        api_keys = user_dict.setdefault("api_keys", [])
+        for key in api_keys:
+            key["is_enabled"] = False
+            key["updated_at"] = now
+        api_keys.append(api_key)
+        user_dict["selected_api_key_ids"] = [api_key["id"]]
         self._save_users(users)
 
         return ApiKey(**api_key)
@@ -357,31 +361,28 @@ class AuthService:
             # Set this key as default
             key_dict["is_default"] = True
             key_dict["is_enabled"] = True
+            for k in api_keys:
+                if k["id"] != key_id:
+                    k["is_enabled"] = False
+                    k["updated_at"] = datetime.now(timezone.utc).isoformat()
             
             # Update org_id to match the new default key
             user_dict["org_id"] = key_dict["key"]
             
-            # Ensure the key is in selected_api_key_ids
-            selected_ids = user_dict.get("selected_api_key_ids", [])
-            if key_id not in selected_ids:
-                selected_ids.append(key_id)
-            user_dict["selected_api_key_ids"] = selected_ids
+            user_dict["selected_api_key_ids"] = [key_id]
 
         if key_update.is_enabled is not None:
             if key_dict.get("is_default") and not key_update.is_enabled:
                 raise ValueError("Default key cannot be disabled")
+            if not key_update.is_enabled:
+                raise ValueError("At least one API key must be enabled")
 
-            key_dict["is_enabled"] = key_update.is_enabled
-            selected_ids = user_dict.get("selected_api_key_ids", [])
-            if key_update.is_enabled:
-                if key_id not in selected_ids:
-                    selected_ids.append(key_id)
-            else:
-                if key_id in selected_ids and len(selected_ids) == 1:
-                    raise ValueError("At least one API key must be enabled")
-                if key_id in selected_ids:
-                    selected_ids.remove(key_id)
-            user_dict["selected_api_key_ids"] = selected_ids
+            key_dict["is_enabled"] = True
+            for k in api_keys:
+                if k["id"] != key_id:
+                    k["is_enabled"] = False
+                    k["updated_at"] = datetime.now(timezone.utc).isoformat()
+            user_dict["selected_api_key_ids"] = [key_id]
 
         key_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._save_users(users)

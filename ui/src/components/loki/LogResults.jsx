@@ -69,7 +69,7 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
   }
 
   return (
-    <div className="space-y-4 overflow-auto p-3 scrollbar-thin h-[70rem]">
+    <div className="space-y-4 overflow-auto scrollbar-thin h-[70rem]">
       {filteredStreams.map(({ stream, values: filteredValues }, streamIdx) => {
         const streamKey = stream.stream
           ? Object.entries(stream.stream).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => `${k}=${v}`).join('|')

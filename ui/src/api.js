@@ -4,7 +4,7 @@
 import { API_BASE } from './utils/constants'
 
 let authToken = null
-let userOrgIds = ['default']
+let userOrgIds = []
 let isPromotingOrgId = false
 
 export function setAuthToken(token) {
@@ -13,16 +13,16 @@ export function setAuthToken(token) {
 
 export function setUserOrgIds(orgIds) {
   if (Array.isArray(orgIds) && orgIds.length > 0) {
-    userOrgIds = orgIds
+    userOrgIds = [orgIds[0]]
   } else if (typeof orgIds === 'string' && orgIds) {
     userOrgIds = [orgIds]
   } else {
-    userOrgIds = ['default']
+    userOrgIds = []
   }
 }
 
 export function getUserOrgIds() {
-  return userOrgIds && userOrgIds.length > 0 ? userOrgIds : ['default']
+  return userOrgIds && userOrgIds.length > 0 ? userOrgIds : []
 }
 
 async function promoteOrgId(orgId) {
@@ -94,19 +94,7 @@ async function request(path, opts = {}) {
   const isAlertmanager = path.includes('/api/alertmanager')
 
   if (isLokiTempo && userOrgIds && userOrgIds.length > 0) {
-    let lastError = null
-    for (const orgId of userOrgIds) {
-      try {
-        const res = await requestWithHeaders(path, opts, { 'X-Scope-OrgID': orgId })
-        if (orgId !== userOrgIds[0]) {
-          promoteOrgId(orgId)
-        }
-        return res
-      } catch (e) {
-        lastError = e
-      }
-    }
-    throw lastError
+    return requestWithHeaders(path, opts, { 'X-Scope-OrgID': userOrgIds[0] })
   }
 
   if (isAlertmanager && userOrgIds && userOrgIds.length > 0) {

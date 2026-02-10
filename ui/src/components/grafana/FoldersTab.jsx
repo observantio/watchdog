@@ -1,26 +1,46 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Card, Button } from '../ui'
+import { Card, Button, Input } from '../ui'
+import { useState, useMemo } from 'react'
 
 export default function FoldersTab({ folders, onCreateFolder, onDeleteFolder }) {
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return folders
+    const q = query.toLowerCase()
+    return folders.filter(f => (f.title || '').toLowerCase().includes(q))
+  }, [folders, query])
+
   return (
     <>
-      <div className="mb-6 flex justify-end">
-        <Button onClick={onCreateFolder} variant="primary">
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Folder
-        </Button>
+      <div className="mb-6 flex gap-3">
+        <form onSubmit={(e) => { e.preventDefault() }} className="flex gap-3 flex-1">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search folders by name..."
+            className="flex-1"
+          />
+          <Button type="button" onClick={() => setQuery('')}>Clear</Button>
+        </form>
+        {folders.length ? (
+          <Button onClick={onCreateFolder} variant="primary">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Folder
+          </Button>
+        ) : null}
       </div>
 
       <Card
         title="Folders"
         subtitle={`${folders.length} folder${folders.length === 1 ? '' : 's'} available`}
       >
-        {folders.length ? (
+        {filtered.length ? (
           <div className="space-y-3">
-            {folders.map((folder) => (
+            {filtered.map((folder) => (
               <div
                 key={folder.uid}
                 className="p-4 bg-sre-bg-alt border border-sre-border rounded-lg hover:border-sre-primary/30 transition-all"
