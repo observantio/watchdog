@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 import httpx
-from fastapi import APIRouter, Request, status, Depends
+from fastapi import APIRouter, Request, status, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from models.agent_models import AgentHeartbeat
@@ -17,6 +17,7 @@ from models.auth_models import TokenData
 from config import config
 
 from routers.auth_router import get_current_user, auth_service
+from middleware.rate_limit import enforce_ip_rate_limit
 
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
@@ -31,6 +32,22 @@ _otlp_router = APIRouter(tags=["otlp"])
 agent_service = AgentService()
 loki_service = LokiService()
 tempo_service = TempoService()
+_mimir_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(config.DEFAULT_TIMEOUT),
+    limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+)
+
+
+def _require_otlp_ingest_token(request: Request) -> None:
+    """Optional shared-secret protection for OTLP ingest endpoints."""
+    if not config.OTLP_INGEST_TOKEN:
+        return
+    provided = request.headers.get("x-otlp-token")
+    if provided != config.OTLP_INGEST_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid OTLP ingest token",
+        )
 
 
 def _any_value_to_python(value) -> Any:
@@ -72,8 +89,14 @@ def _update_agents_from_resources(resources, signal: str) -> int:
 
 
 @router.get("/")
-async def list_agents():
+async def list_agents(request: Request):
     """List known OTLP agents."""
+    enforce_ip_rate_limit(
+        request,
+        scope="agents_list",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
     return [agent.model_dump() for agent in agent_service.list_agents()]
 
 
@@ -113,21 +136,20 @@ async def _key_activity(key_value: str) -> Dict[str, Any]:
         traces_active = False
 
     try:
-        async with httpx.AsyncClient(timeout=config.DEFAULT_TIMEOUT) as client:
-            resp = await client.get(
-                f"{config.MIMIR_URL.rstrip('/')}/prometheus/api/v1/query",
-                params={"query": "count({__name__=~\".+\"})"},
-                headers={"X-Scope-OrgID": key_value}
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            result = payload.get("data", {}).get("result", [])
-            if result:
-                try:
-                    metrics_count = int(float(result[0].get("value", [0, 0])[1]))
-                except Exception:
-                    metrics_count = 0
-            metrics_active = metrics_count > 0
+        resp = await _mimir_client.get(
+            f"{config.MIMIR_URL.rstrip('/')}/prometheus/api/v1/query",
+            params={"query": "count({__name__=~\".+\"})"},
+            headers={"X-Scope-OrgID": key_value},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        result = payload.get("data", {}).get("result", [])
+        if result:
+            try:
+                metrics_count = int(float(result[0].get("value", [0, 0])[1]))
+            except Exception:
+                metrics_count = 0
+        metrics_active = metrics_count > 0
     except Exception:
         metrics_active = False
 
@@ -187,8 +209,14 @@ async def list_active_agents(current_user: TokenData = Depends(get_current_user)
 
 
 @router.post("/heartbeat")
-async def heartbeat(payload: AgentHeartbeat):
+async def heartbeat(request: Request, payload: AgentHeartbeat):
     """Receive explicit heartbeat payloads."""
+    enforce_ip_rate_limit(
+        request,
+        scope="agents_heartbeat",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
     agent_service.update_from_heartbeat(payload)
     return {"status": "ok"}
 
@@ -196,6 +224,13 @@ async def heartbeat(payload: AgentHeartbeat):
 @_otlp_router.post("/v1/traces")
 async def otlp_traces(request: Request):
     """Receive OTLP trace exports and update agent registry."""
+    enforce_ip_rate_limit(
+        request,
+        scope="otlp_traces",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
+    _require_otlp_ingest_token(request)
     body = await request.body()
     try:
         msg = ExportTraceServiceRequest()
@@ -213,6 +248,13 @@ async def otlp_traces(request: Request):
 @_otlp_router.post("/v1/logs")
 async def otlp_logs(request: Request):
     """Receive OTLP log exports and update agent registry."""
+    enforce_ip_rate_limit(
+        request,
+        scope="otlp_logs",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
+    _require_otlp_ingest_token(request)
     body = await request.body()
     try:
         msg = ExportLogsServiceRequest()
@@ -230,6 +272,13 @@ async def otlp_logs(request: Request):
 @_otlp_router.post("/v1/metrics")
 async def otlp_metrics(request: Request):
     """Receive OTLP metric exports, update agent registry, and drop metric data."""
+    enforce_ip_rate_limit(
+        request,
+        scope="otlp_metrics",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
+    _require_otlp_ingest_token(request)
     body = await request.body()
     try:
         msg = ExportMetricsServiceRequest()

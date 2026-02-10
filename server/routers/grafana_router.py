@@ -12,16 +12,7 @@ from models.auth_models import Permission, TokenData
 from database import get_db
 from sqlalchemy.orm import Session
 
-try:
-    from routers.auth_router import require_permission
-except ImportError:
-    def require_permission(permission):
-        def _deny():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service unavailable"
-            )
-        return _deny
+from routers.auth_router import require_permission
 
 router = APIRouter(
     prefix="/api/grafana",

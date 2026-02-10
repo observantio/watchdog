@@ -12,25 +12,13 @@ from models.alertmanager_models import (
 from services.alertmanager_service import AlertManagerService
 from services.storage_db_service import DatabaseStorageService
 from services.notification_service import NotificationService
-from config import constants
+from config import config, constants
+from middleware.rate_limit import enforce_ip_rate_limit
 from models.alertmanager_models import AlertStatus, AlertState
 from datetime import datetime, timezone
 from models.auth_models import TokenData, Permission
 
-# Import auth dependencies
-try:
-    from routers.auth_router import require_permission
-except ImportError:
-    # Fallback if auth not available
-    def get_current_user():
-        return None
-    def require_permission(permission):
-        def _deny():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service unavailable"
-            )
-        return _deny
+from routers.auth_router import require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +35,18 @@ webhook_router = APIRouter(tags=["alertmanager-webhooks"])
 alertmanager_service = AlertManagerService()
 notification_service = NotificationService()
 storage_service = DatabaseStorageService()
+
+
+def _require_inbound_webhook_token(request: Request) -> None:
+    """Optional shared-secret auth for inbound webhook endpoints."""
+    if not config.INBOUND_WEBHOOK_TOKEN:
+        return
+    provided = request.headers.get("x-beobservant-webhook-token")
+    if provided != config.INBOUND_WEBHOOK_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token",
+        )
 
 
 def _normalize_visibility(value: Optional[str]) -> str:
@@ -133,25 +133,32 @@ def _silence_accessible(silence: Silence, current_user: TokenData) -> bool:
 )
 async def alert_webhook(request: Request) -> dict:
     """Receive alert webhook notifications from AlertManager based on routing configuration."""
+    enforce_ip_rate_limit(
+        request,
+        scope="alertmanager_webhook",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
+    _require_inbound_webhook_token(request)
     try:
         payload = await request.json()
         alerts = payload.get("alerts", [])
-        logger.info(f"Received webhook payload with {len(alerts)} alerts")
+        logger.info("Received webhook payload with %d alerts", len(alerts))
         
         for alert in alerts:
             alertname = alert.get('labels', {}).get('alertname', 'unknown')
             alert_status = alert.get('status', 'unknown')
-            logger.info(f"Alert: {alertname} - {alert_status}")
+            logger.info("Alert: %s - %s", alertname, alert_status)
         
         return {
             "status": constants.STATUS_SUCCESS,
             "count": len(alerts)
         }
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
+        logger.error("Error processing webhook: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid webhook payload: {str(e)}"
+            detail="Invalid webhook payload"
         )
 
 
@@ -162,14 +169,21 @@ async def alert_webhook(request: Request) -> dict:
 )
 async def alert_critical(request: Request) -> dict:
     """Receive critical severity alerts routed by AlertManager."""
+    enforce_ip_rate_limit(
+        request,
+        scope="alertmanager_critical",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
+    _require_inbound_webhook_token(request)
     try:
         payload = await request.json()
         alerts = payload.get("alerts", [])
-        logger.warning(f"Received {len(alerts)} critical alerts")
+        logger.warning("Received %d critical alerts", len(alerts))
         
         for alert in alerts:
             alertname = alert.get('labels', {}).get('alertname', 'unknown')
-            logger.warning(f"Critical Alert: {alertname}")
+            logger.warning("Critical Alert: %s", alertname)
         
         return {
             "status": constants.STATUS_SUCCESS,
@@ -177,10 +191,10 @@ async def alert_critical(request: Request) -> dict:
             "count": len(alerts)
         }
     except Exception as e:
-        logger.error(f"Error processing critical alerts: {e}")
+        logger.error("Error processing critical alerts: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid payload: {str(e)}"
+            detail="Invalid payload"
         )
 
 
@@ -191,17 +205,24 @@ async def alert_critical(request: Request) -> dict:
 )
 async def alert_warning(request: Request) -> dict:
     """Receive warning severity alerts routed by AlertManager."""
+    enforce_ip_rate_limit(
+        request,
+        scope="alertmanager_warning",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+    )
+    _require_inbound_webhook_token(request)
     try:
         payload = await request.json()
         alerts = payload.get("alerts", [])
-        print(f"Received warning alerts payload with {len(alerts)} alerts")
+        logger.info("Received warning alerts payload with %d alerts", len(alerts))
         for alert in alerts:
-            print(f"Warning Alert: {alert.get('labels', {}).get('alertname', 'unknown')}")
+            logger.info("Warning Alert: %s", alert.get('labels', {}).get('alertname', 'unknown'))
         
         return {"status": "received", "severity": "warning", "count": len(alerts)}
     except Exception as e:
-        print(f"Error processing warning alerts: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid payload: {e}")
+        logger.error("Error processing warning alerts: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid payload")
 
 
 @router.get("/alerts", response_model=List[Alert])

@@ -6,6 +6,33 @@ import re
 
 from config import config
 
+# Compiled once at module level for reuse
+_USERNAME_RE = re.compile(r'^[a-z0-9._-]{3,50}$')
+
+
+def _normalize_username(v: str, *, full_check: bool = True) -> str:
+    """Shared username normalization used by multiple models.
+
+    Args:
+        v: Raw username value.
+        full_check: When ``True``, enforce the strict regex pattern
+            (required for registration/creation).  When ``False``,
+            only strip/lowercase and reject spaces (sufficient for login).
+    """
+    if v is None:
+        raise ValueError("username is required")
+    if not isinstance(v, str):
+        raise ValueError("username must be a string")
+    uname = v.strip().lower()
+    if " " in uname:
+        raise ValueError("username must not contain spaces")
+    if full_check and not _USERNAME_RE.match(uname):
+        raise ValueError(
+            "username must be 3-50 chars and contain only lowercase letters, "
+            "numbers, dot, underscore or hyphen"
+        )
+    return uname
+
 class Role(str, Enum):
     ADMIN = "admin"
     USER = "user"
@@ -99,16 +126,7 @@ class UserBase(BaseModel):
 
     @validator('username', pre=True, always=True)
     def normalize_username(cls, v):
-        if v is None:
-            raise ValueError('username is required')
-        if not isinstance(v, str):
-            raise ValueError('username must be a string')
-        uname = v.strip().lower()
-        if ' ' in uname:
-            raise ValueError('username must not contain spaces')
-        if not re.match(r'^[a-z0-9._-]{3,50}$', uname):
-            raise ValueError('username must be 3-50 chars and contain only lowercase letters, numbers, dot, underscore or hyphen')
-        return uname
+        return _normalize_username(v, full_check=True)
 
 
 class UserCreate(UserBase):
@@ -192,14 +210,7 @@ class LoginRequest(BaseModel):
 
     @validator('username', pre=True, always=True)
     def normalize_login_username(cls, v):
-        if v is None:
-            raise ValueError('username is required')
-        if not isinstance(v, str):
-            raise ValueError('username must be a string')
-        uname = v.strip().lower()
-        if ' ' in uname:
-            raise ValueError('username must not contain spaces')
-        return uname
+        return _normalize_username(v, full_check=False)
 
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -209,16 +220,7 @@ class RegisterRequest(BaseModel):
 
     @validator('username', pre=True, always=True)
     def normalize_register_username(cls, v):
-        if v is None:
-            raise ValueError('username is required')
-        if not isinstance(v, str):
-            raise ValueError('username must be a string')
-        uname = v.strip().lower()
-        if ' ' in uname:
-            raise ValueError('username must not contain spaces')
-        if not re.match(r'^[a-z0-9._-]{3,50}$', uname):
-            raise ValueError('username must be 3-50 chars and contain only lowercase letters, numbers, dot, underscore or hyphen')
-        return uname
+        return _normalize_username(v, full_check=True)
 
 
 class UserResponse(BaseModel):

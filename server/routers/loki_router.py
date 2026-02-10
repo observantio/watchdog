@@ -1,8 +1,6 @@
 """Loki API router."""
 from fastapi import APIRouter, Query, Body, Depends, Request, HTTPException, status
 from typing import Optional
-import re
-
 from models.loki_models import (
     LogQuery, LogResponse, LogLabelsResponse, 
     LogLabelValuesResponse, LogDirection, LogFilterRequest, LogSearchRequest
@@ -10,17 +8,7 @@ from models.loki_models import (
 from services.loki_service import LokiService
 from config import config
 from models.auth_models import Permission, TokenData
-
-try:
-    from routers.auth_router import require_permission
-except ImportError:
-    def require_permission(permission):
-        def _deny():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service unavailable"
-            )
-        return _deny
+from routers.auth_router import require_permission
 
 START_TIME_DESC = "Start time in nanoseconds"
 END_TIME_DESC = "End time in nanoseconds"

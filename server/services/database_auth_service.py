@@ -389,29 +389,8 @@ class DatabaseAuthService:
             
             
             if user:
-                _ = user.id
-                _ = user.username
-                _ = user.email
-                _ = user.role
-                _ = user.tenant_id
-                _ = user.is_superuser
-                _ = user.is_active
-                _ = user.tenant.name if user.tenant else None
-                
-                for group in user.groups:
-                    _ = group.id
-                    _ = group.name
-                    _ = group.is_active
-                    
-                    for perm in group.permissions:
-                        _ = perm.name
-                        _ = perm.description
-                
-                for perm in user.permissions:
-                    _ = perm.name
-                    _ = perm.description
-                
-                
+                # Detach from session – data is already loaded via joinedload
+                # and expire_on_commit=False keeps it accessible.
                 db.expunge(user)
             
             return user
@@ -665,9 +644,10 @@ class DatabaseAuthService:
                 })
             
             db.commit()
-            db.refresh(group)
-            
-            _ = list(group.permissions)
+            # Re-query with eager loading so permissions are available after session close
+            group = db.query(Group).options(
+                joinedload(Group.permissions)
+            ).filter_by(id=group.id).first()
             return self._to_group_schema(group)
     
     def list_groups(self, tenant_id: str) -> List[GroupSchema]:
@@ -718,8 +698,9 @@ class DatabaseAuthService:
                 self._log_audit(db, tenant_id, updater_id, "update_group", "groups", group_id, update_data)
 
             db.commit()
-            db.refresh(group)
-            _ = list(group.permissions)
+            group = db.query(Group).options(
+                joinedload(Group.permissions)
+            ).filter_by(id=group_id).first()
             return self._to_group_schema(group)
     
     def update_user_permissions(self, user_id: str, permission_names: List[str], tenant_id: str) -> bool:
@@ -803,23 +784,6 @@ class DatabaseAuthService:
             
             user.hashed_password = self.hash_password(password_update.new_password)
             user.needs_password_change = False  
-            db.commit()
-            return True
-    
-    def delete_user(self, user_id: str, tenant_id: str, deleter_id: str = None) -> bool:
-        """Delete a user."""
-        with get_db_session() as db:
-            user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
-            
-            if not user:
-                return False
-            
-            if deleter_id:
-                self._log_audit(db, tenant_id, deleter_id, "delete_user", "users", user_id, {
-                    "username": user.username
-                })
-            
-            db.delete(user)
             db.commit()
             return True
     

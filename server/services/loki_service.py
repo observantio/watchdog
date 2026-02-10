@@ -30,6 +30,10 @@ class LokiService:
         """
         self.loki_url = loki_url.rstrip('/')
         self.timeout = 30.0
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self.timeout),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
 
     def _get_headers(self, tenant_id: str = config.DEFAULT_ORG_ID) -> dict:
         """Get headers including tenant ID for multi-tenancy.
@@ -178,45 +182,44 @@ class LokiService:
         params = self._build_query_params(query)
         headers = self._get_headers(tenant_id)
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.loki_url}/loki/api/v1/query_range",
-                    params=params,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                if query.query and not data.get("data", {}).get("result"):
-                    for candidate in self._build_service_fallback_queries(query.query):
-                        params["query"] = candidate
-                        response = await client.get(
-                            f"{self.loki_url}/loki/api/v1/query_range",
-                            params=params,
-                            headers=headers
-                        )
-                        response.raise_for_status()
-                        data = response.json()
-                        if data.get("data", {}).get("result"):
-                            break
+        try:
+            response = await self._client.get(
+                f"{self.loki_url}/loki/api/v1/query_range",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if query.query and not data.get("data", {}).get("result"):
+                for candidate in self._build_service_fallback_queries(query.query):
+                    params["query"] = candidate
+                    response = await self._client.get(
+                        f"{self.loki_url}/loki/api/v1/query_range",
+                        params=params,
+                        headers=headers
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    if data.get("data", {}).get("result"):
+                        break
 
-                data_payload = data.get("data", {})
-                self._normalize_stream_labels(data_payload)
+            data_payload = data.get("data", {})
+            self._normalize_stream_labels(data_payload)
 
-                return LogResponse(
-                    status=data.get("status", "success"),
-                    data=data_payload,
-                    stats=self._calculate_stats(data_payload)
-                )
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error querying logs: {e}")
-                return LogResponse(
-                    status="error",
-                    data={"result": [], "resultType": "streams"},
-                    stats=None
-                )
+            return LogResponse(
+                status=data.get("status", "success"),
+                data=data_payload,
+                stats=self._calculate_stats(data_payload)
+            )
+            
+        except httpx.HTTPError as e:
+            logger.error("Error querying logs: %s", e)
+            return LogResponse(
+                status="error",
+                data={"result": [], "resultType": "streams"},
+                stats=None
+            )
     
     @with_retry()
     @with_timeout()
@@ -239,42 +242,41 @@ class LokiService:
             params["time"] = time
         
         headers = self._get_headers(tenant_id)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.loki_url}/loki/api/v1/query",
-                    params=params,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                if query_str and not data.get("data", {}).get("result"):
-                    for candidate in self._build_service_fallback_queries(query_str):
-                        params["query"] = candidate
-                        response = await client.get(
-                            f"{self.loki_url}/loki/api/v1/query",
-                            params=params
-                        )
-                        response.raise_for_status()
-                        data = response.json()
-                        if data.get("data", {}).get("result"):
-                            break
+        try:
+            response = await self._client.get(
+                f"{self.loki_url}/loki/api/v1/query",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if query_str and not data.get("data", {}).get("result"):
+                for candidate in self._build_service_fallback_queries(query_str):
+                    params["query"] = candidate
+                    response = await self._client.get(
+                        f"{self.loki_url}/loki/api/v1/query",
+                        params=params
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    if data.get("data", {}).get("result"):
+                        break
 
-                data_payload = data.get("data", {})
-                self._normalize_stream_labels(data_payload)
+            data_payload = data.get("data", {})
+            self._normalize_stream_labels(data_payload)
 
-                return LogResponse(
-                    status=data.get("status", "success"),
-                    data=data_payload
-                )
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error querying logs (instant): {e}")
-                return LogResponse(
-                    status="error",
-                    data={"result": []}
-                )
+            return LogResponse(
+                status=data.get("status", "success"),
+                data=data_payload
+            )
+            
+        except httpx.HTTPError as e:
+            logger.error("Error querying logs (instant): %s", e)
+            return LogResponse(
+                status="error",
+                data={"result": []}
+            )
     
     @with_retry()
     @with_timeout()
@@ -296,24 +298,23 @@ class LokiService:
             params["end"] = end
         
         headers = self._get_headers(tenant_id)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.loki_url}/loki/api/v1/labels",
-                    params=params,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return LogLabelsResponse(
-                    status=data.get("status", "success"),
-                    data=data.get("data", [])
-                )
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching labels: {e}")
-                return LogLabelsResponse(status="error", data=[])
+        try:
+            response = await self._client.get(
+                f"{self.loki_url}/loki/api/v1/labels",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return LogLabelsResponse(
+                status=data.get("status", "success"),
+                data=data.get("data", [])
+            )
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching labels: %s", e)
+            return LogLabelsResponse(status="error", data=[])
     
     @with_retry()
     @with_timeout()
@@ -346,27 +347,26 @@ class LokiService:
             params["query"] = query
         
         headers = self._get_headers(tenant_id)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.loki_url}/loki/api/v1/label/{label}/values",
-                    params=params,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                values = data.get("data", [])
-                normalized_values = self._normalize_label_values(label, values)
+        try:
+            response = await self._client.get(
+                f"{self.loki_url}/loki/api/v1/label/{label}/values",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            values = data.get("data", [])
+            normalized_values = self._normalize_label_values(label, values)
 
-                return LogLabelValuesResponse(
-                    status=data.get("status", "success"),
-                    data=normalized_values
-                )
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching label values: {e}")
-                return LogLabelValuesResponse(status="error", data=[])
+            return LogLabelValuesResponse(
+                status=data.get("status", "success"),
+                data=normalized_values
+            )
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching label values: %s", e)
+            return LogLabelValuesResponse(status="error", data=[])
     
     @with_retry()
     @with_timeout()
@@ -404,30 +404,29 @@ class LokiService:
         params["end"] = end
         
         headers = self._get_headers(tenant_id)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.loki_url}/loki/api/v1/query_range",
-                    params=params,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return {
-                    "status": data.get("status", "success"),
-                    "data": data.get("data", {}),
-                    "query": query_str,
-                    "step": step
-                }
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error aggregating logs: {e}")
-                return {
-                    "status": "error",
-                    "error": str(e),
-                    "query": query_str
-                }
+        try:
+            response = await self._client.get(
+                f"{self.loki_url}/loki/api/v1/query_range",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return {
+                "status": data.get("status", "success"),
+                "data": data.get("data", {}),
+                "query": query_str,
+                "step": step
+            }
+            
+        except httpx.HTTPError as e:
+            logger.error("Error aggregating logs: %s", e)
+            return {
+                "status": "error",
+                "error": str(e),
+                "query": query_str
+            }
     
     @with_retry()
     @with_timeout()
@@ -626,5 +625,5 @@ class LokiService:
                 "chunks": 0  
             }
         except Exception as e:
-            logger.error(f"Error calculating stats: {e}")
+            logger.error("Error calculating stats: %s", e)
             return None

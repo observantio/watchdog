@@ -28,11 +28,6 @@ from config import config as app_config
 
 logger = logging.getLogger(__name__)
 
-
-# ------------------------------------------------------------------
-# Helpers shared across the module
-# ------------------------------------------------------------------
-
 def _get_shared_group_ids(db_obj) -> List[str]:
     """Extract group IDs from a DB object's shared_groups relationship."""
     return [g.id for g in db_obj.shared_groups] if db_obj.shared_groups else []
@@ -109,9 +104,6 @@ class DatabaseStorageService:
         except InvalidToken as exc:
             raise ValueError("Cannot decrypt channel config – wrong key?") from exc
 
-    # ------------------------------------------------------------------
-    # DB  →  Pydantic mapping
-    # ------------------------------------------------------------------
 
     def _rule_to_pydantic(self, r: AlertRuleDB) -> AlertRulePydantic:
         return AlertRulePydantic(
@@ -139,10 +131,6 @@ class DatabaseStorageService:
             visibility=ch.visibility or "private",
             shared_group_ids=_get_shared_group_ids(ch),
         )
-
-    # ==================================================================
-    # Alert Rules
-    # ==================================================================
 
     def get_alert_rules(
         self, tenant_id: str, user_id: str, group_ids: Optional[List[str]] = None,
@@ -262,10 +250,6 @@ class DatabaseStorageService:
             db.delete(r)
             logger.info("Deleted alert rule %s", rule_id)
             return True
-
-    # ==================================================================
-    # Notification Channels
-    # ==================================================================
 
     def get_notification_channels(
         self, tenant_id: str, user_id: str, group_ids: Optional[List[str]] = None,
@@ -390,5 +374,4 @@ class DatabaseStorageService:
         return {
             "success": True,
             "message": f"Test notification would be sent to {channel.type} channel: {channel.name}",
-            "config": channel.config,
         }

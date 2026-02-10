@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from config import config
@@ -11,6 +11,7 @@ from models.auth_models import (
     ApiKey, ApiKeyCreate, ApiKeyUpdate
 )
 from services.database_auth_service import DatabaseAuthService
+from middleware.rate_limit import enforce_ip_rate_limit, enforce_rate_limit
 auth_service = DatabaseAuthService()
 
 logger = logging.getLogger(__name__)
@@ -22,17 +23,21 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 security = HTTPBearer()
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
+def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> TokenData:
+    """Decode JWT, validate the user, and resolve fresh permissions in a single pass."""
     token = credentials.credentials
     token_data = auth_service.decode_token(token)
-    
+
     if token_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if isinstance(token_data, dict):
         try:
             token_data = TokenData(**token_data)
@@ -43,51 +48,47 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+    # Single DB lookup – validates the user is still active and refreshes org_id.
     user = auth_service.get_user_by_id(token_data.user_id)
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
+            detail="User not found or inactive",
         )
 
-    try:
-        token_data.org_id = getattr(user, "org_id", token_data.org_id)
-    except Exception:
-        pass
-    
+    token_data.org_id = getattr(user, "org_id", token_data.org_id)
+
+    # Resolve authoritative permissions so downstream `require_permission`
+    # never needs to re-query the database.
+    token_data.permissions = auth_service.get_user_permissions(user)
+
+    # Per-user rate limiting (per process) to reduce abuse.
+    enforce_rate_limit(
+        key=f"user:{token_data.user_id}",
+        limit=config.RATE_LIMIT_USER_PER_MINUTE,
+        window_seconds=60,
+    )
+
     return token_data
 
 
 def require_permission(permission):
-    """Dependency that requires a specific permission.
+    """FastAPI dependency that enforces a specific permission.
 
-    Accepts either a `Permission` enum or a string.
+    Accepts a ``Permission`` enum member or a plain string.
+    Permissions are already resolved by ``get_current_user``, so this
+    performs a cheap in-memory check with **zero** extra DB queries.
     """
     perm_value = permission.value if hasattr(permission, "value") else str(permission)
 
     def permission_checker(current_user: TokenData = Depends(get_current_user)):
-        user = auth_service.get_user_by_id(current_user.user_id)
-        if user is None or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or inactive",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-
-        user_perms = (
-            auth_service.get_user_permissions(user)
-            if hasattr(auth_service, "get_user_permissions")
-            else (getattr(current_user, "permissions", []) or [])
-        )
-        try:
-            current_user.permissions = user_perms
-        except Exception:
-            pass
-
-        if perm_value not in user_perms and not getattr(current_user, "is_superuser", False):
+        if perm_value not in current_user.permissions and not current_user.is_superuser:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You don't have the permission to {perm_value.upper()}, please contact your administrator if you think this is a mistake."
+                detail=(
+                    f"You don't have the permission to {perm_value.upper()}, "
+                    "please contact your administrator if you think this is a mistake."
+                ),
             )
         return current_user
 
@@ -95,7 +96,13 @@ def require_permission(permission):
 
 
 @router.post("/login", response_model=Token)
-async def login(login_request: LoginRequest):
+async def login(request: Request, login_request: LoginRequest):
+    enforce_ip_rate_limit(
+        request,
+        scope="login",
+        limit=config.RATE_LIMIT_LOGIN_PER_MINUTE,
+        window_seconds=60,
+    )
     user = auth_service.authenticate_user(login_request.username, login_request.password)
     
     if not user:
@@ -110,7 +117,13 @@ async def login(login_request: LoginRequest):
 
 
 @router.post("/register", response_model=UserResponse)
-async def register(register_request: RegisterRequest):
+async def register(request: Request, register_request: RegisterRequest):
+    enforce_ip_rate_limit(
+        request,
+        scope="register",
+        limit=config.RATE_LIMIT_REGISTER_PER_HOUR,
+        window_seconds=3600,
+    )
     try:
         user_create = UserCreate(
             username=register_request.username,
@@ -407,18 +420,6 @@ async def update_group(
     group = auth_service.update_group(group_id, group_update, current_user.tenant_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
-    return group
-
-
-@router.put("/groups/{group_id}", response_model=Group)
-async def update_group(
-    group_id: str,
-    group_update: GroupUpdate,
-    current_user: TokenData = Depends(require_permission(Permission.MANAGE_GROUPS))
-):
-    group = auth_service.update_group(group_id, group_update, current_user.tenant_id)
-    if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
     return group
 
 

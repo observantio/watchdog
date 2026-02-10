@@ -25,6 +25,11 @@ class AlertManagerService:
         """
         self.alertmanager_url = alertmanager_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
+        # Shared client with connection pooling – avoids TCP handshake per request
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self.timeout),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
     
     @with_retry()
     @with_timeout()
@@ -63,21 +68,16 @@ class AlertManagerService:
         if filters:
             params["filter"] = filters
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.alertmanager_url}/api/v2/alerts",
-                    params=params
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                alerts = [Alert(**alert) for alert in data]
-                return alerts
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching alerts: {e}")
-                return []
+        try:
+            response = await self._client.get(
+                f"{self.alertmanager_url}/api/v2/alerts",
+                params=params,
+            )
+            response.raise_for_status()
+            return [Alert(**alert) for alert in response.json()]
+        except httpx.HTTPError as e:
+            logger.error("Error fetching alerts: %s", e)
+            return []
     
     async def get_alert_groups(
         self,
@@ -96,21 +96,16 @@ class AlertManagerService:
             filters = [f'{k}="{v}"' for k, v in filter_labels.items()]
             params["filter"] = filters
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.alertmanager_url}/api/v2/alerts/groups",
-                    params=params
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                groups = [AlertGroup(**group) for group in data]
-                return groups
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching alert groups: {e}")
-                return []
+        try:
+            response = await self._client.get(
+                f"{self.alertmanager_url}/api/v2/alerts/groups",
+                params=params,
+            )
+            response.raise_for_status()
+            return [AlertGroup(**group) for group in response.json()]
+        except httpx.HTTPError as e:
+            logger.error("Error fetching alert groups: %s", e)
+            return []
     
     async def post_alerts(self, alerts: List[Alert]) -> bool:
         """Post new alerts to AlertManager.
@@ -121,20 +116,17 @@ class AlertManagerService:
         Returns:
             True if successful, False otherwise
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                alert_data = [alert.model_dump(by_alias=True) for alert in alerts]
-                
-                response = await client.post(
-                    f"{self.alertmanager_url}/api/v2/alerts",
-                    json=alert_data
-                )
-                response.raise_for_status()
-                return True
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error posting alerts: {e}")
-                return False
+        try:
+            alert_data = [alert.model_dump(by_alias=True) for alert in alerts]
+            response = await self._client.post(
+                f"{self.alertmanager_url}/api/v2/alerts",
+                json=alert_data,
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError as e:
+            logger.error("Error posting alerts: %s", e)
+            return False
     
     async def get_silences(
         self,
@@ -153,21 +145,16 @@ class AlertManagerService:
             filters = [f'{k}="{v}"' for k, v in filter_labels.items()]
             params["filter"] = filters
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.alertmanager_url}/api/v2/silences",
-                    params=params
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                silences = [Silence(**silence) for silence in data]
-                return silences
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching silences: {e}")
-                return []
+        try:
+            response = await self._client.get(
+                f"{self.alertmanager_url}/api/v2/silences",
+                params=params,
+            )
+            response.raise_for_status()
+            return [Silence(**silence) for silence in response.json()]
+        except httpx.HTTPError as e:
+            logger.error("Error fetching silences: %s", e)
+            return []
     
     async def get_silence(self, silence_id: str) -> Optional[Silence]:
         """Get a specific silence by ID.
@@ -178,19 +165,15 @@ class AlertManagerService:
         Returns:
             Silence object or None if not found
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.alertmanager_url}/api/v2/silence/{silence_id}"
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return Silence(**data)
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching silence {silence_id}: {e}")
-                return None
+        try:
+            response = await self._client.get(
+                f"{self.alertmanager_url}/api/v2/silence/{silence_id}",
+            )
+            response.raise_for_status()
+            return Silence(**response.json())
+        except httpx.HTTPError as e:
+            logger.error("Error fetching silence %s: %s", silence_id, e)
+            return None
     
     async def create_silence(self, silence: SilenceCreate) -> Optional[str]:
         """Create a new silence.
@@ -201,22 +184,17 @@ class AlertManagerService:
         Returns:
             Silence ID if successful, None otherwise
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                silence_data = silence.model_dump(by_alias=True, exclude_none=True)
-                
-                response = await client.post(
-                    f"{self.alertmanager_url}/api/v2/silences",
-                    json=silence_data
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return data.get("silenceID")
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error creating silence: {e}")
-                return None
+        try:
+            silence_data = silence.model_dump(by_alias=True, exclude_none=True)
+            response = await self._client.post(
+                f"{self.alertmanager_url}/api/v2/silences",
+                json=silence_data,
+            )
+            response.raise_for_status()
+            return response.json().get("silenceID")
+        except httpx.HTTPError as e:
+            logger.error("Error creating silence: %s", e)
+            return None
     
     async def delete_silence(self, silence_id: str) -> bool:
         """Delete a silence.
@@ -227,17 +205,15 @@ class AlertManagerService:
         Returns:
             True if successful, False otherwise
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.delete(
-                    f"{self.alertmanager_url}/api/v2/silence/{silence_id}"
-                )
-                response.raise_for_status()
-                return True
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error deleting silence {silence_id}: {e}")
-                return False
+        try:
+            response = await self._client.delete(
+                f"{self.alertmanager_url}/api/v2/silence/{silence_id}",
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError as e:
+            logger.error("Error deleting silence %s: %s", silence_id, e)
+            return False
     
     async def get_status(self) -> Optional[AlertManagerStatus]:
         """Get AlertManager status.
@@ -245,19 +221,15 @@ class AlertManagerService:
         Returns:
             AlertManagerStatus object or None if error
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.alertmanager_url}/api/v2/status"
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return AlertManagerStatus(**data)
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching status: {e}")
-                return None
+        try:
+            response = await self._client.get(
+                f"{self.alertmanager_url}/api/v2/status",
+            )
+            response.raise_for_status()
+            return AlertManagerStatus(**response.json())
+        except httpx.HTTPError as e:
+            logger.error("Error fetching status: %s", e)
+            return None
     
     async def get_receivers(self) -> List[str]:
         """Get list of configured receivers.

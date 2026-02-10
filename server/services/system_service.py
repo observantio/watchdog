@@ -26,7 +26,6 @@ class SystemService:
             cpu_count = psutil.cpu_count() or 1
             num_threads = self.process.num_threads()
 
-            # Normalize to 0-100% of total CPU capacity to avoid >100% readings
             normalized = cpu_percent / cpu_count if cpu_count else cpu_percent
             normalized = min(normalized, 100)
             
@@ -35,7 +34,7 @@ class SystemService:
                 "raw_utilization": round(cpu_percent, 2),
                 "count": cpu_count,
                 "threads": num_threads,
-                "frequency_mhz": None  # Process-specific frequency not available
+                "frequency_mhz": None  
             }
         except Exception as e:
             logger.error(f"Error getting CPU metrics: {e}")
@@ -137,20 +136,17 @@ class SystemService:
             issues.append(f"High CPU usage ({cpu_percent}%)")
         elif cpu_percent >= MODERATE_CPU_THRESHOLD:
             issues.append(f"Moderate CPU usage ({cpu_percent}%)")
-        
-        # Check Memory
+            
         if memory_percent >= HIGH_MEMORY_THRESHOLD:
             issues.append(f"High memory usage ({memory_percent}%)")
         elif memory_percent >= MODERATE_MEMORY_THRESHOLD:
             issues.append(f"Moderate memory usage ({memory_percent}%)")
         
-        # Check Connections
         if connections >= HIGH_CONNECTIONS_THRESHOLD:
             issues.append(f"High connection count ({connections})")
         elif connections >= MODERATE_CONNECTIONS_THRESHOLD:
             issues.append(f"Moderate connection count ({connections})")
         
-        # Determine overall status
         if any("High" in issue for issue in issues):
             status = "stressed"
             message = "Process is under high stress"

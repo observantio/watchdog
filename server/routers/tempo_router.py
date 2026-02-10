@@ -7,16 +7,7 @@ from services.tempo_service import TempoService
 from config import config
 from models.auth_models import Permission, TokenData
 
-try:
-    from routers.auth_router import require_permission
-except ImportError:
-    def require_permission(permission):
-        def _deny():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service unavailable"
-            )
-        return _deny
+from routers.auth_router import require_permission
 
 router = APIRouter(
     prefix="/api/tempo",

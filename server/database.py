@@ -49,13 +49,21 @@ def get_db_session() -> Session:
 
 
 def get_db():
-    """FastAPI dependency for database sessions."""
+    """FastAPI dependency for database sessions.
+
+    Mirrors the commit / rollback semantics of ``get_db_session`` so that
+    callers don't need to manually commit.
+    """
     if _SessionLocal is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
-    
+
     db = _SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

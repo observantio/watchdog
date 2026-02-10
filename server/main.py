@@ -16,6 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from config import config, constants
 from routers import tempo_router, loki_router, alertmanager_router, grafana_router, auth_router, agents_router, system_router
 from database import init_database, init_db
+from middleware.limits import RequestSizeLimitMiddleware, ConcurrencyLimitMiddleware
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -35,19 +36,20 @@ from routers.auth_router import auth_service
 auth_service._lazy_init()
 logger.info("✓ Auth service initialized")
 
-# One-time migration: import any legacy JSON files into the database.
-try:
-    from services.storage_migration import migrate_file_storage_to_db
-    migrate_file_storage_to_db()
-except Exception as mig_err:
-    logger.warning("Legacy storage migration skipped: %s", mig_err)
-
 app = FastAPI(
     title=constants.APP_NAME,
     description=constants.APP_DESCRIPTION,
     version=constants.APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# Backpressure + payload protection (runs before CORS/routes)
+app.add_middleware(RequestSizeLimitMiddleware, max_bytes=config.MAX_REQUEST_BYTES)
+app.add_middleware(
+    ConcurrencyLimitMiddleware,
+    max_concurrent=config.MAX_CONCURRENT_REQUESTS,
+    acquire_timeout=config.CONCURRENCY_ACQUIRE_TIMEOUT,
 )
 
 app.add_middleware(
@@ -68,7 +70,6 @@ async def validation_exception_handler(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "detail": exc.errors(),
-            "body": exc.body,
         },
     )
 
@@ -78,11 +79,39 @@ async def general_exception_handler(
     exc: Exception
 ) -> JSONResponse:
     """Handle unexpected errors gracefully."""
-    logger.exception(f"Unhandled exception: {exc}")
+    logger.exception("Unhandled exception: %s", exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": constants.ERROR_INTERNAL},
     )
+
+
+@app.on_event("shutdown")
+async def _shutdown_http_clients() -> None:
+    """Close shared httpx.AsyncClient instances for a clean shutdown."""
+    clients = []
+    # Router-level service singletons
+    for svc in (
+        getattr(tempo_router, "tempo_service", None),
+        getattr(loki_router, "loki_service", None),
+        getattr(alertmanager_router, "alertmanager_service", None),
+        getattr(alertmanager_router, "notification_service", None),
+        getattr(grafana_router, "grafana_service", None),
+        getattr(agents_router, "loki_service", None),
+        getattr(agents_router, "tempo_service", None),
+    ):
+        client = getattr(svc, "_client", None)
+        if client is not None:
+            clients.append(client)
+
+    extra = getattr(agents_router, "_mimir_client", None)
+    if extra is not None:
+        clients.append(extra)
+
+    # Close unique clients only
+    unique = {id(c): c for c in clients}.values()
+    if unique:
+        await asyncio.gather(*(c.aclose() for c in unique), return_exceptions=True)
 
 app.include_router(auth_router.router)
 app.include_router(agents_router.router)

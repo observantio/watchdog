@@ -25,6 +25,10 @@ class TempoService:
         """
         self.tempo_url = tempo_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self.timeout),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
     
     def _get_headers(self, tenant_id: str = config.DEFAULT_ORG_ID) -> dict:
         """Get headers including tenant ID for multi-tenancy.
@@ -57,59 +61,58 @@ class TempoService:
         params = self._build_search_params(query)
         headers = self._get_headers(tenant_id)
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.tempo_url}/api/search",
-                    params=params,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                traces = []
-                if "traces" in data:
-                    for trace_data in data["traces"]:
-                        trace_id = trace_data.get("traceID")
-                        if trace_id:
-                            if fetch_full_traces:
-                                full_trace = await self.get_trace(trace_id, tenant_id=tenant_id)
-                                if full_trace:
-                                    traces.append(full_trace)
-                                else:
-                                    traces.append(
-                                        Trace(
-                                            traceID=trace_id,
-                                            spans=[],
-                                            processes={},
-                                            warnings=["Trace details unavailable"]
-                                        )
-                                    )
+        try:
+            response = await self._client.get(
+                f"{self.tempo_url}/api/search",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            traces = []
+            if "traces" in data:
+                for trace_data in data["traces"]:
+                    trace_id = trace_data.get("traceID")
+                    if trace_id:
+                        if fetch_full_traces:
+                            full_trace = await self.get_trace(trace_id, tenant_id=tenant_id)
+                            if full_trace:
+                                traces.append(full_trace)
                             else:
                                 traces.append(
                                     Trace(
                                         traceID=trace_id,
                                         spans=[],
                                         processes={},
-                                        warnings=["Trace details not fetched"]
+                                        warnings=["Trace details unavailable"]
                                     )
                                 )
-                
-                return TraceResponse(
-                    data=traces,
-                    total=len(traces),
-                    limit=query.limit,
-                    offset=0
-                )
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error searching traces: {e}")
-                return TraceResponse(
-                    data=[],
-                    total=0,
-                    limit=query.limit,
-                    errors=[str(e)]
-                )
+                        else:
+                            traces.append(
+                                Trace(
+                                    traceID=trace_id,
+                                    spans=[],
+                                    processes={},
+                                    warnings=["Trace details not fetched"]
+                                )
+                            )
+            
+            return TraceResponse(
+                data=traces,
+                total=len(traces),
+                limit=query.limit,
+                offset=0
+            )
+            
+        except httpx.HTTPError as e:
+            logger.error("Error searching traces: %s", e)
+            return TraceResponse(
+                data=[],
+                total=0,
+                limit=query.limit,
+                errors=[str(e)]
+            )
     
     @with_retry()
     @with_timeout()
@@ -124,33 +127,32 @@ class TempoService:
             Trace object or None if not found
         """
         headers = self._get_headers(tenant_id)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.tempo_url}/api/traces/{trace_id}",
-                    headers=headers
-                )
-                response.raise_for_status()
-                if not response.content:
-                    logger.debug("Tempo returned empty response for trace %s", trace_id)
-                    return None
+        try:
+            response = await self._client.get(
+                f"{self.tempo_url}/api/traces/{trace_id}",
+                headers=headers
+            )
+            response.raise_for_status()
+            if not response.content:
+                logger.debug("Tempo returned empty response for trace %s", trace_id)
+                return None
 
-                try:
-                    data = response.json()
-                except json.JSONDecodeError:
-                    logger.debug("Tempo returned non-JSON response for trace %s", trace_id)
-                    return None
-                
-                
-                if "batches" in data:
-                    trace = self._parse_tempo_trace(trace_id, data)
-                    return trace
-                
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                logger.debug("Tempo returned non-JSON response for trace %s", trace_id)
                 return None
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching trace {trace_id}: {e}")
-                return None
+            
+            
+            if "batches" in data:
+                trace = self._parse_tempo_trace(trace_id, data)
+                return trace
+            
+            return None
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching trace %s: %s", trace_id, e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -164,66 +166,65 @@ class TempoService:
             List of service names
         """
         headers = self._get_headers(tenant_id)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(f"{self.tempo_url}/api/search/tags", headers=headers)
-                response.raise_for_status()
-                data = response.json()
-                logger.debug(f"Tempo /api/search/tags response: {data}")
+        try:
+            response = await self._client.get(f"{self.tempo_url}/api/search/tags", headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            logger.debug("Tempo /api/search/tags response: %s", data)
 
-                services = []
+            services = []
 
-                tag_names = []
-                if isinstance(data, dict):
-                    if "tagNames" in data and isinstance(data["tagNames"], list):
-                        tag_names = data["tagNames"]
-                    elif "data" in data and isinstance(data["data"], dict) and "tagNames" in data["data"]:
-                        tag_names = data["data"]["tagNames"]
-                elif isinstance(data, list):
-                    for item in data:
-                        if isinstance(item, dict) and "tagName" in item:
-                            tag_names.append(item.get("tagName"))
+            tag_names = []
+            if isinstance(data, dict):
+                if "tagNames" in data and isinstance(data["tagNames"], list):
+                    tag_names = data["tagNames"]
+                elif "data" in data and isinstance(data["data"], dict) and "tagNames" in data["data"]:
+                    tag_names = data["data"]["tagNames"]
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "tagName" in item:
+                        tag_names.append(item.get("tagName"))
 
-                for tag in tag_names:
-                    if tag in SERVICE_KEYS:
-                        try:
-                            values_resp = await client.get(
-                                f"{self.tempo_url}/api/search/tag/{tag}/values",
-                                headers=headers
-                            )
-                            values_resp.raise_for_status()
-                            values_data = values_resp.json()
-                            logger.debug(f"Tempo /api/search/tag/{tag}/values response: {values_data}")
-
-                            if isinstance(values_data, dict):
-                                if "tagValues" in values_data and isinstance(values_data["tagValues"], list):
-                                    services.extend(values_data["tagValues"])
-                                elif "values" in values_data and isinstance(values_data["values"], list):
-                                    services.extend(values_data["values"])
-                                elif "data" in values_data and isinstance(values_data["data"], list):
-                                    services.extend(values_data["data"])
-                            elif isinstance(values_data, list):
-                                services.extend(values_data)
-                        except httpx.HTTPError as ve:
-                            logger.warning(f"Failed to fetch tag values for {tag}: {ve}")
-
-                if not services:
-                    logger.debug("No services found from tag endpoints, attempting to infer from recent traces")
+            for tag in tag_names:
+                if tag in SERVICE_KEYS:
                     try:
-                        search_resp = await self.search_traces(TraceQuery(limit=50), tenant_id=tenant_id)
-                        for trace in search_resp.data:
-                            for span in trace.spans:
-                                if span.service_name:
-                                    services.append(span.service_name)
-                    except Exception as ie:
-                        logger.warning(f"Failed to infer services from traces: {ie}")
+                        values_resp = await self._client.get(
+                            f"{self.tempo_url}/api/search/tag/{tag}/values",
+                            headers=headers
+                        )
+                        values_resp.raise_for_status()
+                        values_data = values_resp.json()
+                        logger.debug("Tempo /api/search/tag/%s/values response: %s", tag, values_data)
 
-                normalized = [s for s in map(str, services) if s]
-                return sorted(set(normalized))
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching services: {e}")
-                return []
+                        if isinstance(values_data, dict):
+                            if "tagValues" in values_data and isinstance(values_data["tagValues"], list):
+                                services.extend(values_data["tagValues"])
+                            elif "values" in values_data and isinstance(values_data["values"], list):
+                                services.extend(values_data["values"])
+                            elif "data" in values_data and isinstance(values_data["data"], list):
+                                services.extend(values_data["data"])
+                        elif isinstance(values_data, list):
+                            services.extend(values_data)
+                    except httpx.HTTPError as ve:
+                        logger.warning("Failed to fetch tag values for %s: %s", tag, ve)
+
+            if not services:
+                logger.debug("No services found from tag endpoints, attempting to infer from recent traces")
+                try:
+                    search_resp = await self.search_traces(TraceQuery(limit=50), tenant_id=tenant_id)
+                    for trace in search_resp.data:
+                        for span in trace.spans:
+                            if span.service_name:
+                                services.append(span.service_name)
+                except Exception as ie:
+                    logger.warning("Failed to infer services from traces: %s", ie)
+
+            normalized = [s for s in map(str, services) if s]
+            return sorted(set(normalized))
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching services: %s", e)
+            return []
     
     async def get_operations(self, service: str, tenant_id: str = config.DEFAULT_ORG_ID) -> List[str]:
         """Get operations for a specific service.

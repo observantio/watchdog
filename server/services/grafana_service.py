@@ -34,6 +34,11 @@ class GrafanaService:
         credentials = f"{username}:{password}"
         encoded = base64.b64encode(credentials.encode()).decode()
         self.auth_header = f"Basic {encoded}"
+        # Shared client with connection pooling – avoids TCP handshake per request
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self.timeout),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
     
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for Grafana API requests."""
@@ -72,21 +77,20 @@ class GrafanaService:
         if starred is not None:
             params["starred"] = starred
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.grafana_url}/api/search",
-                    params=params,
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return [DashboardSearchResult(**item) for item in data]
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error searching dashboards: {e}")
-                return []
+        try:
+            response = await self._client.get(
+                f"{self.grafana_url}/api/search",
+                params=params,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return [DashboardSearchResult(**item) for item in data]
+            
+        except httpx.HTTPError as e:
+            logger.error("Error searching dashboards: %s", e)
+            return []
     
     @with_retry()
     @with_timeout()
@@ -99,18 +103,17 @@ class GrafanaService:
         Returns:
             Dashboard data or None if not found
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.grafana_url}/api/dashboards/uid/{uid}",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                return response.json()
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching dashboard {uid}: {e}")
-                return None
+        try:
+            response = await self._client.get(
+                f"{self.grafana_url}/api/dashboards/uid/{uid}",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching dashboard %s: %s", uid, e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -123,21 +126,20 @@ class GrafanaService:
         Returns:
             Created dashboard info or None if error
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                data = dashboard_create.model_dump(by_alias=True, exclude_none=True)
-                
-                response = await client.post(
-                    f"{self.grafana_url}/api/dashboards/db",
-                    json=data,
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                return response.json()
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error creating dashboard: {e}")
-                return None
+        try:
+            data = dashboard_create.model_dump(by_alias=True, exclude_none=True)
+            
+            response = await self._client.post(
+                f"{self.grafana_url}/api/dashboards/db",
+                json=data,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except httpx.HTTPError as e:
+            logger.error("Error creating dashboard: %s", e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -163,21 +165,20 @@ class GrafanaService:
         
         dashboard_update.dashboard.uid = uid
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                data = dashboard_update.model_dump(by_alias=True, exclude_none=True)
-                
-                response = await client.post(
-                    f"{self.grafana_url}/api/dashboards/db",
-                    json=data,
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                return response.json()
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error updating dashboard {uid}: {e}")
-                return None
+        try:
+            data = dashboard_update.model_dump(by_alias=True, exclude_none=True)
+            
+            response = await self._client.post(
+                f"{self.grafana_url}/api/dashboards/db",
+                json=data,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except httpx.HTTPError as e:
+            logger.error("Error updating dashboard %s: %s", uid, e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -190,18 +191,17 @@ class GrafanaService:
         Returns:
             True if successful, False otherwise
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.delete(
-                    f"{self.grafana_url}/api/dashboards/uid/{uid}",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                return True
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error deleting dashboard {uid}: {e}")
-                return False
+        try:
+            response = await self._client.delete(
+                f"{self.grafana_url}/api/dashboards/uid/{uid}",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return True
+            
+        except httpx.HTTPError as e:
+            logger.error("Error deleting dashboard %s: %s", uid, e)
+            return False
     
     
     
@@ -213,20 +213,19 @@ class GrafanaService:
         Returns:
             List of Datasource objects
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.grafana_url}/api/datasources",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return [Datasource(**ds) for ds in data]
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching datasources: {e}")
-                return []
+        try:
+            response = await self._client.get(
+                f"{self.grafana_url}/api/datasources",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return [Datasource(**ds) for ds in data]
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching datasources: %s", e)
+            return []
     
     @with_retry()
     @with_timeout()
@@ -239,20 +238,19 @@ class GrafanaService:
         Returns:
             Datasource object or None if not found
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.grafana_url}/api/datasources/uid/{uid}",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return Datasource(**data)
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching datasource {uid}: {e}")
-                return None
+        try:
+            response = await self._client.get(
+                f"{self.grafana_url}/api/datasources/uid/{uid}",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return Datasource(**data)
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching datasource %s: %s", uid, e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -265,20 +263,19 @@ class GrafanaService:
         Returns:
             Datasource object or None if not found
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.grafana_url}/api/datasources/name/{name}",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return Datasource(**data)
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching datasource {name}: {e}")
-                return None
+        try:
+            response = await self._client.get(
+                f"{self.grafana_url}/api/datasources/name/{name}",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return Datasource(**data)
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching datasource %s: %s", name, e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -291,26 +288,25 @@ class GrafanaService:
         Returns:
             Created Datasource object or None if error
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                data = datasource.model_dump(by_alias=True, exclude_none=True)
-                
-                response = await client.post(
-                    f"{self.grafana_url}/api/datasources",
-                    json=data,
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                
-                if "datasource" in result:
-                    return Datasource(**result["datasource"])
-                return None
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error creating datasource: {e}")
-                return None
+        try:
+            data = datasource.model_dump(by_alias=True, exclude_none=True)
+            
+            response = await self._client.post(
+                f"{self.grafana_url}/api/datasources",
+                json=data,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            
+            if "datasource" in result:
+                return Datasource(**result["datasource"])
+            return None
+            
+        except httpx.HTTPError as e:
+            logger.error("Error creating datasource: %s", e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -332,25 +328,24 @@ class GrafanaService:
         if not existing:
             return None
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                data = datasource_update.model_dump(by_alias=True, exclude_none=True)
-                
-                response = await client.put(
-                    f"{self.grafana_url}/api/datasources/uid/{uid}",
-                    json=data,
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                if "datasource" in result:
-                    return Datasource(**result["datasource"])
-                return await self.get_datasource(uid)
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error updating datasource {uid}: {e}")
-                return None
+        try:
+            data = datasource_update.model_dump(by_alias=True, exclude_none=True)
+            
+            response = await self._client.put(
+                f"{self.grafana_url}/api/datasources/uid/{uid}",
+                json=data,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if "datasource" in result:
+                return Datasource(**result["datasource"])
+            return await self.get_datasource(uid)
+            
+        except httpx.HTTPError as e:
+            logger.error("Error updating datasource %s: %s", uid, e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -363,18 +358,17 @@ class GrafanaService:
         Returns:
             True if successful, False otherwise
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.delete(
-                    f"{self.grafana_url}/api/datasources/uid/{uid}",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                return True
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error deleting datasource {uid}: {e}")
-                return False
+        try:
+            response = await self._client.delete(
+                f"{self.grafana_url}/api/datasources/uid/{uid}",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return True
+            
+        except httpx.HTTPError as e:
+            logger.error("Error deleting datasource %s: %s", uid, e)
+            return False
     
     @with_retry()
     @with_timeout()
@@ -384,20 +378,19 @@ class GrafanaService:
         Returns:
             List of Folder objects
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(
-                    f"{self.grafana_url}/api/folders",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return [Folder(**folder) for folder in data]
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching folders: {e}")
-                return []
+        try:
+            response = await self._client.get(
+                f"{self.grafana_url}/api/folders",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return [Folder(**folder) for folder in data]
+            
+        except httpx.HTTPError as e:
+            logger.error("Error fetching folders: %s", e)
+            return []
     
     @with_retry()
     @with_timeout()
@@ -410,21 +403,20 @@ class GrafanaService:
         Returns:
             Created Folder object or None if error
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.post(
-                    f"{self.grafana_url}/api/folders",
-                    json={"title": title},
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return Folder(**data)
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error creating folder: {e}")
-                return None
+        try:
+            response = await self._client.post(
+                f"{self.grafana_url}/api/folders",
+                json={"title": title},
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return Folder(**data)
+            
+        except httpx.HTTPError as e:
+            logger.error("Error creating folder: %s", e)
+            return None
     
     @with_retry()
     @with_timeout()
@@ -437,15 +429,14 @@ class GrafanaService:
         Returns:
             True if successful, False otherwise
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.delete(
-                    f"{self.grafana_url}/api/folders/{uid}",
-                    headers=self._get_headers()
-                )
-                response.raise_for_status()
-                return True
-                
-            except httpx.HTTPError as e:
-                logger.error(f"Error deleting folder {uid}: {e}")
-                return False
+        try:
+            response = await self._client.delete(
+                f"{self.grafana_url}/api/folders/{uid}",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return True
+            
+        except httpx.HTTPError as e:
+            logger.error("Error deleting folder %s: %s", uid, e)
+            return False

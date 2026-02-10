@@ -5,6 +5,7 @@ from . import alertmanager_router
 from . import grafana_router
 from . import auth_router
 from . import agents_router
+from . import system_router
 
 __all__ = [
     "tempo_router",
@@ -13,4 +14,5 @@ __all__ = [
     "grafana_router",
     "auth_router",
     "agents_router",
+    "system_router",
 ]

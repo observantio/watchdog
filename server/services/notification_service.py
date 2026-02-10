@@ -15,6 +15,10 @@ class NotificationService:
     
     def __init__(self):
         self.timeout = 30.0
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self.timeout),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
     
     async def send_notification(
         self,
@@ -113,13 +117,13 @@ class NotificationService:
             }]
         }
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(webhook_url, json=payload)
-            response.raise_for_status()
-            logger.info(
-                f"Slack notification sent to {channel_config.get('channel', config.DEFAULT_SLACK_CHANNEL)}"
-            )
-            return True
+        response = await self._client.post(webhook_url, json=payload)
+        response.raise_for_status()
+        logger.info(
+            "Slack notification sent to %s",
+            channel_config.get('channel', config.DEFAULT_SLACK_CHANNEL),
+        )
+        return True
     
     async def _send_teams(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send Microsoft Teams notification."""
@@ -153,11 +157,10 @@ class NotificationService:
             }]
         }
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(webhook_url, json=payload)
-            response.raise_for_status()
-            logger.info("Teams notification sent")
-            return True
+        response = await self._client.post(webhook_url, json=payload)
+        response.raise_for_status()
+        logger.info("Teams notification sent")
+        return True
     
     async def _send_webhook(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send webhook notification."""
@@ -181,11 +184,10 @@ class NotificationService:
         
         headers = config.get('headers', {})
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(webhook_url, json=payload, headers=headers)
-            response.raise_for_status()
-            logger.info(f"Webhook notification sent to {webhook_url}")
-            return True
+        response = await self._client.post(webhook_url, json=payload, headers=headers)
+        response.raise_for_status()
+        logger.info("Webhook notification sent to %s", webhook_url)
+        return True
     
     async def _send_pagerduty(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send PagerDuty notification."""
@@ -217,14 +219,13 @@ class NotificationService:
             }
         }
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                "https://events.pagerduty.com/v2/enqueue",
-                json=payload
-            )
-            response.raise_for_status()
-            logger.info("PagerDuty notification sent")
-            return True
+        response = await self._client.post(
+            "https://events.pagerduty.com/v2/enqueue",
+            json=payload,
+        )
+        response.raise_for_status()
+        logger.info("PagerDuty notification sent")
+        return True
     
     async def _send_opsgenie(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
         """Send Opsgenie notification."""
@@ -249,20 +250,17 @@ class NotificationService:
                 "priority": self._map_severity_to_priority(self._get_label(alert, 'severity', 'warning')),
                 "details": alert.labels or {}
             }
-            
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                logger.info("Opsgenie alert created")
+            response = await self._client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            logger.info("Opsgenie alert created")
         else:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{url}/{alert.fingerprint}/close",
-                    params={"identifierType": "alias"},
-                    headers=headers
-                )
-                response.raise_for_status()
-                logger.info("Opsgenie alert closed")
+            response = await self._client.post(
+                f"{url}/{alert.fingerprint}/close",
+                params={"identifierType": "alias"},
+                headers=headers,
+            )
+            response.raise_for_status()
+            logger.info("Opsgenie alert closed")
         
         return True
     

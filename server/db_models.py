@@ -77,8 +77,6 @@ class Tenant(Base):
     settings = Column(JSON, default=dict)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-
-    # Relationships
     users = relationship('User', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
     groups = relationship('Group', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
     alert_rules = relationship('AlertRule', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)

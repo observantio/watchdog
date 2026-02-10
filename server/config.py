@@ -22,9 +22,6 @@ class Config:
     
     # Encryption key for sensitive data at rest (channel config in DB)
     DATA_ENCRYPTION_KEY: Optional[str] = os.getenv("DATA_ENCRYPTION_KEY")
-
-    # Legacy storage directory – only used by one-time migration from JSON to DB
-    STORAGE_DIR: str = os.getenv("STORAGE_DIR", "/data/beobservant")
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://beobservant:changeme123@localhost:5432/beobservant")
@@ -40,6 +37,21 @@ class Config:
     # API limits
     MAX_QUERY_LIMIT: int = int(os.getenv("MAX_QUERY_LIMIT", "5000"))
     DEFAULT_QUERY_LIMIT: int = int(os.getenv("DEFAULT_QUERY_LIMIT", "100"))
+
+    # Request protection / backpressure
+    MAX_REQUEST_BYTES: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))  # 1 MiB
+    MAX_CONCURRENT_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "200"))
+    CONCURRENCY_ACQUIRE_TIMEOUT: float = float(os.getenv("CONCURRENCY_ACQUIRE_TIMEOUT", "1.0"))
+
+    # Rate limiting / spam protection (per-process; use an API gateway for global limits)
+    RATE_LIMIT_USER_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_USER_PER_MINUTE", "600"))
+    RATE_LIMIT_PUBLIC_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PUBLIC_PER_MINUTE", "120"))
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_LOGIN_PER_MINUTE", "10"))
+    RATE_LIMIT_REGISTER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_REGISTER_PER_HOUR", "5"))
+
+    # Optional shared secrets for inbound endpoints
+    INBOUND_WEBHOOK_TOKEN: Optional[str] = os.getenv("INBOUND_WEBHOOK_TOKEN")
+    OTLP_INGEST_TOKEN: Optional[str] = os.getenv("OTLP_INGEST_TOKEN")
     
     # Authentication
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-this-secret-key-in-production")
