@@ -46,6 +46,7 @@ services:
       DEFAULT_ADMIN_EMAIL: "${DEFAULT_ADMIN_EMAIL:-admin@example.com}"
       DEFAULT_ORG_ID: "${DEFAULT_ORG_ID:-Av45ZchZsQdKjN8XyG}"
       DEFAULT_OTLP_TOKEN: "${DEFAULT_OTLP_TOKEN:-DAMJ8xlh9UrUgK23yYWfzvLDJYeTRfase}"
+      GRAFANA_API_KEY: "${GRAFANA_API_KEY:-}"
     ports:
       - "4319:4319"
     depends_on:
@@ -181,6 +182,24 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_INSTALL_PLUGINS: ""
       MIMIR_TENANT_ID: "${DEFAULT_ORG_ID:-Av45ZchZsQdKjN8XyG}"
+      
+      # 🌐 SERVER SETTINGS (for proxy subpath)
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      
+      # 🔐 AUTH PROXY SETTINGS
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: "X-WEBAUTH-USER"
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+      GF_AUTH_PROXY_WHITELIST: "172.18.0.0/16"
+      
+      # 🔓 ANONYMOUS ACCESS (for embedded dashboards with full edit capability after API auth)
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Editor"
+      
+      # 🔐 SECURITY
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_BASIC_ENABLED: "true"
     volumes:
       - ./configs/grafana/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - grafana:/var/lib/grafana

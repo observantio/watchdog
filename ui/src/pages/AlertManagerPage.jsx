@@ -326,7 +326,7 @@ export default function AlertManagerPage() {
         })}
       </div>
 
-      <div className="mb-6 flex gap-2 border-b border-sre-border justify-start items-center">
+      <div className="mb-6 flex gap-2 border-b border-sre-border justify-center items-center">
         {[
           { key: 'alerts', label: 'Alerts', icon: 'notification_important' },
           { key: 'rules', label: 'Rules', icon: 'rule' },
@@ -337,7 +337,7 @@ export default function AlertManagerPage() {
             type="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`pl-0 pr-4 py-2 flex items-center gap-2 border-b-2 transition-colors ${
+            className={`pl-4 pr-4 py-2 flex items-center justify-center gap-2 border-b-2 transition-colors ${
               activeTab === tab.key
                 ? 'border-sre-primary text-sre-primary'
                 : 'border-transparent text-sre-text-muted hover:text-sre-text'

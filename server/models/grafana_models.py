@@ -39,6 +39,11 @@ class Datasource(BaseModel):
     secure_json_data: Optional[Dict[str, Any]] = Field(None, alias="secureJsonData", description="Secure JSON configuration")
     version: Optional[int] = Field(None, description="Version of the datasource")
     read_only: bool = Field(False, alias="readOnly", description="Whether the datasource is read-only")
+    # Extended fields for proxy server
+    created_by: Optional[str] = Field(None, description="ID of the user who registered/created the datasource")
+    is_hidden: bool = Field(False, description="Whether the datasource is hidden for the current user")
+    is_owned: bool = Field(False, description="Whether the current user is the owner/creator")
+    labels: Optional[Dict[str, str]] = Field(default_factory=dict, description="Key/value labels stored in the proxy DB")
     
     class Config:
         populate_by_name = True
@@ -136,6 +141,12 @@ class DashboardSearchResult(BaseModel):
     folder_id: Optional[int] = Field(None, alias="folderId", description="ID of the containing folder")
     folder_uid: Optional[str] = Field(None, alias="folderUid", description="UID of the containing folder")
     folder_title: Optional[str] = Field(None, alias="folderTitle", description="Title of the containing folder")
+
+    # Extended fields for proxy server
+    created_by: Optional[str] = Field(None, description="ID of the user who registered/created the dashboard")
+    is_hidden: bool = Field(False, description="Whether the dashboard is hidden for the current user")
+    is_owned: bool = Field(False, description="Whether the current user is the owner/creator")
+    labels: Optional[Dict[str, str]] = Field(default_factory=dict, description="Key/value labels stored in the proxy DB")
     
     class Config:
         populate_by_name = True

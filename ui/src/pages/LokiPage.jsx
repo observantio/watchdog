@@ -464,7 +464,7 @@ export default function LokiPage() {
         </Alert>
       )}
 
-      <Card title="Search & Filter" subtitle="Build LogQL queries using labels and patterns" className="mb-6">
+      <Card title="Search & Filter" className="mb-6">
         <LogQueryForm
           queryMode={queryMode}
           customLogQL={customLogQL}

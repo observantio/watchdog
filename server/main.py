@@ -33,6 +33,17 @@ logger.info("✓ Database initialized")
 
 run_column_migration("user_api_keys", "otlp_token", "VARCHAR(200)")
 run_column_migration("alert_rules", "org_id", "VARCHAR")
+
+# Grafana enterprise feature columns
+run_column_migration("users", "grafana_user_id", "INTEGER")
+run_column_migration("groups", "grafana_team_id", "INTEGER")
+run_column_migration("grafana_dashboards", "labels", "JSON DEFAULT '{}'")
+run_column_migration("grafana_dashboards", "is_hidden", "BOOLEAN DEFAULT FALSE")
+run_column_migration("grafana_dashboards", "hidden_by", "JSON DEFAULT '[]'")
+run_column_migration("grafana_datasources", "labels", "JSON DEFAULT '{}'")
+run_column_migration("grafana_datasources", "is_hidden", "BOOLEAN DEFAULT FALSE")
+run_column_migration("grafana_datasources", "hidden_by", "JSON DEFAULT '[]'")
+
 logger.info("✓ Database migrations checked")
 
 from routers.auth_router import auth_service

@@ -1,8 +1,11 @@
-import  { useState, useEffect } from 'react'
+import  { useState, useEffect, useCallback } from 'react'
 import {
   searchDashboards, createDashboard, updateDashboard, deleteDashboard,
   getDatasources, createDatasource, updateDatasource, deleteDatasource,
-  getFolders, createFolder, deleteFolder, getGroups
+  getFolders, createFolder, deleteFolder, getGroups,
+  toggleDashboardHidden, updateDashboardLabels,
+  toggleDatasourceHidden, updateDatasourceLabels,
+  getDashboardFilterMeta, getDatasourceFilterMeta
 } from '../api'
 import {  Button, Input, Modal, ConfirmDialog, Select, Checkbox } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
@@ -10,7 +13,7 @@ import HelpTooltip from '../components/HelpTooltip'
 import GrafanaTabs from '../components/grafana/GrafanaTabs'
 import GrafanaContent from '../components/grafana/GrafanaContent'
 import { useAuth } from '../contexts/AuthContext'
-import { GRAFANA_URL, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, DATASOURCE_TYPES as DS_TYPES, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS } from '../utils/constants'
+import { API_BASE, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, DATASOURCE_TYPES as DS_TYPES, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS } from '../utils/constants'
 
 const DATASOURCE_TYPES = DS_TYPES
   .filter(dt => ['prometheus', 'loki', 'tempo'].includes(dt.value))
@@ -22,10 +25,7 @@ const DATASOURCE_TYPES = DS_TYPES
   }
   return { ...dt, icon: icons[dt.value] || null }
 })
-
-function openInGrafana(path) {
-  window.open(`${GRAFANA_URL}${path}`, '_blank', 'noopener,noreferrer')
-}
+// handlers moved into the component so they can access component state
 
 
 
@@ -39,19 +39,30 @@ export default function GrafanaPage() { // NOSONAR
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
 
+  // Filter state
+  const [filters, setFilters] = useState({
+    uid: '',
+    labelKey: '',
+    labelValue: '',
+    teamId: '',
+    showHidden: false,
+  })
+  const [dashboardMeta, setDashboardMeta] = useState({ label_keys: [], label_values: {}, team_ids: [] })
+  const [datasourceMeta, setDatasourceMeta] = useState({ label_keys: [], label_values: {}, team_ids: [] })
+
+  // Label editor state
+  const [labelEditor, setLabelEditor] = useState({ isOpen: false, type: '', uid: '', labels: {} })
+  const [newLabelKey, setNewLabelKey] = useState('')
+  const [newLabelValue, setNewLabelValue] = useState('')
+
   const toast = useToast()
 
-  // Centralized API error handling for this page.
-  // Permission errors (403) are already shown globally via toast; avoid duplicating them here.
   function handleApiError(e) {
     if (!e) return
-    if (e.status === 403) return // already shown in toast
-
+    if (e.status === 403) return
     const msg = e.message || String(e || '')
     const lower = msg.toLowerCase()
-    // Suppress Grafana 'not found / access denied / update failed' messages as toasts already show them
     if (lower.includes('not found') && (lower.includes('access denied') || lower.includes('update failed'))) return
-
     toast.error(msg)
   }
 
@@ -95,29 +106,86 @@ export default function GrafanaPage() { // NOSONAR
     variant: 'danger'
   })
 
-  // Determine default API key for the current user
+  // Grafana access confirmation state
+  const [grafanaConfirmDialog, setGrafanaConfirmDialog] = useState({
+    isOpen: false,
+    path: null
+  })
+
+  // Open-in Grafana: set confirmation dialog
+  function openInGrafana(path) {
+    setGrafanaConfirmDialog({
+      isOpen: true,
+      path: path
+    })
+  }
+
+  // Confirm and open Grafana in a new tab (dashboard or proxy)
+  function confirmOpenInGrafana() {
+    const { path } = grafanaConfirmDialog || {}
+    const base = API_BASE.replace(/\/$/, '')
+
+    // Extract dashboard UID for iframe embedding with full edit capability
+    if (path && path.includes('/d/')) {
+      const match = path.match(/\/d\/([^\/]+)(?:\/([^\/\?]+))?/)
+      if (match) {
+        const uid = match[1]
+        const slug = match[2] || ''
+        const token = localStorage.getItem('auth_token')
+        const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
+        window.open(`${base}/api/grafana/view/d/${uid}${slug ? '/' + slug : ''}${tokenParam}`, '_blank', 'noopener,noreferrer')
+        setGrafanaConfirmDialog({ isOpen: false, path: null })
+        return
+      }
+    }
+
+    // For other paths, use proxy
+    const safePath = path?.startsWith('/') ? path : `/${path || ''}`
+    const token = localStorage.getItem('auth_token')
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
+    window.open(`${base}/api/grafana/proxy${safePath}${tokenParam}`, '_blank', 'noopener,noreferrer')
+    setGrafanaConfirmDialog({ isOpen: false, path: null })
+  }
+
   const defaultKey = (user?.api_keys || []).find((k) => k.is_default) || (user?.api_keys || [])[0]
 
   useEffect(() => {
     loadData()
     loadGroups()
+    loadFilterMeta()
   }, [activeTab])
 
   async function loadGroups() {
     try {
       const groupsData = await getGroups().catch(() => [])
       setGroups(groupsData)
-    } catch {
-      // Silently handle
-    }
+    } catch { /* silent */ }
   }
 
-  async function loadData() {
+  async function loadFilterMeta() {
+    try {
+      const [dbMeta, dsMeta] = await Promise.all([
+        getDashboardFilterMeta().catch(() => ({})),
+        getDatasourceFilterMeta().catch(() => ({})),
+      ])
+      setDashboardMeta(dbMeta || {})
+      setDatasourceMeta(dsMeta || {})
+    } catch { /* silent */ }
+  }
+
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
       if (activeTab === 'dashboards') {
         const [dashboardsData, foldersData, datasourcesData] = await Promise.all([
-          searchDashboards().catch(() => []),
+          searchDashboards({
+            query: query || undefined,
+            uid: filters.uid || undefined,
+            labelKey: filters.labelKey || undefined,
+            labelValue: filters.labelValue || undefined,
+            teamId: filters.teamId || undefined,
+            showHidden: filters.showHidden,
+          }).catch(() => []),
           getFolders().catch(() => []),
           getDatasources().catch(() => []),
         ])
@@ -125,7 +193,13 @@ export default function GrafanaPage() { // NOSONAR
         setFolders(foldersData)
         setDatasources(datasourcesData)
       } else if (activeTab === 'datasources') {
-        const datasourcesData = await getDatasources().catch(() => [])
+        const datasourcesData = await getDatasources({
+          uid: filters.uid || undefined,
+          labelKey: filters.labelKey || undefined,
+          labelValue: filters.labelValue || undefined,
+          teamId: filters.teamId || undefined,
+          showHidden: filters.showHidden,
+        }).catch(() => [])
         setDatasources(datasourcesData)
       } else if (activeTab === 'folders') {
         const foldersData = await getFolders().catch(() => [])
@@ -136,21 +210,99 @@ export default function GrafanaPage() { // NOSONAR
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeTab, query, filters])
 
   async function onSearch(e) {
     e.preventDefault()
-    setLoading(true)
-    try {
-      const res = await searchDashboards(query)
-      setDashboards(res)
-    } catch (e) {
-      handleApiError(e)
-    } finally {
-      setLoading(false)
-    }
+    loadData()
   }
 
+  function clearFilters() {
+    setFilters({ uid: '', labelKey: '', labelValue: '', teamId: '', showHidden: false })
+    setQuery('')
+  }
+
+  // ---- Hide/Show ----
+  async function handleToggleDashboardHidden(dashboard) {
+    const nowHidden = !dashboard.is_hidden
+    setConfirmDialog({
+      isOpen: true,
+      title: nowHidden ? 'Hide Dashboard' : 'Unhide Dashboard',
+      message: nowHidden
+        ? `Are you sure you want to hide "${dashboard.title}"? This will hide the dashboard for your account.`
+        : `Are you sure you want to unhide "${dashboard.title}"? This will make the dashboard visible again for your account.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await toggleDashboardHidden(dashboard.uid, nowHidden)
+          toast.success(nowHidden ? 'Dashboard hidden' : 'Dashboard visible')
+          loadData()
+        } catch (e) { handleApiError(e) }
+      }
+    })
+  }
+
+  async function handleToggleDatasourceHidden(datasource) {
+    const nowHidden = !datasource.is_hidden
+    setConfirmDialog({
+      isOpen: true,
+      title: nowHidden ? 'Hide Datasource' : 'Unhide Datasource',
+      message: nowHidden
+        ? `Are you sure you want to hide "${datasource.name}"? This will hide the datasource for your account.`
+        : `Are you sure you want to unhide "${datasource.name}"? This will make the datasource visible again for your account.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await toggleDatasourceHidden(datasource.uid, nowHidden)
+          toast.success(nowHidden ? 'Datasource hidden' : 'Datasource visible')
+          loadData()
+        } catch (e) { handleApiError(e) }
+      }
+    })
+  }
+
+  // ---- Labels ----
+  function openLabelEditor(type, uid, currentLabels) {
+    setLabelEditor({ isOpen: true, type, uid, labels: { ...(currentLabels || {}) } })
+    setNewLabelKey('')
+    setNewLabelValue('')
+  }
+
+  function addLabel() {
+    const key = newLabelKey.trim()
+    const val = newLabelValue.trim()
+    if (!key) return
+    setLabelEditor(prev => ({
+      ...prev,
+      labels: { ...prev.labels, [key]: val }
+    }))
+    setNewLabelKey('')
+    setNewLabelValue('')
+  }
+
+  function removeLabel(key) {
+    setLabelEditor(prev => {
+      const next = { ...prev.labels }
+      delete next[key]
+      return { ...prev, labels: next }
+    })
+  }
+
+  async function saveLabelEditor() {
+    try {
+      if (labelEditor.type === 'dashboard') {
+        await updateDashboardLabels(labelEditor.uid, labelEditor.labels)
+      } else {
+        await updateDatasourceLabels(labelEditor.uid, labelEditor.labels)
+      }
+      toast.success('Labels updated')
+      setLabelEditor({ isOpen: false, type: '', uid: '', labels: {} })
+      loadData()
+      loadFilterMeta()
+    } catch (e) { handleApiError(e) }
+  }
+
+  // ---- Dashboard CRUD ----
   function openDashboardEditor(dashboard = null) {
     if (dashboard) {
       setEditingDashboard(dashboard)
@@ -217,10 +369,7 @@ export default function GrafanaPage() { // NOSONAR
         overwrite: !!editingDashboard,
       }
 
-      // Build query params for visibility
-      const params = new URLSearchParams({
-        visibility: dashboardForm.visibility,
-      })
+      const params = new URLSearchParams({ visibility: dashboardForm.visibility })
       if (dashboardForm.visibility === 'group' && dashboardForm.sharedGroupIds?.length > 0) {
         dashboardForm.sharedGroupIds.forEach(gid => params.append('shared_group_ids', gid))
       }
@@ -252,13 +401,12 @@ export default function GrafanaPage() { // NOSONAR
           await deleteDashboard(dashboard.uid)
           toast.success('Dashboard deleted successfully')
           loadData()
-        } catch (e) {
-          handleApiError(e)
-        }
+        } catch (e) { handleApiError(e) }
       }
     })
   }
 
+  // ---- Datasource CRUD ----
   function openDatasourceEditor(datasource = null) {
     if (datasource) {
       setEditingDatasource(datasource)
@@ -273,46 +421,50 @@ export default function GrafanaPage() { // NOSONAR
         apiKeyId: '',
       })
     } else {
-      const defaultKey = (user?.api_keys || []).find((k) => k.is_default) || (user?.api_keys || [])[0]
+      const dk = (user?.api_keys || []).find((k) => k.is_default) || (user?.api_keys || [])[0]
       setEditingDatasource(null)
       setDatasourceForm({
-        name: '',
+        name: 'Mimir',
         type: 'prometheus',
-        url: '',
+        url: MIMIR_PROMETHEUS_URL,
         isDefault: false,
         access: 'proxy',
         visibility: 'private',
         sharedGroupIds: [],
-        apiKeyId: defaultKey?.id || '',
+        apiKeyId: dk?.id || '',
       })
     }
     setShowDatasourceEditor(true)
   }
 
-  // Auto-fill URL based on datasource type
   useEffect(() => {
-    if (editingDatasource) return // Don't auto-fill when editing existing datasource
-    
+    if (editingDatasource) return
     const urlMapping = {
       prometheus: MIMIR_PROMETHEUS_URL,
       loki: LOKI_BASE,
       tempo: TEMPO_URL,
     }
-    
-    const defaultUrl = urlMapping[datasourceForm.type]
-    if (defaultUrl) {
-      setDatasourceForm(prev => ({ ...prev, url: defaultUrl }))
+    const nameMapping = {
+      prometheus: 'Mimir',
+      loki: 'Loki',
+      tempo: 'Tempo',
     }
+    const defaultUrl = urlMapping[datasourceForm.type]
+    const defaultName = nameMapping[datasourceForm.type]
+    setDatasourceForm(prev => ({
+      ...prev,
+      url: defaultUrl || prev.url,
+      name: defaultName || prev.name
+    }))
   }, [datasourceForm.type, editingDatasource])
 
   async function saveDatasource() {
-    // Validate org_id for multi-tenant datasources
     const isMultiTenantType = ['prometheus', 'loki', 'tempo'].includes(datasourceForm.type)
     if (!editingDatasource && isMultiTenantType && !datasourceForm.apiKeyId) {
       toast.error('API key is required for Prometheus, Loki, and Tempo datasources')
       return
     }
-    
+
     try {
       const payload = {
         name: datasourceForm.name,
@@ -322,17 +474,13 @@ export default function GrafanaPage() { // NOSONAR
         isDefault: datasourceForm.isDefault,
         jsonData: {},
       }
-      
-      // Add org_id to payload for new multi-tenant datasources
+
       if (!editingDatasource && isMultiTenantType) {
         const selectedKey = (user?.api_keys || []).find((k) => k.id === datasourceForm.apiKeyId)
         payload.org_id = selectedKey?.key || user?.org_id || 'default'
       }
 
-      // Build query params for visibility
-      const params = new URLSearchParams({
-        visibility: datasourceForm.visibility,
-      })
+      const params = new URLSearchParams({ visibility: datasourceForm.visibility })
       if (datasourceForm.visibility === 'group' && datasourceForm.sharedGroupIds?.length > 0) {
         datasourceForm.sharedGroupIds.forEach(gid => params.append('shared_group_ids', gid))
       }
@@ -363,25 +511,21 @@ export default function GrafanaPage() { // NOSONAR
           await deleteDatasource(datasource.uid)
           toast.success('Datasource deleted successfully')
           loadData()
-        } catch (e) {
-          handleApiError(e)
-        }
+        } catch (e) { handleApiError(e) }
       }
     })
   }
 
+  // ---- Folders ----
   async function handleCreateFolder() {
     if (!folderName.trim()) return
-
     try {
       await createFolder(folderName.trim())
       toast.success('Folder created successfully')
       setShowFolderCreator(false)
       setFolderName('')
       loadData()
-    } catch (e) {
-      handleApiError(e)
-    }
+    } catch (e) { handleApiError(e) }
   }
 
   function handleDeleteFolder(folder) {
@@ -395,9 +539,7 @@ export default function GrafanaPage() { // NOSONAR
           await deleteFolder(folder.uid)
           toast.success('Folder deleted successfully')
           loadData()
-        } catch (e) {
-          handleApiError(e)
-        }
+        } catch (e) { handleApiError(e) }
       }
     })
   }
@@ -407,8 +549,18 @@ export default function GrafanaPage() { // NOSONAR
     return found ? found.icon : '🔧'
   }
 
+  const hasActiveFilters = filters.uid || filters.labelKey || filters.labelValue || filters.teamId || filters.showHidden
+
   return (
     <div className="animate-fade-in">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
+          <span className="material-icons text-sre-primary text-3xl">dashboard</span>{' '}
+          Grafana
+        </h1>
+        <p className="text-sre-text-muted">Create and manage dashboards, datasources, and folders</p>
+      </div>
+
       <GrafanaTabs activeTab={activeTab} onChange={setActiveTab} />
 
       <GrafanaContent
@@ -417,38 +569,74 @@ export default function GrafanaPage() { // NOSONAR
         dashboards={dashboards}
         datasources={datasources}
         folders={folders}
+        groups={groups}
         query={query}
         setQuery={setQuery}
+        filters={filters}
+        setFilters={setFilters}
         onSearch={onSearch}
+        onClearFilters={clearFilters}
+        hasActiveFilters={hasActiveFilters}
+        dashboardMeta={dashboardMeta}
+        datasourceMeta={datasourceMeta}
         openDashboardEditor={openDashboardEditor}
         onOpenGrafana={openInGrafana}
         onDeleteDashboard={handleDeleteDashboard}
+        onToggleDashboardHidden={handleToggleDashboardHidden}
+        onEditDashboardLabels={(d) => openLabelEditor('dashboard', d.uid, d.labels)}
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={handleDeleteDatasource}
+        onToggleDatasourceHidden={handleToggleDatasourceHidden}
+        onEditDatasourceLabels={(ds) => openLabelEditor('datasource', ds.uid, ds.labels)}
         getDatasourceIcon={getDatasourceIcon}
         onCreateFolder={() => setShowFolderCreator(true)}
         onDeleteFolder={handleDeleteFolder}
       />
 
+      {/* Label Editor Modal */}
+      <Modal
+        isOpen={labelEditor.isOpen}
+        onClose={() => setLabelEditor({ isOpen: false, type: '', uid: '', labels: {} })}
+        title={`Edit Labels — ${labelEditor.type === 'dashboard' ? 'Dashboard' : 'Datasource'}`}
+        size="sm"
+        footer={
+          <div className="flex gap-3 justify-end">
+            <Button variant="ghost" onClick={() => setLabelEditor({ isOpen: false, type: '', uid: '', labels: {} })}>Cancel</Button>
+            <Button variant="primary" onClick={saveLabelEditor}>Save Labels</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(labelEditor.labels || {}).map(([k, v]) => (
+              <span key={k} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200">
+                {k}{v ? `=${v}` : ''}
+                <button type="button" onClick={() => removeLabel(k)} className="ml-1 hover:text-red-500">&times;</button>
+              </span>
+            ))}
+            {Object.keys(labelEditor.labels || {}).length === 0 && (
+              <p className="text-sm text-sre-text-muted">No labels yet</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Input size="sm" value={newLabelKey} onChange={e => setNewLabelKey(e.target.value)} placeholder="Key" className="flex-1" />
+            <Input size="sm" value={newLabelValue} onChange={e => setNewLabelValue(e.target.value)} placeholder="Value (optional)" className="flex-1" />
+            <Button size="sm" onClick={addLabel} disabled={!newLabelKey.trim()}>Add</Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Dashboard Editor Modal */}
       <Modal
         isOpen={showDashboardEditor}
         onClose={() => setShowDashboardEditor(false)}
+        closeOnOverlayClick={false}
         title={editingDashboard ? 'Edit Dashboard' : 'Create New Dashboard'}
         size="md"
         footer={
           <div className="flex gap-3 justify-end">
-            <Button
-              variant="ghost"
-              onClick={() => setShowDashboardEditor(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={saveDashboard}
-              disabled={!dashboardForm.title.trim()}
-            >
+            <Button variant="ghost" onClick={() => setShowDashboardEditor(false)}>Cancel</Button>
+            <Button variant="primary" onClick={saveDashboard} disabled={!dashboardForm.title.trim()}>
               {editingDashboard ? 'Update Dashboard' : 'Create Dashboard'}
             </Button>
           </div>
@@ -457,125 +645,50 @@ export default function GrafanaPage() { // NOSONAR
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-sre-text mb-2">
-              Dashboard Title <span className="text-red-500">*</span> <HelpTooltip text="Enter a descriptive title for your dashboard that clearly identifies its purpose." />
+              Dashboard Title <span className="text-red-500">*</span> <HelpTooltip text="Enter a descriptive title for your dashboard." />
             </label>
-            <Input
-              value={dashboardForm.title}
-              onChange={(e) => setDashboardForm({ ...dashboardForm, title: e.target.value })}
-              placeholder="My Awesome Dashboard"
-              required
-            />
+            <Input value={dashboardForm.title} onChange={(e) => setDashboardForm({ ...dashboardForm, title: e.target.value })} placeholder="My Awesome Dashboard" required />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-sre-text mb-2">
-              Tags (comma-separated) <HelpTooltip text="Add tags to categorize and make your dashboard easier to find. Use commas to separate multiple tags." />
-            </label>
-            <Input
-              value={dashboardForm.tags}
-              onChange={(e) => setDashboardForm({ ...dashboardForm, tags: e.target.value })}
-              placeholder="production, metrics, monitoring"
-            />
-            <p className="text-xs text-sre-text-muted mt-1">Use tags to categorize and filter dashboards</p>
+            <label className="block text-sm font-medium text-sre-text mb-2">Tags (comma-separated)</label>
+            <Input value={dashboardForm.tags} onChange={(e) => setDashboardForm({ ...dashboardForm, tags: e.target.value })} placeholder="production, metrics, monitoring" />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-sre-text mb-2">
-              Folder <HelpTooltip text="Choose which folder to organize this dashboard in. Use 'General' for dashboards that don't need specific organization." />
-            </label>
-            <Select
-              value={dashboardForm.folderId}
-              onChange={(e) => setDashboardForm({ ...dashboardForm, folderId: e.target.value })}
-            >
+            <label className="block text-sm font-medium text-sre-text mb-2">Folder</label>
+            <Select value={dashboardForm.folderId} onChange={(e) => setDashboardForm({ ...dashboardForm, folderId: e.target.value })}>
               <option value="0">General</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={folder.id}>
-                  {folder.title}
-                </option>
-              ))}
+              {folders.map((folder) => (<option key={folder.id} value={folder.id}>{folder.title}</option>))}
             </Select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-sre-text mb-2">
-              Default Datasource <HelpTooltip text="Optional: Set a default datasource that will be pre-selected in dashboard variables for easier panel creation." />
-            </label>
-            <Select
-              value={dashboardForm.datasourceUid}
-              onChange={(e) => setDashboardForm({ ...dashboardForm, datasourceUid: e.target.value })}
-            >
+            <label className="block text-sm font-medium text-sre-text mb-2">Default Datasource</label>
+            <Select value={dashboardForm.datasourceUid} onChange={(e) => setDashboardForm({ ...dashboardForm, datasourceUid: e.target.value })}>
               <option value="">-- None --</option>
-              {datasources.map((ds) => (
-                <option key={ds.uid} value={ds.uid}>
-                  {ds.name} ({ds.type})
-                </option>
-              ))}
+              {datasources.map((ds) => (<option key={ds.uid} value={ds.uid}>{ds.name} ({ds.type})</option>))}
             </Select>
-            <p className="text-xs text-sre-text-muted mt-1">Optional: Sets the default datasource variable for this dashboard</p>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-sre-text mb-2">
-              Auto-refresh Interval <HelpTooltip text="How often the dashboard should automatically refresh its data. Choose 'Off' to disable auto-refresh." />
-            </label>
-            <Select
-              value={dashboardForm.refresh}
-              onChange={(e) => setDashboardForm({ ...dashboardForm, refresh: e.target.value })}
-            >
-              {GRAFANA_REFRESH_INTERVALS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
+            <label className="block text-sm font-medium text-sre-text mb-2">Auto-refresh</label>
+            <Select value={dashboardForm.refresh} onChange={(e) => setDashboardForm({ ...dashboardForm, refresh: e.target.value })}>
+              {GRAFANA_REFRESH_INTERVALS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
             </Select>
-            <p className="text-xs text-sre-text-muted mt-1">How often the dashboard should automatically refresh</p>
           </div>
-
           <div className="border-t border-sre-border pt-4">
-            <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">
-                Visibility <HelpTooltip text="Control who can view and edit this dashboard. Private dashboards are only visible to you." />
-              </label>
-              <Select
-                value={dashboardForm.visibility}
-                onChange={(e) => {
-                  setDashboardForm({ ...dashboardForm, visibility: e.target.value, sharedGroupIds: [] })
-                }}
-              >
-                {VISIBILITY_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </Select>
-              <p className="text-xs text-sre-text-muted mt-1">Control who can access this dashboard</p>
-            </div>
-
+            <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
+            <Select value={dashboardForm.visibility} onChange={(e) => setDashboardForm({ ...dashboardForm, visibility: e.target.value, sharedGroupIds: [] })}>
+              {VISIBILITY_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+            </Select>
             {dashboardForm.visibility === 'group' && (
               <div className="mt-4">
-                <label htmlFor="shared-groups" className="block text-sm font-medium text-sre-text mb-2">
-                  Shared Groups <HelpTooltip text="Select which user groups can view and edit this dashboard." />
-                </label>
-                <div id="shared-groups" className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
+                <label className="block text-sm font-medium text-sre-text mb-2">Shared Groups</label>
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
                   {groups.map(group => (
-                    <Checkbox
-                      key={group.id}
-                      label={group.name}
-                      checked={dashboardForm.sharedGroupIds.includes(group.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setDashboardForm({
-                            ...dashboardForm,
-                            sharedGroupIds: [...dashboardForm.sharedGroupIds, group.id]
-                          })
-                        } else {
-                          setDashboardForm({
-                            ...dashboardForm,
-                            sharedGroupIds: dashboardForm.sharedGroupIds.filter(id => id !== group.id)
-                          })
-                        }
-                      }}
-                    />
+                    <Checkbox key={group.id} label={group.name} checked={dashboardForm.sharedGroupIds.includes(group.id)} onChange={(e) => {
+                      if (e.target.checked) setDashboardForm({ ...dashboardForm, sharedGroupIds: [...dashboardForm.sharedGroupIds, group.id] })
+                      else setDashboardForm({ ...dashboardForm, sharedGroupIds: dashboardForm.sharedGroupIds.filter(id => id !== group.id) })
+                    }} />
                   ))}
-                  {groups.length === 0 && (
-                    <p className="text-sm text-sre-text-muted">No groups available</p>
-                  )}
+                  {groups.length === 0 && <p className="text-sm text-sre-text-muted">No groups available</p>}
                 </div>
               </div>
             )}
@@ -587,285 +700,119 @@ export default function GrafanaPage() { // NOSONAR
       <Modal
         isOpen={showDatasourceEditor}
         onClose={() => setShowDatasourceEditor(false)}
+        closeOnOverlayClick={false}
         title={editingDatasource ? 'Edit Datasource' : 'Create New Datasource'}
         size="md"
         footer={
           <div className="flex gap-3 justify-end">
-            <Button
-              variant="ghost"
-              onClick={() => setShowDatasourceEditor(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={saveDatasource}
-              disabled={!datasourceForm.name.trim() || !datasourceForm.url.trim()}
-            >
+            <Button variant="ghost" onClick={() => setShowDatasourceEditor(false)}>Cancel</Button>
+            <Button variant="primary" onClick={saveDatasource} disabled={!datasourceForm.name.trim() || !datasourceForm.url.trim()}>
               {editingDatasource ? 'Update Datasource' : 'Create Datasource'}
             </Button>
           </div>
         }
       >
         <div className="space-y-6">
-          {/* Basic Information */}
           <div className="space-y-4">
             <div className="pb-2 border-b border-sre-border">
               <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Basic Information</h3>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  Datasource Name <span className="text-red-500">*</span> <HelpTooltip text="Enter a descriptive name for your datasource that clearly identifies its purpose and type." />
-                </label>
-                <Input
-                  value={datasourceForm.name}
-                  onChange={(e) => setDatasourceForm({ ...datasourceForm, name: e.target.value })}
-                  placeholder={
-                    datasourceForm.type === 'prometheus' ? 'My Mimir' :
-                    datasourceForm.type === 'loki' ? 'My Loki' :
-                    'My Tempo'
-                  }
-                  required
-                />
+                <label className="block text-sm font-medium text-sre-text mb-2">Name <span className="text-red-500">*</span></label>
+                <Input value={datasourceForm.name} onChange={(e) => setDatasourceForm({ ...datasourceForm, name: e.target.value })} placeholder={datasourceForm.type === 'prometheus' ? 'Mimir' : datasourceForm.type === 'loki' ? 'My Loki' : 'My Tempo'} required />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  Type <span className="text-red-500">*</span> <HelpTooltip text="Select the type of datasource. This determines how Grafana will query and display data." />
-                </label>
-                <Select
-                  value={datasourceForm.type}
-                  onChange={(e) => setDatasourceForm({ ...datasourceForm, type: e.target.value })}
-                  disabled={!!editingDatasource}
-                >
-                  {DATASOURCE_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
+                <label className="block text-sm font-medium text-sre-text mb-2">Type <span className="text-red-500">*</span></label>
+                <Select value={datasourceForm.type} onChange={(e) => setDatasourceForm({ ...datasourceForm, type: e.target.value })} disabled={!!editingDatasource}>
+                  {DATASOURCE_TYPES.map((type) => (<option key={type.value} value={type.value}>{type.label}</option>))}
                 </Select>
-                {editingDatasource && <p className="text-xs text-sre-text-muted mt-1">Type cannot be changed after creation</p>}
-                {!editingDatasource && <p className="text-xs text-sre-text-muted mt-1">Select the datasource type</p>}
               </div>
             </div>
           </div>
-
-          {/* Connection Settings */}
           <div className="space-y-4">
             <div className="pb-2 border-b border-sre-border">
               <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Connection</h3>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  URL <span className="text-red-500">*</span> <HelpTooltip text="The endpoint URL where the datasource service is running and accessible." />
-                </label>
-                <Input
-                  value={datasourceForm.url}
-                  onChange={(e) => setDatasourceForm({ ...datasourceForm, url: e.target.value })}
-                  placeholder={
-                    datasourceForm.type === 'prometheus' ? MIMIR_PROMETHEUS_URL :
-                    datasourceForm.type === 'loki' ? LOKI_BASE :
-                    datasourceForm.type === 'tempo' ? TEMPO_URL :
-                    'https://example.com'
-                  }
-                  required
-                />
-                <p className="text-xs text-sre-text-muted mt-1">The URL where the datasource is accessible</p>
+                <label className="block text-sm font-medium text-sre-text mb-2">URL <span className="text-red-500">*</span></label>
+                <Input value={datasourceForm.url} onChange={(e) => setDatasourceForm({ ...datasourceForm, url: e.target.value })} placeholder={datasourceForm.type === 'prometheus' ? MIMIR_PROMETHEUS_URL : datasourceForm.type === 'loki' ? LOKI_BASE : TEMPO_URL} required />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  Access Mode <HelpTooltip text="Server (Proxy): Grafana server makes requests. Browser (Direct): Browser makes direct requests to the datasource." />
-                </label>
-                <Select
-                  value={datasourceForm.access}
-                  onChange={(e) => setDatasourceForm({ ...datasourceForm, access: e.target.value })}
-                >
+                <label className="block text-sm font-medium text-sre-text mb-2">Access Mode</label>
+                <Select value={datasourceForm.access} onChange={(e) => setDatasourceForm({ ...datasourceForm, access: e.target.value })}>
                   <option value="proxy">Server (Proxy)</option>
                   <option value="direct">Browser (Direct)</option>
                 </Select>
-                <p className="text-xs text-sre-text-muted mt-1">Proxy: Access via Grafana server. Direct: Access from browser</p>
               </div>
             </div>
           </div>
-
-          {/* Multi-tenant Configuration */}
           {!editingDatasource && ['prometheus', 'loki', 'tempo'].includes(datasourceForm.type) && (
             <div className="space-y-4">
               <div className="pb-2 border-b border-sre-border">
                 <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Multi-tenant Configuration</h3>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  API Key <span className="text-red-500">*</span> <HelpTooltip text="Select the API key for multi-tenant data isolation. This ensures the datasource only queries data for the selected product." />
-                </label>
-                <Select
-                  value={datasourceForm.apiKeyId}
-                  onChange={(e) => setDatasourceForm({ ...datasourceForm, apiKeyId: e.target.value })}
-                  required
-                >
-                  {defaultKey && (
-                    <option key={defaultKey.id} value={defaultKey.id}>
-                      Default — {defaultKey.name}
-                    </option>
-                  )}
-                  {(user?.api_keys || []).filter(k => !k.is_default).map((key) => (
-                    <option key={key.id} value={key.id}>
-                      {key.name}
-                    </option>
-                  ))}
+                <label className="block text-sm font-medium text-sre-text mb-2">API Key <span className="text-red-500">*</span></label>
+                <Select value={datasourceForm.apiKeyId} onChange={(e) => setDatasourceForm({ ...datasourceForm, apiKeyId: e.target.value })} required>
+                  {defaultKey && <option key={defaultKey.id} value={defaultKey.id}>Default — {defaultKey.name}</option>}
+                  {(user?.api_keys || []).filter(k => !k.is_default).map((key) => (<option key={key.id} value={key.id}>{key.name}</option>))}
                 </Select>
-                <p className="text-xs text-sre-text-muted mt-1">Select which API key to use for multi-tenant data isolation.</p>
-                {(() => {
-                  let datasourceName;
-                  if (datasourceForm.type === 'prometheus') {
-                    datasourceName = 'Mimir';
-                  } else if (datasourceForm.type === 'loki') {
-                    datasourceName = 'Loki';
-                  } else {
-                    datasourceName = 'Tempo';
-                  }
-                  return (
-                    <div className="mt-2 text-xs text-sre-text-muted">
-                      <span className="material-icons text-sm align-middle mr-1">info</span>
-                      This datasource will only query data tagged with this API key in {datasourceName}.
-                    </div>
-                  );
-                })()}
               </div>
             </div>
           )}
-
-          {/* Settings */}
           <div className="space-y-4">
             <div className="pb-2 border-b border-sre-border">
               <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Settings</h3>
             </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is-default"
-                  checked={datasourceForm.isDefault}
-                  onChange={(e) => setDatasourceForm({ ...datasourceForm, isDefault: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="is-default" className="text-sm text-sre-text">
-                  Set as default datasource <HelpTooltip text="When checked, this datasource will be the default choice in new panels and dashboards." />
-                </label>
-              </div>
-
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="is-default" checked={datasourceForm.isDefault} onChange={(e) => setDatasourceForm({ ...datasourceForm, isDefault: e.target.checked })} className="w-4 h-4" />
+              <label htmlFor="is-default" className="text-sm text-sre-text">Set as default datasource</label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
+              <Select value={datasourceForm.visibility} onChange={(e) => setDatasourceForm({ ...datasourceForm, visibility: e.target.value, sharedGroupIds: [] })}>
+                {VISIBILITY_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+              </Select>
+            </div>
+            {datasourceForm.visibility === 'group' && (
               <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  Visibility <HelpTooltip text="Control who can view and use this datasource. Private datasources are only accessible to you." />
-                </label>
-                <Select
-                  value={datasourceForm.visibility}
-                  onChange={(e) => {
-                    setDatasourceForm({ ...datasourceForm, visibility: e.target.value, sharedGroupIds: [] })
-                  }}
-                >
-                  {VISIBILITY_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </Select>
-                <p className="text-xs text-sre-text-muted mt-1">Control who can access this datasource</p>
-              </div>
-
-              {datasourceForm.visibility === 'group' && (
-                <div>
-                  <label htmlFor="shared-groups" className="block text-sm font-medium text-sre-text mb-2">
-                    Shared Groups <HelpTooltip text="Select which user groups can view and use this datasource." />
-                  </label>
-                <div id="shared-groups" className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
+                <label className="block text-sm font-medium text-sre-text mb-2">Shared Groups</label>
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
                   {groups.map(group => (
-                    <Checkbox
-                      key={group.id}
-                      label={group.name}
-                      checked={datasourceForm.sharedGroupIds.includes(group.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setDatasourceForm({
-                            ...datasourceForm,
-                            sharedGroupIds: [...datasourceForm.sharedGroupIds, group.id]
-                          })
-                        } else {
-                          setDatasourceForm({
-                            ...datasourceForm,
-                            sharedGroupIds: datasourceForm.sharedGroupIds.filter(id => id !== group.id)
-                          })
-                        }
-                      }}
-                    />
+                    <Checkbox key={group.id} label={group.name} checked={datasourceForm.sharedGroupIds.includes(group.id)} onChange={(e) => {
+                      if (e.target.checked) setDatasourceForm({ ...datasourceForm, sharedGroupIds: [...datasourceForm.sharedGroupIds, group.id] })
+                      else setDatasourceForm({ ...datasourceForm, sharedGroupIds: datasourceForm.sharedGroupIds.filter(id => id !== group.id) })
+                    }} />
                   ))}
-                  {groups.length === 0 && (
-                    <p className="text-sm text-sre-text-muted">No groups available</p>
-                  )}
+                  {groups.length === 0 && <p className="text-sm text-sre-text-muted">No groups available</p>}
                 </div>
               </div>
             )}
           </div>
         </div>
-      </div>
       </Modal>
 
       {/* Folder Creator Modal */}
       <Modal
         isOpen={showFolderCreator}
-        onClose={() => {
-          setShowFolderCreator(false)
-          setFolderName('')
-        }}
+        onClose={() => { setShowFolderCreator(false); setFolderName('') }}
         title="Create New Folder"
         size="sm"
         footer={
           <div className="flex gap-3 justify-end">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowFolderCreator(false)
-                setFolderName('')
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreateFolder}
-              disabled={!folderName.trim()}
-            >
-              Create Folder
-            </Button>
+            <Button variant="ghost" onClick={() => { setShowFolderCreator(false); setFolderName('') }}>Cancel</Button>
+            <Button variant="primary" onClick={handleCreateFolder} disabled={!folderName.trim()}>Create Folder</Button>
           </div>
         }
       >
         <div>
-          <label className="block text-sm font-medium text-sre-text mb-2">
-            Folder Name <span className="text-red-500">*</span> <HelpTooltip text="Enter a descriptive name for your folder to organize related dashboards." />
-          </label>
-          <Input
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            placeholder="Production Dashboards"
-            required
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && folderName.trim()) {
-                handleCreateFolder()
-              }
-            }}
-          />
-          <p className="text-xs text-sre-text-muted mt-1">Choose a descriptive name for your folder</p>
+          <label className="block text-sm font-medium text-sre-text mb-2">Folder Name <span className="text-red-500">*</span></label>
+          <Input value={folderName} onChange={(e) => setFolderName(e.target.value)} placeholder="Production Dashboards" required autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && folderName.trim()) handleCreateFolder() }} />
         </div>
       </Modal>
 
-      {/* Confirmation Dialog */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
@@ -874,6 +821,17 @@ export default function GrafanaPage() { // NOSONAR
         message={confirmDialog.message}
         variant={confirmDialog.variant}
         confirmText="Delete"
+        cancelText="Cancel"
+      />
+
+      <ConfirmDialog
+        isOpen={grafanaConfirmDialog.isOpen}
+        onClose={() => setGrafanaConfirmDialog({ isOpen: false, path: null })}
+        onConfirm={confirmOpenInGrafana}
+        title="Open in Grafana"
+        message="This will proxy through Be Observant to get a secure, scoped, authenticated, and restricted view of what you can view and share under Grafana. If you want full admin access, please contact an admin and you can log into Grafana directly with a different username and password."
+        variant="info"
+        confirmText="Continue to Grafana"
         cancelText="Cancel"
       />
     </div>

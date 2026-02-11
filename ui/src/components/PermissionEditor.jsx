@@ -415,16 +415,6 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
               })}
             </div>
           </div>
-
-          {/* Summary */}
-          <div className="p-4 bg-sre-accent/10 border border-sre-accent/30 rounded">
-            <div className="text-sm font-semibold text-sre-text mb-2">Summary</div>
-            <div className="text-sm text-sre-text-muted space-y-1">
-              <div>Role: <Badge variant={roleBadgeVariant}>{role}</Badge></div>
-              <div>Groups: {selectedGroups.size} selected</div>
-              <div>Permissions: {selectedPermissions.size} enabled</div>
-            </div>
-          </div>
         </div>
       </div>
     </Modal>

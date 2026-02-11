@@ -21,12 +21,12 @@ export default function GrafanaTabs({ activeTab, onChange }) {
   ]
 
   return (
-    <div className="flex gap-2 mb-6 border-b border-sre-border pl-0 items-center">
+    <div className="flex gap-2 mb-6 border-b border-sre-border justify-center items-center">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`pl-0 pr-4 py-2 font-medium transition-colors relative flex items-center gap-2 ${
+          className={`pl-4 pr-4 py-2 font-medium transition-colors relative flex items-center gap-2 ${
             activeTab === tab.id
               ? 'text-sre-primary border-b-2 border-sre-primary'
               : 'text-sre-text-muted hover:text-sre-text'

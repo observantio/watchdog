@@ -19,6 +19,7 @@ class Config:
     # Grafana credentials
     GRAFANA_USERNAME: str = os.getenv("GRAFANA_USERNAME", "admin")
     GRAFANA_PASSWORD: str = os.getenv("GRAFANA_PASSWORD", "admin")
+    GRAFANA_API_KEY: Optional[str] = os.getenv("GRAFANA_API_KEY")  # Preferred over Basic auth
     
     # Encryption key for sensitive data at rest (channel config in DB)
     DATA_ENCRYPTION_KEY: Optional[str] = os.getenv("DATA_ENCRYPTION_KEY")

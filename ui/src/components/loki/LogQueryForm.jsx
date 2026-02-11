@@ -57,17 +57,6 @@ export default function LogQueryForm({
         </div>
       ) : (
         <>
-          <div className="flex gap-2 pb-4 border-b border-sre-border flex-wrap">
-            <span className="text-sm text-sre-text-muted mr-2 flex items-center">
-              <span className="material-icons text-sm">filter_list</span>
-              <span className="ml-1">Quick:</span>
-            </span>
-            <Button variant="ghost" size="sm" onClick={()=>{ clearAllFilters(); setTimeout(()=>runQuery(),0) }} type="button" className="flex items-center gap-1">
-              <span className="material-icons text-sm">list</span>
-              <span className="ml-1">All Logs</span>
-            </Button>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-sre-text mb-2">

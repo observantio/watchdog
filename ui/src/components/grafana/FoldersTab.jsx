@@ -23,7 +23,7 @@ export default function FoldersTab({ folders, onCreateFolder, onDeleteFolder }) 
               <p className="text-sm text-sre-text-muted">
                 {folders.length > 0
                   ? `${folders.length} folder${folders.length !== 1 ? 's' : ''} available`
-                  : 'No folders created yet'
+                  : 'No folders created yet, Benefit by using folders to organize your dashboards'
                 }
               </p>
             </div>

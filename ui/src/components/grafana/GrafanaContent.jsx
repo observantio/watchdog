@@ -4,7 +4,17 @@ import DatasourcesTab from './DatasourcesTab'
 import FoldersTab from './FoldersTab'
 import { Spinner } from '../ui'
 
-export default function GrafanaContent({ loading, activeTab, dashboards, datasources, folders, query, setQuery, onSearch, openDashboardEditor, onOpenGrafana, onDeleteDashboard, openDatasourceEditor, onDeleteDatasource, getDatasourceIcon, onCreateFolder, onDeleteFolder }) {
+export default function GrafanaContent({
+  loading, activeTab, dashboards, datasources, folders, groups,
+  query, setQuery, filters, setFilters,
+  onSearch, onClearFilters, hasActiveFilters,
+  dashboardMeta, datasourceMeta,
+  openDashboardEditor, onOpenGrafana, onDeleteDashboard,
+  onToggleDashboardHidden, onEditDashboardLabels,
+  openDatasourceEditor, onDeleteDatasource,
+  onToggleDatasourceHidden, onEditDatasourceLabels,
+  getDatasourceIcon, onCreateFolder, onDeleteFolder
+}) {
   if (loading) {
     return (
       <div className="py-12">
@@ -17,12 +27,20 @@ export default function GrafanaContent({ loading, activeTab, dashboards, datasou
     return (
       <DashboardsTab
         dashboards={dashboards}
+        groups={groups}
         query={query}
         setQuery={setQuery}
+        filters={filters}
+        setFilters={setFilters}
         onSearch={onSearch}
+        onClearFilters={onClearFilters}
+        hasActiveFilters={hasActiveFilters}
+        meta={dashboardMeta}
         openDashboardEditor={openDashboardEditor}
         onOpenGrafana={onOpenGrafana}
         onDeleteDashboard={onDeleteDashboard}
+        onToggleHidden={onToggleDashboardHidden}
+        onEditLabels={onEditDashboardLabels}
       />
     )
   }
@@ -31,8 +49,17 @@ export default function GrafanaContent({ loading, activeTab, dashboards, datasou
     return (
       <DatasourcesTab
         datasources={datasources}
+        groups={groups}
+        filters={filters}
+        setFilters={setFilters}
+        onSearch={onSearch}
+        onClearFilters={onClearFilters}
+        hasActiveFilters={hasActiveFilters}
+        meta={datasourceMeta}
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={onDeleteDatasource}
+        onToggleHidden={onToggleDatasourceHidden}
+        onEditLabels={onEditDatasourceLabels}
         getDatasourceIcon={getDatasourceIcon}
       />
     )
@@ -53,14 +80,25 @@ GrafanaContent.propTypes = {
   dashboards: PropTypes.arrayOf(PropTypes.object).isRequired,
   datasources: PropTypes.arrayOf(PropTypes.object).isRequired,
   folders: PropTypes.arrayOf(PropTypes.object).isRequired,
-  query: PropTypes.string.isRequired,
-  setQuery: PropTypes.func.isRequired,
-  onSearch: PropTypes.func.isRequired,
+  groups: PropTypes.arrayOf(PropTypes.object),
+  query: PropTypes.string,
+  setQuery: PropTypes.func,
+  filters: PropTypes.object,
+  setFilters: PropTypes.func,
+  onSearch: PropTypes.func,
+  onClearFilters: PropTypes.func,
+  hasActiveFilters: PropTypes.bool,
+  dashboardMeta: PropTypes.object,
+  datasourceMeta: PropTypes.object,
   openDashboardEditor: PropTypes.func.isRequired,
   onOpenGrafana: PropTypes.func.isRequired,
   onDeleteDashboard: PropTypes.func.isRequired,
+  onToggleDashboardHidden: PropTypes.func,
+  onEditDashboardLabels: PropTypes.func,
   openDatasourceEditor: PropTypes.func.isRequired,
   onDeleteDatasource: PropTypes.func.isRequired,
+  onToggleDatasourceHidden: PropTypes.func,
+  onEditDatasourceLabels: PropTypes.func,
   getDatasourceIcon: PropTypes.func.isRequired,
   onCreateFolder: PropTypes.func.isRequired,
   onDeleteFolder: PropTypes.func.isRequired,

@@ -200,7 +200,7 @@ export function Input({ label, error, helperText, className, ...props }) {
       )}
       <input
         className={clsx(
-          'w-full px-4 py-2 bg-sre-surface border border-sre-border rounded-lg',
+          'w-full px-3 py-1.5 bg-sre-surface border border-sre-border rounded-lg',
           'text-sre-text placeholder-sre-text-subtle',
           'focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent',
           'transition-all duration-200',

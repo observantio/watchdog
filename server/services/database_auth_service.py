@@ -8,6 +8,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
+from fastapi import HTTPException
 
 try:
     from db_models import User, Tenant, Group, Permission, AuditLog, UserApiKey
@@ -348,7 +349,7 @@ class DatabaseAuthService:
 
     def _to_user_schema(self, user: User) -> UserSchema:
         api_keys = [self._to_api_key_schema(key) for key in (getattr(user, "api_keys", []) or [])]
-        return UserSchema(
+        schema_kwargs = dict(
             id=user.id,
             tenant_id=user.tenant_id,
             username=user.username,
@@ -362,8 +363,13 @@ class DatabaseAuthService:
             updated_at=user.updated_at,
             last_login=user.last_login,
             needs_password_change=getattr(user, 'needs_password_change', False),
-            api_keys=api_keys
+            api_keys=api_keys,
         )
+        # Include grafana_user_id if the schema supports it
+        grafana_uid = getattr(user, "grafana_user_id", None)
+        if grafana_uid is not None:
+            schema_kwargs["grafana_user_id"] = grafana_uid
+        return UserSchema(**schema_kwargs)
 
     def _to_api_key_schema(self, key: UserApiKey) -> ApiKey:
         return ApiKey(
@@ -524,6 +530,28 @@ class DatabaseAuthService:
             
             update_data = user_update.model_dump(exclude_unset=True)
             
+            # Prevent users from disabling themselves
+            if updater_id and user_id == updater_id and 'is_active' in update_data and update_data['is_active'] == False:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You cannot disable your own account"
+                )
+            
+            # Prevent non-admins from modifying admin accounts
+            updater_user = None
+            if updater_id:
+                updater_user = db.query(User).filter_by(id=updater_id, tenant_id=tenant_id).first()
+            
+            if user.role == Role.ADMIN and updater_user and updater_user.role != Role.ADMIN and not updater_user.is_superuser:
+                # Non-admins cannot modify admin accounts
+                modifiable_fields = {'group_ids'}  # Only allow modifying groups
+                for field in update_data:
+                    if field not in modifiable_fields:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Only administrators can modify admin accounts"
+                        )
+            
             for field, value in update_data.items():
                 if field == 'group_ids' and value is not None:
                     
@@ -547,6 +575,16 @@ class DatabaseAuthService:
             
             db.commit()
             return self._to_user_schema(user)
+
+    def set_grafana_user_id(self, user_id: str, grafana_user_id: int, tenant_id: str) -> bool:
+        """Store the Grafana user ID on the local user record."""
+        with get_db_session() as db:
+            user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
+            if not user:
+                return False
+            user.grafana_user_id = grafana_user_id
+            db.commit()
+            return True
     
     def delete_user(self, user_id: str, tenant_id: str, deleter_id: str = None) -> bool:
         """Delete a user."""

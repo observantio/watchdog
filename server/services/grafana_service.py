@@ -20,7 +20,8 @@ class GrafanaService:
         self,
         grafana_url: str = config.GRAFANA_URL,
         username: str = config.GRAFANA_USERNAME,
-        password: str = config.GRAFANA_PASSWORD
+        password: str = config.GRAFANA_PASSWORD,
+        api_key: Optional[str] = None
     ):
         """Initialize Grafana service.
         
@@ -28,12 +29,22 @@ class GrafanaService:
             grafana_url: Base URL for Grafana instance
             username: Grafana admin username
             password: Grafana admin password
+            api_key: Grafana API key (preferred over username/password)
         """
         self.grafana_url = grafana_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
-        credentials = f"{username}:{password}"
-        encoded = base64.b64encode(credentials.encode()).decode()
-        self.auth_header = f"Basic {encoded}"
+        
+        # Prefer API key (Bearer token) over Basic auth for better security
+        api_key = api_key or config.GRAFANA_API_KEY
+        if api_key:
+            self.auth_header = f"Bearer {api_key}"
+            logger.info("Using Grafana API key authentication")
+        else:
+            credentials = f"{username}:{password}"
+            encoded = base64.b64encode(credentials.encode()).decode()
+            self.auth_header = f"Basic {encoded}"
+            logger.info("Using Grafana Basic authentication (consider using API key)")
+        
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),

@@ -34,10 +34,12 @@ export default function UsersPage() {
     message: '',
     onConfirm: null
   })
+  const [selectedUser, setSelectedUser] = useState(null)
   
   const { user: currentUser, hasPermission } = useAuth()
 
   const canManageUsers = hasPermission('manage:users')
+  const isCurrentUserAdmin = currentUser?.role === 'admin'
 
 
   const loadData = useCallback(async () => {
@@ -188,9 +190,26 @@ export default function UsersPage() {
         </div>
       </Card>
 
+      {/* Role Legend */}
+      <div className="flex items-center gap-4 mb-6 text-sm">
+        <span className="font-medium text-sre-text">Role Legend:</span>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-red-500 rounded"></div>
+          <span className="text-sre-text">Admin</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-yellow-500 rounded"></div>
+          <span className="text-sre-text">User</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-green-500 rounded"></div>
+          <span className="text-sre-text">Viewer</span>
+        </div>
+      </div>
+
       <Card
         title="Users"
-        subtitle={`${filteredUsers.length} user${filteredUsers.length === 1 ? '' : 's'}${searchQuery ? ' (filtered)' : ''}`}
+        subtitle={`We've found ${filteredUsers.length} user${filteredUsers.length === 1 ? '' : 's'} from the database${searchQuery ? ' (filtered)' : ''}`}
       >
         <CreateUserModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={loadData} groups={groups} />
 
@@ -209,31 +228,35 @@ export default function UsersPage() {
                 filteredUsers.map((u) => {
                 let roleVariant = 'default';
                 if (u.role === 'admin') roleVariant = 'error';
-                else if (u.role === 'user') roleVariant = 'info';
+                else if (u.role === 'user') roleVariant = 'warning';
+                else if (u.role === 'viewer') roleVariant = 'success';
                 const initials = (u.full_name || u.username || 'U').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
+                let roleBorderColor = 'border-sre-border/50';
+                if (u.role === 'admin') roleBorderColor = 'border-red-500';
+                else if (u.role === 'user') roleBorderColor = 'border-yellow-500';
+                else if (u.role === 'viewer') roleBorderColor = 'border-green-500';
                 return (
-                <Card key={u.id} className="p-0 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm rounded-lg">
-                  <div className="p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 flex-none rounded-md bg-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold text-sm border border-sre-border">
+                <Card key={u.id} className="p-0 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm rounded-lg group">
+                  <div className="p-6">
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-sre-primary/20 to-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold border border-sre-border/50 flex-shrink-0">
                         {initials}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="truncate">
-                            <div className="font-semibold text-sre-text truncate">{u.username}</div>
-                            {u.full_name && <div className="text-xs text-sre-text-muted">{u.full_name}</div>}
-                            <div className="text-xs text-sre-text-muted">{u.email}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={roleVariant} className="ml-2">{u.role}</Badge>
-                            {!u.is_active && <Badge variant="warning" className="ml-2">Inactive</Badge>}
-                            {u.group_ids?.length > 0 && <Badge variant="success" className="ml-2">{u.group_ids.length} group{u.group_ids.length > 1 ? 's' : ''}</Badge>}
-                          </div>
-                        </div>
+                        <h3 className="text-xl font-bold text-sre-text truncate mb-1">{u.username}</h3>
+                        <p className="text-sm text-sre-text-muted line-clamp-2">{u.email}</p>
                       </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2 items-center">
+
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <Badge variant={roleVariant} className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.role}</Badge>
+                        {!u.is_active && <Badge variant="warning" className="whitespace-nowrap text-xs px-3 py-1 font-medium">Inactive</Badge>}
+                        {u.group_ids?.length > 0 && <Badge variant="success" className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.group_ids.length} group{u.group_ids.length > 1 ? 's' : ''}</Badge>}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-sre-border/30">
                       <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => openEditUser(u)} aria-label={`Edit ${u.username}`}>
                         <span className="material-icons text-sm" aria-hidden>edit</span>
                         <span>Edit</span>
@@ -243,7 +266,7 @@ export default function UsersPage() {
                         <span>Permissions</span>
                       </Button>
                       {u.id !== currentUser?.id && (
-                        <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-red-500/10 hover:text-red-500 transition-colors" onClick={() => handleDeleteUser(u.id)} aria-label={`Delete ${u.username}`}>
+                        <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-red-500/10 hover:text-red-500 transition-colors" onClick={() => handleDeleteUser(u.id)} disabled={u.role === 'admin' && !isCurrentUserAdmin} aria-label={`Delete ${u.username}`}>
                           <span className="material-icons text-sm" aria-hidden>delete</span>
                           <span>Delete</span>
                         </Button>
@@ -274,9 +297,6 @@ export default function UsersPage() {
               }
             >
               <div className="space-y-6">
-                <div className="text-sm text-sre-text-muted">
-                  Update user profile details. Permissions are managed separately in the Permissions editor.
-                </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="flex items-start gap-2">
                     <div className="flex-1">
@@ -317,6 +337,7 @@ export default function UsersPage() {
                         value={editUserData.role}
                         onChange={(e) => setEditUserData({ ...editUserData, role: e.target.value })}
                         className="w-full px-3 pr-10 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
+                        disabled={editUserData.role === 'admin' && !isCurrentUserAdmin}
                       >
                         {USER_ROLES.map(r => (
                           <option key={r.value} value={r.value}>{r.label}</option>
@@ -331,8 +352,9 @@ export default function UsersPage() {
                     checked={editUserData.is_active}
                     onChange={() => setEditUserData({ ...editUserData, is_active: !editUserData.is_active })}
                     label="Active"
+                    disabled={editUserData.id === currentUser?.id || (editUserData.role === 'admin' && !isCurrentUserAdmin)}
                   />
-                  <HelpTooltip text="Inactive users cannot log in but their account data is preserved." />
+                  <HelpTooltip text={editUserData.id === currentUser?.id ? "You cannot disable your own account" : (editUserData.role === 'admin' && !isCurrentUserAdmin) ? "Only administrators can modify admin accounts" : "Inactive users cannot log in but their account data is preserved."} />
                 </div>
               </div>
             </Modal>
@@ -349,6 +371,47 @@ export default function UsersPage() {
           }}
           onSave={handleSavePermissions}
         />
+      )}
+
+      {/* User Profile Modal */}
+      {selectedUser && (
+        <Modal
+          isOpen={!!selectedUser}
+          onClose={() => setSelectedUser(null)}
+          title={`${selectedUser.username}'s Profile`}
+          size="md"
+        >
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-md bg-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold text-lg border border-sre-border">
+                {(selectedUser.full_name || selectedUser.username).split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-sre-text">{selectedUser.username}</h3>
+                <p className="text-sm text-sre-text-muted">{selectedUser.email}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-sre-text mb-1">Full Name</label>
+                <p className="text-sm text-sre-text-muted">{selectedUser.full_name || 'Not set'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-sre-text mb-1">Role</label>
+                <p className="text-sm text-sre-text-muted capitalize">{selectedUser.role}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-sre-text mb-1">Status</label>
+                <p className="text-sm text-sre-text-muted">{selectedUser.is_active ? 'Active' : 'Inactive'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-sre-text mb-1">Groups</label>
+                <p className="text-sm text-sre-text-muted">{(selectedUser.group_ids || []).length} group{(selectedUser.group_ids || []).length !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <ConfirmModal

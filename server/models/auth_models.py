@@ -178,6 +178,7 @@ class User(UserBase):
     updated_at: datetime
     last_login: Optional[datetime] = None
     needs_password_change: bool = False
+    grafana_user_id: Optional[int] = None
     api_keys: List[ApiKey] = Field(default_factory=list)
 
     class Config:

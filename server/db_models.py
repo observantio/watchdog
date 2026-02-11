@@ -102,6 +102,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_superuser = Column(Boolean, default=False, nullable=False)
     needs_password_change = Column(Boolean, default=False, nullable=False)
+    grafana_user_id = Column(Integer, nullable=True, index=True)  # Synced Grafana user ID
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     last_login = Column(DateTime)
@@ -128,6 +129,7 @@ class Group(Base):
     name = Column(String(100), nullable=False, index=True)
     description = Column(Text)
     is_active = Column(Boolean, default=True, nullable=False)
+    grafana_team_id = Column(Integer, nullable=True, index=True)  # Synced Grafana team ID
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -300,6 +302,9 @@ class GrafanaDashboard(Base):
     folder_uid = Column(String(100))  # Folder UID in Grafana
     visibility = Column(String(20), nullable=False, default='private', index=True)  # private, group, tenant
     tags = Column(JSON, default=list)
+    labels = Column(JSON, default=dict)  # Key-value labels for filtering (e.g. {"team": "backend", "env": "prod"})
+    is_hidden = Column(Boolean, default=False, nullable=False, index=True)  # User can hide dashboards from their view
+    hidden_by = Column(JSON, default=list)  # List of user IDs who have hidden this dashboard
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -327,6 +332,9 @@ class GrafanaDatasource(Base):
     name = Column(String(200), nullable=False)
     type = Column(String(100), nullable=False)  
     visibility = Column(String(20), nullable=False, default='private', index=True)  
+    labels = Column(JSON, default=dict)  # Key-value labels for filtering
+    is_hidden = Column(Boolean, default=False, nullable=False, index=True)
+    hidden_by = Column(JSON, default=list)  # List of user IDs who have hidden this datasource
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

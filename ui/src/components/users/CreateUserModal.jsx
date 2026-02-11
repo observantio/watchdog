@@ -299,13 +299,22 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
             {filteredGroups.length === 0 && groups.length > 0 && (
               <p className="text-sm text-sre-text-muted">No groups match your search</p>
             )}
-            <div className="grid gap-3">
+            <div className="grid gap-3 grid-cols-2">
               {displayedGroups.map((group) => (
-                <div key={group.id} className="flex items-start gap-3 p-3 bg-sre-bg-alt border border-sre-border rounded-lg">
+                <div key={group.id} className="flex items-start gap-3 p-4 bg-gradient-to-r from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-md transition-all duration-200 backdrop-blur-sm rounded-lg cursor-pointer" onClick={() => {
+                  const next = new Set(formData.group_ids)
+                  if (next.has(group.id)) {
+                    next.delete(group.id)
+                  } else {
+                    next.add(group.id)
+                  }
+                  setFormData({ ...formData, group_ids: Array.from(next) })
+                }}>
                   <div className="flex-shrink-0 pt-1">
                     <Checkbox
                       checked={formData.group_ids.includes(group.id)}
-                      onChange={() => {
+                      onChange={(e) => {
+                        e.stopPropagation()
                         const next = new Set(formData.group_ids)
                         if (next.has(group.id)) {
                           next.delete(group.id)
@@ -316,13 +325,18 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
                       }}
                     />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium text-sre-text text-sm">{group.name}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-8 h-8 rounded-md bg-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold text-sm border border-sre-border/50">
+                        <span className="material-icons text-base">groups</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sre-text text-sm truncate" title={group.name}>{group.name}</div>
+                        <div className="text-xs text-sre-text-muted">
+                          {group.user_count || 0} member{(group.user_count || 0) !== 1 ? 's' : ''}
+                        </div>
+                      </div>
                     </div>
-                    {group.description && (
-                      <div className="text-xs text-sre-text-muted mt-1 truncate" title={group.description}>{group.description}</div>
-                    )}
                   </div>
                 </div>
               ))}

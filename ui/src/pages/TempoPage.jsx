@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { fetchTempoServices, searchTraces, getTrace } from '../api'
@@ -37,9 +37,12 @@ export default function TempoPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [viewMode, setViewMode] = useState('list')
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState(30)
 
   const { isAuthenticated, loading: authLoading } = useAuth()
   const toast = useToast()
+  const autoRefreshRef = useRef(null)
 
   const loadServices = useCallback(async () => {
     try {
@@ -56,6 +59,21 @@ export default function TempoPage() {
       loadServices()
     }
   }, [isAuthenticated, authLoading, loadServices])
+
+  useEffect(() => {
+    if (autoRefresh) {
+      autoRefreshRef.current = setInterval(() => {
+        onSearch()
+      }, refreshInterval * 1000)
+    } else if (autoRefreshRef.current) {
+      clearInterval(autoRefreshRef.current)
+      autoRefreshRef.current = null
+    }
+    return () => {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, refreshInterval, service, operation, traceIdSearch, durationRange, statusFilter, timeRange])
 
   // If backend doesn't return services, derive them from loaded traces
   useEffect(() => {
@@ -383,10 +401,23 @@ export default function TempoPage() {
       </Card>
 
       {/* Service Dependency Graph */}
-      {viewMode === 'graph' && filteredTraces.length > 0 && (
-        <div className="mb-6">
-          <ServiceGraph traces={filteredTraces} />
-        </div>
+      {viewMode === 'graph' && (
+        <Card
+          title="Dependency Map"
+          subtitle={filteredTraces.length ? `Showing relationships between ${new Set(filteredTraces.flatMap(t => t.spans?.map(s => getServiceName(s)).filter(Boolean) || [])).size} services` : 'Run a search to see the dependency map'}
+        >
+          {filteredTraces.length > 0 ? (
+            <ServiceGraph traces={filteredTraces} />
+          ) : (
+            <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
+              <span className="material-icons text-5xl text-sre-text-muted mb-4 block">hub</span>
+              <h3 className="text-xl font-semibold text-sre-text mb-2">No Traces Found</h3>
+              <p className="text-sre-text-muted mb-6 max-w-md mx-auto">
+                Try adjusting your search criteria, expanding the time range, or pasting a trace ID above.
+              </p>
+            </div>
+          )}
+        </Card>
       )}
 
       {/* Trace Results */}
@@ -395,6 +426,31 @@ export default function TempoPage() {
           title="Trace Results"
           subtitle={filteredTraces.length ? `Found ${filteredTraces.length} trace${filteredTraces.length === 1 ? '' : 's'}` : 'Run a search to see results'}
         >
+          <div className="mb-4 flex items-center justify-between pb-4 border-b border-sre-border">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-sre-text">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="rounded border-sre-border bg-sre-surface"
+                />
+                <span>Auto-refresh</span>
+                <HelpTooltip text="Automatically refresh the query results at the selected interval. Useful for monitoring live traces." />
+              </label>
+              {autoRefresh && (
+                <div className="flex items-center gap-2">
+                  <select value={refreshInterval} onChange={(e) => setRefreshInterval(Number(e.target.value))} className="px-2 pr-10 py-1 bg-sre-surface border border-sre-border rounded text-sm">
+                    <option value={10}>10s</option>
+                    <option value={30}>30s</option>
+                    <option value={60}>60s</option>
+                    <option value={300}>5m</option>
+                  </select>
+                  <HelpTooltip text="How often to automatically refresh the trace query. Shorter intervals provide more real-time data but increase server load." />
+                </div>
+              )}
+            </div>
+          </div>
           {loading ? (
             <div className="py-12 flex flex-col items-center">
               <Spinner size="lg" />

@@ -450,7 +450,7 @@ export default function ApiKeyPage() {
               <div>
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-sre-text mb-2">Select API Key</label>
-                  <HelpTooltip text="Choose which API key to generate YAML for. If none selected, the default will be used." />
+                  <HelpTooltip text="Select the product or team this agent represents." />
                 </div>
                 <Select value={yamlModalKeyId} onChange={(e) => setYamlModalKeyId(e.target.value)} className="w-full">
                   {apiKeys.map((k) => (
@@ -468,8 +468,8 @@ export default function ApiKeyPage() {
                   value={gatewayHost}
                   onChange={(e) => setGatewayHost(e.target.value)}
                   placeholder="http://localhost:4320"
-                  helperText={`Enter the gateway host only (e.g., http://localhost:4320). Endpoints are derived automatically.`}
                 />
+                <p className="text-xs text-sre-text-muted mt-1">Gateway host URL for OTLP endpoints.</p>
               </div>
 
               <div className="col-span-2">

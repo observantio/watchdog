@@ -322,20 +322,20 @@ export default function GroupsPage() {
           <h1 className="text-3xl font-bold text-sre-text">Groups Management</h1>
           <p className="text-sre-text-muted mt-2">Manage groups and assign permissions that members will inherit</p>
         </div>
-        {/* Only show the header Create button when there are existing groups or when a search is active.
-            When there are no groups and no search query, the centered Empty State CTA will be shown instead. */}
-        {!(groups.length === 0 && !searchQuery) && (
-          <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Only show the header Create button when there are existing groups or when a search is active.
+              When there are no groups and no search query, the centered Empty State CTA will be shown instead. */}
+          {!(groups.length === 0 && !searchQuery) && (
             <Button onClick={() => setShowCreateModal(true)} size="sm">
               <span className="material-icons mr-2">add</span>
               Create Group
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => navigate('/users')}>
-              <span className="material-icons mr-2">people</span>
-              Users
-            </Button>
-          </div>
-        )}
+          )}
+          <Button size="sm" variant="secondary" onClick={() => navigate('/users')}>
+            <span className="material-icons mr-2">people</span>
+            Users
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -357,35 +357,48 @@ export default function GroupsPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sre-primary"></div>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 grid-cols-2">
           {filteredGroups.map(group => (
-            <Card key={group.id} className="p-0 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm rounded-lg">
-              <div className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1 min-w-0 pr-3">
-                    <h3 className="text-lg font-semibold text-sre-text truncate" title={group.name}>{group.name}</h3>
-                    <p className="text-sm text-sre-text-muted mt-1 truncate" title={group.description || 'No description'}>
-                      {group.description || 'No description'}
+            <Card key={group.id} className="p-0 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm rounded-lg group">
+              <div className="p-6">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-sre-primary/20 to-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold border border-sre-border/50 flex-shrink-0">
+                    <span className="material-icons text-xl">groups</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl font-bold text-sre-text truncate mb-1" title={group.name}>{group.name}</h3>
+                    <p className="text-sm text-sre-text-muted line-clamp-2" title={group.description || 'No description'}>
+                      {group.description || 'No description provided'}
                     </p>
                   </div>
-                  <Badge variant="info" className="ml-3 flex-shrink-0 whitespace-nowrap text-xs px-2 py-0.5">
-                    {(() => { const n = (group.permissions || []).length || 0; return `${n} perm${n === 1 ? '' : 's'}` })()}
-                  </Badge>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mt-4 items-center">
-                  <Button size="sm" variant="ghost" className="flex items-center gap-1.5 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => openPermissionsModal(group)} aria-label={`Permissions for ${group.name}`}>
-                    <span className="material-icons text-sm" aria-hidden>security</span>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="info" className="whitespace-nowrap text-xs px-3 py-1 font-medium">
+                      <span className="material-icons text-xs mr-1">security</span>
+                      {(() => { const n = (group.permissions || []).length || 0; return `${n} permission${n === 1 ? '' : 's'}` })()}
+                    </Badge>
+                    <Badge variant="success" className="whitespace-nowrap text-xs px-3 py-1 font-medium">
+                      <span className="material-icons text-xs mr-1">person</span>
+                      {group.user_count || 0} member{(group.user_count || 0) !== 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-sre-border/30">
+                  <Button size="sm" variant="ghost" className="flex items-center gap-2 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => openPermissionsModal(group)} aria-label={`Permissions for ${group.name}`}>
+                    <span className="material-icons text-sm">security</span>
                     <span>Permissions</span>
                   </Button>
 
-                  <Button size="sm" variant="ghost" className="flex items-center gap-1.5 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => openEditModal(group)} aria-label={`Edit ${group.name}`}>
-                    <span className="material-icons text-sm" aria-hidden>edit</span>
+                  <Button size="sm" variant="ghost" className="flex items-center gap-2 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => openEditModal(group)} aria-label={`Edit ${group.name}`}>
+                    <span className="material-icons text-sm">edit</span>
                     <span>Edit</span>
                   </Button>
 
-                  <Button size="sm" variant="ghost" className="flex items-center gap-1.5 hover:bg-red-500/10 hover:text-red-500 transition-colors" onClick={() => setDeleteConfirm(group)} aria-label={`Delete ${group.name}`}>
-                    <span className="material-icons text-sm" aria-hidden>delete</span>
+                  <Button size="sm" variant="ghost" className="flex items-center gap-2 hover:bg-red-500/10 hover:text-red-500 transition-colors" onClick={() => setDeleteConfirm(group)} aria-label={`Delete ${group.name}`}>
+                    <span className="material-icons text-sm">delete</span>
                     <span>Delete</span>
                   </Button>
                 </div>

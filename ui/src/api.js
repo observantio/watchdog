@@ -440,9 +440,18 @@ export async function getTrace(traceID) {
 }
 
 // Grafana
-export async function searchDashboards(q = '') {
-  const url = q ? `/api/grafana/dashboards/search?query=${encodeURIComponent(q)}` : '/api/grafana/dashboards/search'
-  return request(url)
+export async function searchDashboards({ query = '', uid, labelKey, labelValue, teamId, showHidden = false, tag, starred } = {}) {
+  const params = new URLSearchParams()
+  if (query) params.append('query', query)
+  if (uid) params.append('uid', uid)
+  if (labelKey) params.append('label_key', labelKey)
+  if (labelValue) params.append('label_value', labelValue)
+  if (teamId) params.append('team_id', teamId)
+  if (showHidden) params.append('show_hidden', 'true')
+  if (tag) params.append('tag', tag)
+  if (starred !== undefined && starred !== null) params.append('starred', starred)
+  const qs = params.toString()
+  return request(qs ? `/api/grafana/dashboards/search?${qs}` : '/api/grafana/dashboards/search')
 }
 export async function getDashboard(uid) {
   return request(`/api/grafana/dashboards/${encodeURIComponent(uid)}`)
@@ -468,9 +477,33 @@ export async function deleteDashboard(uid) {
     method: 'DELETE'
   })
 }
+export async function toggleDashboardHidden(uid, hidden = true) {
+  return request(`/api/grafana/dashboards/${encodeURIComponent(uid)}/hide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden })
+  })
+}
+export async function updateDashboardLabels(uid, labels) {
+  return request(`/api/grafana/dashboards/${encodeURIComponent(uid)}/labels`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(labels)
+  })
+}
+export async function getDashboardFilterMeta() {
+  return request('/api/grafana/dashboards/meta/filters')
+}
 
-export async function getDatasources() {
-  return request('/api/grafana/datasources')
+export async function getDatasources({ uid, labelKey, labelValue, teamId, showHidden = false } = {}) {
+  const params = new URLSearchParams()
+  if (uid) params.append('uid', uid)
+  if (labelKey) params.append('label_key', labelKey)
+  if (labelValue) params.append('label_value', labelValue)
+  if (teamId) params.append('team_id', teamId)
+  if (showHidden) params.append('show_hidden', 'true')
+  const qs = params.toString()
+  return request(qs ? `/api/grafana/datasources?${qs}` : '/api/grafana/datasources')
 }
 export async function getDatasource(uid) {
   return request(`/api/grafana/datasources/uid/${encodeURIComponent(uid)}`)
@@ -495,6 +528,23 @@ export async function deleteDatasource(uid) {
   return request(`/api/grafana/datasources/${encodeURIComponent(uid)}`, {
     method: 'DELETE'
   })
+}
+export async function toggleDatasourceHidden(uid, hidden = true) {
+  return request(`/api/grafana/datasources/${encodeURIComponent(uid)}/hide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden })
+  })
+}
+export async function updateDatasourceLabels(uid, labels) {
+  return request(`/api/grafana/datasources/${encodeURIComponent(uid)}/labels`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(labels)
+  })
+}
+export async function getDatasourceFilterMeta() {
+  return request('/api/grafana/datasources/meta/filters')
 }
 
 export async function getFolders() {
