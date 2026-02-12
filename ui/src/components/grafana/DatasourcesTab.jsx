@@ -3,88 +3,29 @@ import PropTypes from 'prop-types'
 import { Button, Badge, Input, Select } from '../ui'
 
 function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, meta, groups }) {
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  
-  // Count active filters
-  const activeFilterCount = [
-    filters.uid,
-    filters.labelKey,
-    filters.labelValue,
-    filters.teamId,
-    filters.showHidden
-  ].filter(Boolean).length
-  
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2 items-center">
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-1 text-sm text-sre-primary hover:underline"
+    <div className="flex flex-wrap items-center gap-4 p-4 bg-sre-bg-alt rounded-lg border border-sre-border">
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-medium text-sre-text-muted">Group:</label>
+        <select
+          value={filters.teamId}
+          onChange={e => setFilters({...filters, teamId: e.target.value})}
+          className="px-3 py-1.5 text-sm bg-sre-surface border border-sre-border rounded text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
         >
-          <span className="material-icons text-sm">{showAdvanced ? 'expand_less' : 'tune'}</span>
-          {showAdvanced ? 'Hide filters' : 'Filters'}
-          {activeFilterCount > 0 && (
-            <Badge variant="primary" size="sm" className="ml-1">
-              {activeFilterCount}
-            </Badge>
-          )}
-        </button>
-        {hasActiveFilters && (
-          <button type="button" onClick={onClearFilters} className="text-xs text-sre-text-muted hover:text-red-500">
-            Clear all
-          </button>
-        )}
+          <option value="">All teams</option>
+          {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
       </div>
-      {showAdvanced && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-6 bg-sre-bg-alt rounded-lg border border-sre-border">
-          <div>
-            <label className="block text-xs font-medium text-sre-text-muted mb-1">UID</label>
-            <Input value={filters.uid} onChange={e => setFilters({...filters, uid: e.target.value})} placeholder="Exact UID match" className="px-1.5 py-1 text-xs rounded" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-sre-text-muted mb-1">Label Key</label>
-            <select
-              value={filters.labelKey}
-              onChange={e => setFilters({...filters, labelKey: e.target.value, labelValue: ''})}
-              className="w-full px-2 py-1.5 text-xs bg-sre-surface border border-sre-border rounded text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
-            >
-              <option value="">Any</option>
-              {(meta?.label_keys || []).map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-sre-text-muted mb-1">Label Value</label>
-            <select
-              value={filters.labelValue}
-              onChange={e => setFilters({...filters, labelValue: e.target.value})}
-              disabled={!filters.labelKey}
-              className="w-full px-2 py-1.5 text-xs bg-sre-surface border border-sre-border rounded text-sre-text disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
-            >
-              <option value="">Any</option>
-              {(filters.labelKey && meta?.label_values?.[filters.labelKey] || []).map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-sre-text-muted mb-1">Team / Group</label>
-            <select
-              value={filters.teamId}
-              onChange={e => setFilters({...filters, teamId: e.target.value})}
-              className="w-full px-2 py-1.5 text-xs bg-sre-surface border border-sre-border rounded text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
-            >
-              <option value="">All teams</option>
-              {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-          </div>
-          <div className="col-span-2 md:col-span-4 flex items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-sre-text cursor-pointer">
-              <input type="checkbox" checked={filters.showHidden} onChange={e => setFilters({...filters, showHidden: e.target.checked})} className="w-3.5 h-3.5" />
-              Show hidden datasources
-            </label>
-            <Button size="sm" onClick={onSearch} className="ml-auto">Apply Filters</Button>
-          </div>
-        </div>
-      )}
+      <label className="flex items-center gap-2 text-sm text-sre-text cursor-pointer">
+        <input type="checkbox" checked={filters.showHidden} onChange={e => setFilters({...filters, showHidden: e.target.checked})} className="w-4 h-4" />
+        Show hidden datasources
+      </label>
+      <div className="flex gap-2 ml-auto">
+        {hasActiveFilters && (
+          <Button size="sm" variant="ghost" onClick={onClearFilters}>Clear</Button>
+        )}
+        <Button size="sm" onClick={onSearch}>Apply</Button>
+      </div>
     </div>
   )
 }
@@ -93,7 +34,7 @@ export default function DatasourcesTab({
   datasources, groups, filters, setFilters,
   onSearch, onClearFilters, hasActiveFilters, meta,
   openDatasourceEditor, onDeleteDatasource,
-  onToggleHidden, onEditLabels, getDatasourceIcon
+  onToggleHidden, getDatasourceIcon
 }) {
   const [query, setQuery] = useState('')
 
@@ -221,9 +162,6 @@ export default function DatasourcesTab({
                       <span className="material-icons text-base">{ds.is_hidden ? 'visibility' : 'visibility_off'}</span>
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => onEditLabels(ds)} title="Edit labels" className="p-2">
-                    <span className="material-icons text-base">label</span>
-                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => openDatasourceEditor(ds)} title="Edit" className="p-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </Button>

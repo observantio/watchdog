@@ -1,9 +1,9 @@
-"""Grafana API router with multi-tenancy, labels, hide/show, team filtering, and UID search."""
-from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, Request
-from fastapi.responses import StreamingResponse, Response
+"""Grafana API router with multi-tenancy, hide/show, team filtering, and UID search."""
+from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request
+from fastapi.responses import Response
 from typing import Optional, List, Dict
-import httpx
 import logging
+import re
 
 from models.grafana_models import (
     DashboardCreate, DashboardUpdate, DashboardSearchResult,
@@ -13,7 +13,8 @@ from services.grafana_proxy_service import GrafanaProxyService
 from services.grafana_service import GrafanaService
 from models.auth_models import Permission, TokenData, Role
 from database import get_db
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from db_models import GrafanaDashboard, GrafanaDatasource
 
 from routers.auth_router import require_permission
 from services.database_auth_service import DatabaseAuthService
@@ -45,29 +46,175 @@ def _rate_limit(current_user: TokenData):
     )
 
 
+def _is_admin_user(token_data: TokenData) -> bool:
+    return token_data.role == Role.ADMIN or token_data.is_superuser
+
+
+def _is_resource_accessible(resource, token_data: TokenData) -> bool:
+    if not resource:
+        return False
+
+    if resource.tenant_id != token_data.tenant_id:
+        return False
+
+    hidden_by = getattr(resource, "hidden_by", None) or []
+    if token_data.user_id in hidden_by:
+        return False
+
+    if _is_admin_user(token_data):
+        return True
+
+    if resource.created_by == token_data.user_id:
+        return True
+
+    visibility = getattr(resource, "visibility", "private") or "private"
+    if visibility == "tenant":
+        return True
+
+    if visibility == "group":
+        user_group_ids = set(token_data.group_ids or [])
+        resource_group_ids = {g.id for g in (resource.shared_groups or [])}
+        return bool(user_group_ids.intersection(resource_group_ids))
+
+    return False
+
+
+def _extract_dashboard_uid(path: str) -> Optional[str]:
+    patterns = [
+        r"^/grafana/d/([^/]+)",
+        r"^/grafana/d-solo/([^/]+)",
+        r"^/grafana/api/dashboards/uid/([^/?]+)",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, path)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _extract_datasource_uid(path: str) -> Optional[str]:
+    patterns = [
+        r"^/grafana/api/datasources/uid/([^/?]+)",
+        r"^/grafana/connections/datasources/edit/([^/?]+)",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, path)
+        if match:
+            return match.group(1)
+    return None
+
+
 # ==================================================================
 # Dashboard endpoints
 # ==================================================================
+
+
+@router.get(
+    "/auth",
+    summary="Auth hook for Grafana reverse proxy",
+    description=(
+        "Used by the NGINX grafana-proxy via auth_request. "
+        "Validates a JWT (Authorization: Bearer ..., auth cookie, or legacy token params) "
+        "and returns X-WEBAUTH-* headers for Grafana auth.proxy."
+    ),
+)
+async def grafana_auth(
+    request: Request,
+    token: Optional[str] = Query(None, description="Optional legacy JWT token"),
+    orig: Optional[str] = Query(None, description="Original proxied URI"),
+    db: Session = Depends(get_db),
+):
+    token_to_verify: Optional[str] = None
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token_to_verify = auth_header.split(" ", 1)[1]
+
+    if not token_to_verify:
+        token_to_verify = request.cookies.get("beobservant_token")
+
+    if not token_to_verify:
+        token_to_verify = request.cookies.get("access_token")
+
+    if not token_to_verify:
+        token_to_verify = request.headers.get("X-Auth-Token") or token
+
+    if not token_to_verify:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token_data = auth_service.decode_token(token_to_verify)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+    # NGINX will call this endpoint for every /grafana/ request.
+    # Keep it lightweight: trust token claims (expiry/signature enforced in decode_token).
+    if Permission.READ_DASHBOARDS.value not in (token_data.permissions or []) and not token_data.is_superuser:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    is_admin = _is_admin_user(token_data)
+
+    original_uri = orig or request.headers.get("X-Original-URI", "")
+    original_path = original_uri.split("?", 1)[0] if original_uri else ""
+
+    # For proxy UI access, be more permissive than management API:
+    # - Admin users can access everything
+    # - Non-admin users can access resources they own, shared with them, or tenant-wide
+    # - For resources not in our DB, allow access (let Grafana enforce its own permissions)
+    # - This supports dashboards created outside BeObservant or Grafana's built-in resources
+    
+    if not is_admin:
+        # Only enforce scope checks for resources that exist in our database
+        dashboard_uid = _extract_dashboard_uid(original_path)
+        if dashboard_uid:
+            dashboard = db.query(GrafanaDashboard).options(joinedload(GrafanaDashboard.shared_groups)).filter(GrafanaDashboard.grafana_uid == dashboard_uid).first()
+            # If dashboard exists in our DB, enforce scope; otherwise allow access
+            if dashboard and not _is_resource_accessible(dashboard, token_data):
+                raise HTTPException(status_code=403, detail="Dashboard access denied")
+
+        datasource_uid = _extract_datasource_uid(original_path)
+        if datasource_uid:
+            datasource = db.query(GrafanaDatasource).options(joinedload(GrafanaDatasource.shared_groups)).filter(GrafanaDatasource.grafana_uid == datasource_uid).first()
+            # If datasource exists in our DB, enforce scope; otherwise allow access
+            if datasource and not _is_resource_accessible(datasource, token_data):
+                raise HTTPException(status_code=403, detail="Datasource access denied")
+
+        # Allow Grafana UI listing endpoints; scoped filtering is enforced
+        # by routing /grafana/api/search through BeObservant in the proxy.
+
+    grafana_role = "Viewer"
+    if is_admin:
+        grafana_role = "Admin"
+    elif Permission.WRITE_DASHBOARDS.value in (token_data.permissions or []):
+        grafana_role = "Editor"
+
+    headers = {
+        "X-WEBAUTH-USER": token_data.username,
+        "X-WEBAUTH-TENANT": token_data.tenant_id,
+        "X-WEBAUTH-ROLE": grafana_role,
+    }
+
+    # Optional: try to enrich with email/full name if it is cheap to fetch.
+    # NOTE: Avoid hitting the DB here; this endpoint may be called frequently.
+    return Response(status_code=204, headers=headers)
 
 @router.get(
     "/dashboards/search",
     response_model=List[DashboardSearchResult],
     summary="Search dashboards",
-    description="Search Grafana dashboards with multi-tenant access control, UID search, label and team filtering",
+    description="Search Grafana dashboards with multi-tenant access control, UID search, and team filtering",
 )
 async def search_dashboards(
     query: Optional[str] = Query(None, description="Search query"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
     starred: Optional[bool] = Query(None, description="Filter starred dashboards"),
     uid: Optional[str] = Query(None, description="Search by exact dashboard UID"),
-    label_key: Optional[str] = Query(None, description="Filter by label key"),
-    label_value: Optional[str] = Query(None, description="Filter by label value (requires label_key)"),
     team_id: Optional[str] = Query(None, description="Filter by team/group ID"),
     show_hidden: bool = Query(False, description="Include hidden dashboards"),
     current_user: TokenData = Depends(require_permission(Permission.READ_DASHBOARDS)),
     db: Session = Depends(get_db),
 ) -> List[DashboardSearchResult]:
     _rate_limit(current_user)
+    is_admin = _is_admin_user(current_user)
     return await grafana_proxy_service.search_dashboards(
         db=db,
         user_id=current_user.user_id,
@@ -77,10 +224,9 @@ async def search_dashboards(
         tag=tag,
         starred=starred,
         uid=uid,
-        label_key=label_key,
-        label_value=label_value,
         team_id=team_id,
         show_hidden=show_hidden,
+        is_admin=is_admin,
     )
 
 
@@ -106,11 +252,10 @@ async def create_dashboard(
     dashboard: DashboardCreate = Body(...),
     visibility: str = Query("private"),
     shared_group_ids: Optional[List[str]] = Query(None),
-    labels: Optional[str] = Query(None, description="JSON string of key-value labels"),
     current_user: TokenData = Depends(require_permission(Permission.WRITE_DASHBOARDS)),
     db: Session = Depends(get_db),
 ):
-    """Create a new dashboard with visibility, groups, and labels."""
+    """Create a new dashboard with visibility and groups."""
     _rate_limit(current_user)
     if visibility not in ("private", "group", "tenant"):
         raise HTTPException(status_code=400, detail="Invalid visibility value")
@@ -119,12 +264,11 @@ async def create_dashboard(
     from models.auth_models import Role
     is_admin = current_user.role == Role.ADMIN or current_user.is_superuser
 
-    parsed_labels = _parse_labels(labels)
     result = await grafana_proxy_service.create_dashboard(
         db=db, dashboard_create=dashboard, user_id=current_user.user_id,
         tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
         visibility=visibility, shared_group_ids=shared_group_ids or [],
-        labels=parsed_labels, is_admin=is_admin,
+        is_admin=is_admin,
     )
     if not result:
         raise HTTPException(status_code=500, detail="Failed to create dashboard")
@@ -137,7 +281,6 @@ async def update_dashboard(
     dashboard: DashboardUpdate = Body(...),
     visibility: Optional[str] = Query(None),
     shared_group_ids: Optional[List[str]] = Query(None),
-    labels: Optional[str] = Query(None, description="JSON string of key-value labels"),
     current_user: TokenData = Depends(require_permission(Permission.WRITE_DASHBOARDS)),
     db: Session = Depends(get_db),
 ):
@@ -146,12 +289,10 @@ async def update_dashboard(
     if visibility and visibility not in ("private", "group", "tenant"):
         raise HTTPException(status_code=400, detail="Invalid visibility value")
 
-    parsed_labels = _parse_labels(labels)
     result = await grafana_proxy_service.update_dashboard(
         db=db, uid=uid, dashboard_update=dashboard, user_id=current_user.user_id,
         tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
         visibility=visibility, shared_group_ids=shared_group_ids,
-        labels=parsed_labels,
     )
     if not result:
         raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found, access denied, or update failed")
@@ -197,29 +338,6 @@ async def hide_dashboard(
     return {"status": "success", "hidden": hidden}
 
 
-# ------------------------------------------------------------------
-# Dashboard labels
-# ------------------------------------------------------------------
-
-@router.put("/dashboards/{uid}/labels")
-async def update_dashboard_labels(
-    uid: str,
-    labels: Dict[str, str] = Body(...),
-    current_user: TokenData = Depends(require_permission(Permission.WRITE_DASHBOARDS)),
-    db: Session = Depends(get_db),
-):
-    """Update labels on a dashboard (owner only)."""
-    _rate_limit(current_user)
-    success = grafana_proxy_service.update_dashboard_labels(
-        db=db, uid=uid, user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
-        labels=labels,
-    )
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found or access denied")
-    return {"status": "success", "labels": labels}
-
-
 # ==================================================================
 # Datasource endpoints
 # ==================================================================
@@ -227,8 +345,6 @@ async def update_dashboard_labels(
 @router.get("/datasources", response_model=List[Datasource])
 async def get_datasources(
     uid: Optional[str] = Query(None, description="Search by exact datasource UID"),
-    label_key: Optional[str] = Query(None),
-    label_value: Optional[str] = Query(None),
     team_id: Optional[str] = Query(None),
     show_hidden: bool = Query(False),
     current_user: TokenData = Depends(require_permission(Permission.READ_DASHBOARDS)),
@@ -236,15 +352,14 @@ async def get_datasources(
 ):
     """Get all datasources with multi-tenant access control and filtering."""
     _rate_limit(current_user)
+    is_admin = _is_admin_user(current_user)
     return await grafana_proxy_service.get_datasources(
         db=db, user_id=current_user.user_id,
         tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
-        uid=uid, label_key=label_key, label_value=label_value,
-        team_id=team_id, show_hidden=show_hidden,
+        uid=uid, team_id=team_id, show_hidden=show_hidden, is_admin=is_admin,
     )
 
-
-@router.get("/datasources/uid/{uid}", response_model=Datasource)
+@router.get("/datasources/{uid}", response_model=Datasource)
 async def get_datasource_by_uid(
     uid: str,
     current_user: TokenData = Depends(require_permission(Permission.READ_DASHBOARDS)),
@@ -286,11 +401,10 @@ async def create_datasource(
     datasource: DatasourceCreate = Body(...),
     visibility: str = Query("private"),
     shared_group_ids: Optional[List[str]] = Query(None),
-    labels: Optional[str] = Query(None, description="JSON string of key-value labels"),
     current_user: TokenData = Depends(require_permission(Permission.WRITE_DASHBOARDS)),
     db: Session = Depends(get_db),
 ):
-    """Create a new datasource with visibility control and labels."""
+    """Create a new datasource with visibility control."""
     _rate_limit(current_user)
     if visibility not in ("private", "group", "tenant"):
         raise HTTPException(status_code=400, detail="Invalid visibility value")
@@ -299,12 +413,11 @@ async def create_datasource(
     from models.auth_models import Role
     is_admin = current_user.role == Role.ADMIN or current_user.is_superuser
     
-    parsed_labels = _parse_labels(labels)
     result = await grafana_proxy_service.create_datasource(
         db=db, datasource_create=datasource, user_id=current_user.user_id,
         tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
         visibility=visibility, shared_group_ids=shared_group_ids or [],
-        labels=parsed_labels, is_admin=is_admin,
+        is_admin=is_admin,
     )
     if not result:
         raise HTTPException(status_code=500, detail="Failed to create datasource")
@@ -317,7 +430,6 @@ async def update_datasource(
     datasource: DatasourceUpdate = Body(...),
     visibility: Optional[str] = Query(None),
     shared_group_ids: Optional[List[str]] = Query(None),
-    labels: Optional[str] = Query(None),
     current_user: TokenData = Depends(require_permission(Permission.WRITE_DASHBOARDS)),
     db: Session = Depends(get_db),
 ):
@@ -325,12 +437,10 @@ async def update_datasource(
     _rate_limit(current_user)
     if visibility and visibility not in ("private", "group", "tenant"):
         raise HTTPException(status_code=400, detail="Invalid visibility value")
-    parsed_labels = _parse_labels(labels)
     result = await grafana_proxy_service.update_datasource(
         db=db, uid=uid, datasource_update=datasource, user_id=current_user.user_id,
         tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
         visibility=visibility, shared_group_ids=shared_group_ids,
-        labels=parsed_labels,
     )
     if not result:
         raise HTTPException(status_code=404, detail=f"Datasource {uid} not found, access denied, or update failed")
@@ -376,29 +486,6 @@ async def hide_datasource(
     return {"status": "success", "hidden": hidden}
 
 
-# ------------------------------------------------------------------
-# Datasource labels
-# ------------------------------------------------------------------
-
-@router.put("/datasources/{uid}/labels")
-async def update_datasource_labels(
-    uid: str,
-    labels: Dict[str, str] = Body(...),
-    current_user: TokenData = Depends(require_permission(Permission.WRITE_DASHBOARDS)),
-    db: Session = Depends(get_db),
-):
-    """Update labels on a datasource (owner only)."""
-    _rate_limit(current_user)
-    success = grafana_proxy_service.update_datasource_labels(
-        db=db, uid=uid, user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id, group_ids=_user_group_ids(current_user),
-        labels=labels,
-    )
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Datasource {uid} not found or access denied")
-    return {"status": "success", "labels": labels}
-
-
 # ==================================================================
 # Metadata endpoints (for filter dropdowns in UI)
 # ==================================================================
@@ -422,468 +509,6 @@ async def get_datasource_filter_metadata(
     _rate_limit(current_user)
     return grafana_proxy_service.get_datasource_metadata(db=db, tenant_id=current_user.tenant_id)
 
-
-# ==================================================================
-# Folder endpoints (not multi-tenant yet)
-# ==================================================================
-
-@router.get("/view/d/{uid}/{slug}")
-@router.get("/view/d/{uid}")
-async def grafana_dashboard_view(
-    uid: str,
-    slug: str = "",
-    request: Request = None,
-    token: Optional[str] = Query(None, description="Optional JWT token for browser direct access"),
-    db: Session = Depends(get_db),
-):
-    """Return HTML page with embedded Grafana dashboard iframe."""
-    
-    # Verify token and check access control
-    current_user: Optional[TokenData] = None
-    token_to_verify = None
-    
-    if request:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token_to_verify = auth_header.split(" ", 1)[1]
-    if not token_to_verify and token:
-        token_to_verify = token
-    
-    if not token_to_verify:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    try:
-        from jose import jwt, JWTError
-        payload = jwt.decode(token_to_verify, config.JWT_SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
-        permissions = payload.get("permissions", [])
-        
-        if Permission.READ_DASHBOARDS.value not in permissions:
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
-        
-        current_user = TokenData(
-            user_id=payload.get("sub"),
-            username=payload.get("username"),
-            tenant_id=payload.get("tenant_id"),
-            org_id=payload.get("org_id", ""),
-            role=Role(payload.get("role", "user")),
-            is_superuser=payload.get("is_superuser", False),
-            permissions=permissions,
-            group_ids=payload.get("group_ids", []),
-        )
-    except (JWTError, Exception) as e:
-        logger.error(f"Token verification failed: {e}")
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
-    
-    # Check dashboard access control (same as proxy endpoint)
-    from db_models import GrafanaDashboard
-    dashboard = db.query(GrafanaDashboard).filter(GrafanaDashboard.grafana_uid == uid).first()
-    
-    if dashboard:
-        # Check tenant isolation
-        if dashboard.tenant_id != current_user.tenant_id:
-            logger.warning(f"Tenant mismatch for dashboard {uid}")
-            raise HTTPException(status_code=404, detail="Dashboard not found")
-        
-        # Check if hidden
-        if dashboard.hidden_by and current_user.user_id in dashboard.hidden_by:
-            raise HTTPException(status_code=404, detail="Dashboard not found")
-        
-        # Check visibility
-        is_admin = current_user.role == Role.ADMIN or current_user.is_superuser
-        is_owner = dashboard.created_by == current_user.user_id
-        
-        if not is_admin and not is_owner:
-            if dashboard.visibility == "private":
-                raise HTTPException(status_code=403, detail="Access denied: Dashboard is private")
-            elif dashboard.visibility == "group":
-                user_group_ids = set(current_user.group_ids)
-                dashboard_group_ids = {g.id for g in dashboard.shared_groups}
-                if not user_group_ids.intersection(dashboard_group_ids):
-                    raise HTTPException(status_code=403, detail="Access denied: Dashboard is group-restricted")
-    
-    # Build iframe URL - use localhost:3000 with anonymous Editor access
-    # No kiosk mode - full interactive Grafana UI
-    dashboard_url = f"http://localhost:3000/d/{uid}/{slug}"
-    
-    # Return HTML with iframe
-    html_content = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - {slug or uid}</title>
-    <style>
-        body {{ margin: 0; padding: 0; overflow: hidden; background: #1f1f1f; }}
-        iframe {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }}
-        .loading {{ 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #fff; font-family: sans-serif; font-size: 18px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="loading">Loading dashboard...</div>
-    <iframe src="{dashboard_url}" allow="fullscreen"></iframe>
-    <script>
-        // Hide loading message once iframe loads
-        document.querySelector('iframe').addEventListener('load', function() {{
-            document.querySelector('.loading').style.display = 'none';
-        }});
-    </script>
-</body>
-</html>
-    """
-    
-    return Response(content=html_content, media_type="text/html")
-
-
-@router.api_route("/proxy/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-async def grafana_auth_proxy(
-    path: str,
-    request: Request,
-    token: Optional[str] = Query(None, description="Optional JWT token for browser direct access"),
-    db: Session = Depends(get_db),
-):
-    """Proxy Grafana API calls with auth-proxy headers. NOT for serving dashboards in browser (use /view endpoint)."""
-    
-    # Get authentication from either Authorization header or token query param
-    current_user: Optional[TokenData] = None
-    token_to_verify = None
-    
-    # Check Authorization header first
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token_to_verify = auth_header.split(" ", 1)[1]
-    # Fallback to query parameter for browser links
-    elif token:
-        token_to_verify = token
-    
-    if not token_to_verify:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    # Verify JWT token
-    try:
-        from jose import jwt, JWTError
-        payload = jwt.decode(token_to_verify, config.JWT_SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
-        
-        # Extract user data
-        permissions = payload.get("permissions", [])
-        user_role = payload.get("role", "user")
-        
-        # Verify READ_DASHBOARDS permission
-        if Permission.READ_DASHBOARDS.value not in permissions:
-            logger.warning(f"User {payload.get('username')} lacks READ_DASHBOARDS permission")
-            raise HTTPException(status_code=403, detail="Insufficient permissions to access Grafana")
-        
-        current_user = TokenData(
-            user_id=payload.get("sub"),
-            username=payload.get("username"),
-            tenant_id=payload.get("tenant_id"),
-            org_id=payload.get("org_id", ""),
-            role=Role(user_role),
-            is_superuser=payload.get("is_superuser", False),
-            permissions=permissions,
-            group_ids=payload.get("group_ids", []),
-        )
-        
-        logger.info(f"Proxy auth successful for user: {current_user.username} (tenant: {current_user.tenant_id})")
-        
-    except JWTError as e:
-        logger.error(f"JWT decode failed: {e}")
-        raise HTTPException(status_code=401, detail="Invalid or expired authentication token")
-    except Exception as e:
-        logger.error(f"Token verification failed: {e}", exc_info=True)
-        raise HTTPException(status_code=401, detail="Authentication failed")
-    
-    _rate_limit(current_user)
-
-    # Extract dashboard UID from path for access control
-    # Paths like: /d/<uid>/<slug> or /api/dashboards/uid/<uid>
-    dashboard_uid = None
-    datasource_uid = None
-    
-    if "/d/" in path:
-        parts = path.split("/d/")
-        if len(parts) > 1:
-            dashboard_uid = parts[1].split("/")[0].split("?")[0]
-    elif "/api/dashboards/uid/" in path:
-        parts = path.split("/api/dashboards/uid/")
-        if len(parts) > 1:
-            dashboard_uid = parts[1].split("/")[0].split("?")[0]
-    elif "/api/datasources/uid/" in path or "/connections/datasources/edit/" in path:
-        # Extract datasource UID from paths like /api/datasources/uid/<uid> or /connections/datasources/edit/<uid>
-        if "/api/datasources/uid/" in path:
-            parts = path.split("/api/datasources/uid/")
-        else:
-            parts = path.split("/connections/datasources/edit/")
-        if len(parts) > 1:
-            datasource_uid = parts[1].split("/")[0].split("?")[0]
-    
-    # Enforce multi-tenant dashboard access control
-    if dashboard_uid:
-        from db_models import GrafanaDashboard
-        dashboard = db.query(GrafanaDashboard).filter(
-            GrafanaDashboard.grafana_uid == dashboard_uid
-        ).first()
-        
-        if dashboard:
-            # Check tenant isolation
-            if dashboard.tenant_id != current_user.tenant_id:
-                logger.warning(
-                    f"Tenant mismatch: User {current_user.username} (tenant {current_user.tenant_id}) "
-                    f"attempted to access dashboard {dashboard_uid} (tenant {dashboard.tenant_id})"
-                )
-                raise HTTPException(status_code=404, detail="Dashboard not found")
-            
-            # Check if dashboard is hidden for this user
-            if dashboard.hidden_by and current_user.user_id in dashboard.hidden_by:
-                logger.warning(f"User {current_user.username} attempted to access hidden dashboard {dashboard_uid}")
-                raise HTTPException(status_code=404, detail="Dashboard not found")
-            
-            # Check visibility and group access
-            is_admin = current_user.role == Role.ADMIN or current_user.is_superuser
-            is_owner = dashboard.created_by == current_user.user_id
-            
-            if not is_admin and not is_owner:
-                if dashboard.visibility == "private":
-                    logger.warning(
-                        f"User {current_user.username} attempted to access private dashboard {dashboard_uid} "
-                        f"(owner: {dashboard.created_by})"
-                    )
-                    raise HTTPException(status_code=403, detail="Access denied: Dashboard is private")
-                
-                elif dashboard.visibility == "group":
-                    # Check if user is in any of the shared groups
-                    user_group_ids = set(current_user.group_ids)
-                    dashboard_group_ids = {g.id for g in dashboard.shared_groups}
-                    
-                    if not user_group_ids.intersection(dashboard_group_ids):
-                        logger.warning(
-                            f"User {current_user.username} (groups: {user_group_ids}) "
-                            f"attempted to access group dashboard {dashboard_uid} (groups: {dashboard_group_ids})"
-                        )
-                        raise HTTPException(
-                            status_code=403, 
-                            detail="Access denied: Dashboard is only accessible to specific groups"
-                        )
-            
-            logger.info(
-                f"Dashboard access granted: {dashboard_uid} for user {current_user.username} "
-                f"(visibility: {dashboard.visibility}, is_owner: {is_owner}, is_admin: {is_admin})"
-            )
-    
-    # Enforce multi-tenant datasource access control
-    if datasource_uid:
-        from db_models import GrafanaDatasource
-        datasource = db.query(GrafanaDatasource).filter(
-            GrafanaDatasource.grafana_uid == datasource_uid
-        ).first()
-        
-        if datasource:
-            # Check tenant isolation
-            if datasource.tenant_id != current_user.tenant_id:
-                logger.warning(
-                    f"Tenant mismatch: User {current_user.username} (tenant {current_user.tenant_id}) "
-                    f"attempted to access datasource {datasource_uid} (tenant {datasource.tenant_id})"
-                )
-                raise HTTPException(status_code=404, detail="Datasource not found")
-            
-            # Check if datasource is hidden for this user
-            if datasource.hidden_by and current_user.user_id in datasource.hidden_by:
-                logger.warning(f"User {current_user.username} attempted to access hidden datasource {datasource_uid}")
-                raise HTTPException(status_code=404, detail="Datasource not found")
-            
-            # Check visibility and group access
-            is_admin = current_user.role == Role.ADMIN or current_user.is_superuser
-            is_owner = datasource.created_by == current_user.user_id
-            
-            if not is_admin and not is_owner:
-                if datasource.visibility == "private":
-                    logger.warning(
-                        f"User {current_user.username} attempted to access private datasource {datasource_uid} "
-                        f"(owner: {datasource.created_by})"
-                    )
-                    raise HTTPException(status_code=403, detail="Access denied: Datasource is private")
-                
-                elif datasource.visibility == "group":
-                    # Check if user is in any of the shared groups
-                    user_group_ids = set(current_user.group_ids)
-                    datasource_group_ids = {g.id for g in datasource.shared_groups}
-                    
-                    if not user_group_ids.intersection(datasource_group_ids):
-                        logger.warning(
-                            f"User {current_user.username} (groups: {user_group_ids}) "
-                            f"attempted to access group datasource {datasource_uid} (groups: {datasource_group_ids})"
-                        )
-                        raise HTTPException(
-                            status_code=403, 
-                            detail="Access denied: Datasource is only accessible to specific groups"
-                        )
-            
-            logger.info(
-                f"Datasource access granted: {datasource_uid} for user {current_user.username} "
-                f"(visibility: {datasource.visibility}, is_owner: {is_owner}, is_admin: {is_admin})"
-            )
-
-    # Build target Grafana URL
-    grafana_base = config.GRAFANA_URL.rstrip("/")
-    target_url = f"{grafana_base}/{path}" if path else grafana_base
-    
-    # Remove token from query params before forwarding to Grafana
-    if request.url.query:
-        query_params = str(request.url.query)
-        if token and "token=" in query_params:
-            # Remove token parameter
-            import re
-            query_params = re.sub(r'[&]?token=[^&]*', '', query_params)
-            query_params = query_params.lstrip('&')
-        if query_params:
-            target_url = f"{target_url}?{query_params}"
-
-    # Get user details for Grafana auth proxy headers
-    user = auth_service.get_user_by_id(current_user.user_id)
-
-    # Headers to exclude (hop-by-hop headers)
-    hop_by_hop = {
-        "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-        "te", "trailers", "transfer-encoding", "upgrade", "host",
-        "content-length", "authorization",
-    }
-    
-    # Forward headers (excluding hop-by-hop)
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in hop_by_hop}
-    
-    # Add Grafana auth proxy headers for SSO
-    headers["X-WEBAUTH-USER"] = current_user.username
-    headers["X-WEBAUTH-TENANT"] = current_user.tenant_id
-    headers["X-WEBAUTH-ROLE"] = current_user.role.value
-    if user and getattr(user, "email", None):
-        headers["X-WEBAUTH-EMAIL"] = user.email
-    if user and getattr(user, "full_name", None):
-        headers["X-WEBAUTH-NAME"] = user.full_name
-
-    # Proxy the request to Grafana
-    body = await request.body()
-    timeout = httpx.Timeout(config.DEFAULT_TIMEOUT)
-    
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            resp = await client.request(
-                request.method,
-                target_url,
-                headers=headers,
-                content=body if body else None,
-            )
-            
-            # Forward response headers (excluding hop-by-hop)
-            resp_headers = {
-                k: v for k, v in resp.headers.items() 
-                if k.lower() not in hop_by_hop
-            }
-            
-            # Read response content
-            content = resp.content
-            
-            # Filter JSON responses for list endpoints (dashboards, datasources, search)
-            content_type = resp.headers.get("content-type", "")
-            if "application/json" in content_type and content:
-                try:
-                    import json
-                    data = json.loads(content.decode('utf-8'))
-                    
-                    # Detect list endpoints that need filtering
-                    needs_filtering = False
-                    is_search = "/api/search" in path
-                    is_dashboards_list = path.startswith("api/dashboards") and not "/uid/" in path
-                    is_datasources_list = path.startswith("api/datasources") and not "/uid/" in path
-                    
-                    if (is_search or is_dashboards_list or is_datasources_list) and isinstance(data, list):
-                        needs_filtering = True
-                    
-                    if needs_filtering:
-                        # Get accessible UIDs for the user
-                        accessible_dashboard_uids, _ = grafana_proxy_service._get_accessible_dashboard_uids(
-                            db=db,
-                            user_id=current_user.user_id,
-                            tenant_id=current_user.tenant_id,
-                            group_ids=_user_group_ids(current_user)
-                        )
-                        accessible_datasource_uids, _ = grafana_proxy_service._get_accessible_datasource_uids(
-                            db=db,
-                            user_id=current_user.user_id,
-                            tenant_id=current_user.tenant_id,
-                            group_ids=_user_group_ids(current_user)
-                        )
-                        
-                        # Get all registered UIDs to allow system dashboards
-                        from db_models import GrafanaDashboard, GrafanaDatasource
-                        all_registered_dashboard_uids = {d.grafana_uid for d in db.query(GrafanaDashboard).all()}
-                        all_registered_datasource_uids = {ds.grafana_uid for ds in db.query(GrafanaDatasource).all()}
-                        
-                        # Filter the response list
-                        filtered_data = []
-                        for item in data:
-                            item_uid = item.get("uid")
-                            if not item_uid:
-                                continue
-                            
-                            # For search endpoint, check type
-                            if is_search:
-                                item_type = item.get("type", "")
-                                if "dash" in item_type:
-                                    # Dashboard item
-                                    if item_uid in accessible_dashboard_uids or item_uid not in all_registered_dashboard_uids:
-                                        filtered_data.append(item)
-                                else:
-                                    # Include other types (folders, etc.)
-                                    filtered_data.append(item)
-                            elif is_dashboards_list:
-                                # Dashboard list
-                                if item_uid in accessible_dashboard_uids or item_uid not in all_registered_dashboard_uids:
-                                    filtered_data.append(item)
-                            elif is_datasources_list:
-                                # Datasource list
-                                if item_uid in accessible_datasource_uids or item_uid not in all_registered_datasource_uids:
-                                    filtered_data.append(item)
-                        
-                        # Replace content with filtered data
-                        content = json.dumps(filtered_data).encode('utf-8')
-                        resp_headers["content-length"] = str(len(content))
-                        
-                        logger.info(
-                            f"Filtered {len(data)} -> {len(filtered_data)} items for user {current_user.username} "
-                            f"(endpoint: {path})"
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to filter JSON response: {e}", exc_info=True)
-                    # Continue with original content if filtering fails
-            
-            # Rewrite HTML content to fix asset paths
-            elif "text/html" in content_type and content:
-                try:
-                    html_content = content.decode('utf-8')
-                    
-                    # Inject base tag to make all relative URLs go through proxy
-                    base_url = f"{request.url.scheme}://{request.url.netloc}/api/grafana/proxy/"
-                    if "<head>" in html_content:
-                        base_tag = f'<base href="{base_url}">'
-                        html_content = html_content.replace("<head>", f"<head>{base_tag}", 1)
-                        content = html_content.encode('utf-8')
-                        resp_headers["content-length"] = str(len(content))
-                except Exception as e:
-                    logger.warning(f"Failed to rewrite HTML: {e}")
-                    # Continue with original content if rewrite fails
-            
-            return Response(
-                content=content,
-                status_code=resp.status_code,
-                headers=resp_headers,
-                media_type=resp.headers.get("content-type"),
-            )
-    except httpx.HTTPError as e:
-        logger.error(f"Proxy request failed: {e}")
-        raise HTTPException(status_code=502, detail="Failed to proxy request to Grafana")
 
 @router.get("/folders", response_model=List[Folder])
 async def get_folders(current_user: TokenData = Depends(require_permission(Permission.READ_DASHBOARDS))):
@@ -918,17 +543,3 @@ async def delete_folder(
 # ==================================================================
 # Helpers
 # ==================================================================
-
-def _parse_labels(labels_str: Optional[str]) -> Optional[Dict[str, str]]:
-    """Parse JSON labels string from query parameter."""
-    if not labels_str:
-        return None
-    import json
-
-    try:
-        parsed = json.loads(labels_str)
-        if isinstance(parsed, dict):
-            return {str(k): str(v) for k, v in parsed.items()}
-    except (json.JSONDecodeError, ValueError):
-        pass
-    return None

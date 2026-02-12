@@ -4,12 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from config import config
-from models.auth_models import (
-    LoginRequest, RegisterRequest, Token, UserResponse,
-    UserCreate, UserUpdate, UserPasswordUpdate,
-    Group, GroupCreate, GroupUpdate, GroupMembersUpdate, TokenData, Permission, Role, ROLE_PERMISSIONS,
+from models.user_models import (
+    LoginRequest, RegisterRequest, UserResponse,
+    UserCreate, UserUpdate, UserPasswordUpdate
+)
+from models.group_models import (
+    Group, GroupCreate, GroupUpdate, GroupMembersUpdate
+)
+from models.api_key_models import (
     ApiKey, ApiKeyCreate, ApiKeyUpdate
 )
+from models.auth_models import TokenData, Permission, Role, ROLE_PERMISSIONS, Token
 from services.database_auth_service import DatabaseAuthService
 from services.grafana_user_sync_service import GrafanaUserSyncService
 from middleware.rate_limit import enforce_ip_rate_limit, enforce_rate_limit
@@ -372,7 +377,13 @@ async def update_user_password(
                 detail="Cannot update another user's password"
             )
 
-    success = auth_service.update_password(user_id, password_update, current_user.tenant_id)
+    try:
+        success = auth_service.update_password(user_id, password_update, current_user.tenant_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
     if not success:
         raise HTTPException(

@@ -4,6 +4,17 @@ import * as api from '../api'
 
 const AuthContext = createContext(null)
 
+function syncGrafanaAuthCookie(authToken) {
+  if (typeof document === 'undefined') return
+
+  if (!authToken) {
+    document.cookie = 'beobservant_token=; Path=/; Max-Age=0; SameSite=Lax'
+    return
+  }
+
+  document.cookie = `beobservant_token=${encodeURIComponent(authToken)}; Path=/; Max-Age=86400; SameSite=Lax`
+}
+
 /**
  * Derive the org_id that should be used for X-Scope-OrgID headers.
  *
@@ -29,8 +40,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (token) {
       api.setAuthToken(token)
+      syncGrafanaAuthCookie(token)
       loadUser()
     } else {
+      syncGrafanaAuthCookie(null)
       setLoading(false)
     }
   }, [token])
@@ -54,6 +67,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)
     api.setAuthToken(access_token)
+    syncGrafanaAuthCookie(access_token)
     await loadUser()
     return response
   }, [loadUser])
@@ -68,6 +82,7 @@ export function AuthProvider({ children }) {
     setToken(null)
     setUser(null)
     api.setAuthToken(null)
+    syncGrafanaAuthCookie(null)
   }, [])
 
   const refreshUser = useCallback(async () => {

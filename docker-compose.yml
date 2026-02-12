@@ -183,31 +183,46 @@ services:
       GF_INSTALL_PLUGINS: ""
       MIMIR_TENANT_ID: "${DEFAULT_ORG_ID:-Av45ZchZsQdKjN8XyG}"
       
-      # 🌐 SERVER SETTINGS (for proxy subpath)
-      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      # 🌐 SERVER SETTINGS (serve Grafana behind /grafana/)
+      GF_SERVER_ROOT_URL: "http://localhost:8080/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       
       # 🔐 AUTH PROXY SETTINGS
       GF_AUTH_PROXY_ENABLED: "true"
       GF_AUTH_PROXY_HEADER_NAME: "X-WEBAUTH-USER"
       GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
-      GF_AUTH_PROXY_WHITELIST: "172.18.0.0/16"
+      # Capture extra user fields from headers.
+      GF_AUTH_PROXY_HEADERS: "Email:X-WEBAUTH-EMAIL Name:X-WEBAUTH-NAME Role:X-WEBAUTH-ROLE"
+      # Docker networks commonly use private ranges; keep this restrictive to internal networks.
+      GF_AUTH_PROXY_WHITELIST: "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
       
-      # 🔓 ANONYMOUS ACCESS (for embedded dashboards with full edit capability after API auth)
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Editor"
+      # ❌ Disable anonymous auth; keep basic auth for backend service-to-service API calls.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
       
       # 🔐 SECURITY
       GF_SECURITY_ALLOW_EMBEDDING: "true"
-      GF_AUTH_BASIC_ENABLED: "true"
     volumes:
       - ./configs/grafana/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - grafana:/var/lib/grafana
-    ports:
-      - "3000:3000"
+    # Port 3000 NOT exposed - access only via authenticated proxy on 8080
     depends_on:
       - mimir
       - loki
       - tempo
     networks: [obs]
+    restart: unless-stopped
+
+  grafana-proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./configs/grafana-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      grafana:
+        condition: service_started
+      beobservant:
+        condition: service_healthy
+    networks: [obs]
+    ports:
+      - "8080:80"
     restart: unless-stopped

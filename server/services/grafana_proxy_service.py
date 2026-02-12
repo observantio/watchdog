@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class GrafanaProxyService:
     """Proxy service for Grafana with multi-tenant access control, team scoping,
-    hide/show, labels, and UID search."""
+    hide/show, and UID search."""
 
     def __init__(self):
         self.grafana_service = GrafanaService()
@@ -158,8 +158,7 @@ class GrafanaProxyService:
         return [d.grafana_uid for d in datasources], True
 
     # ------------------------------------------------------------------
-    # Dashboard CRUD with hide/show, labels, UID search
-    # ------------------------------------------------------------------
+        # Dashboard CRUD with hide/show, UID search
 
     async def search_dashboards(
         self,
@@ -171,12 +170,11 @@ class GrafanaProxyService:
         tag: Optional[str] = None,
         starred: Optional[bool] = None,
         uid: Optional[str] = None,
-        label_key: Optional[str] = None,
-        label_value: Optional[str] = None,
         team_id: Optional[str] = None,
         show_hidden: bool = False,
+        is_admin: bool = False,
     ) -> List[DashboardSearchResult]:
-        """Search dashboards with multi-tenant filtering, UID search, labels, teams."""
+        """Search dashboards with multi-tenant filtering, UID search, teams."""
 
         # If searching by UID directly, skip the broad Grafana search
         if uid:
@@ -197,7 +195,6 @@ class GrafanaProxyService:
             created_by = db_dash.created_by if db_dash else None
             is_hidden = bool(db_dash and user_id in (db_dash.hidden_by or []))
             is_owned = bool(db_dash and db_dash.created_by == user_id)
-            labels = db_dash.labels or {}
 
             return [DashboardSearchResult(
                 id=dash_data.get("id", 0),
@@ -215,16 +212,24 @@ class GrafanaProxyService:
                 created_by=created_by,
                 is_hidden=is_hidden,
                 is_owned=is_owned,
-                labels=labels,
             )]
 
         all_dashboards = await self.grafana_service.search_dashboards(
             query=query, tag=tag, starred=starred
         )
 
-        accessible_uids, allow_system = self._get_accessible_dashboard_uids(
-            db, user_id, tenant_id, group_ids
-        )
+        # Admin users see ALL dashboards
+        logger.info(f"search_dashboards: user_id={user_id}, is_admin={is_admin}, total_dashboards={len(all_dashboards)}")
+        if is_admin:
+            accessible_uids = {d.uid for d in all_dashboards}
+            allow_system = True
+            logger.info(f"Admin user - granting access to all {len(accessible_uids)} dashboards")
+        else:
+            accessible_uids, allow_system = self._get_accessible_dashboard_uids(
+                db, user_id, tenant_id, group_ids
+            )
+            accessible_uids = set(accessible_uids)
+            logger.info(f"Non-admin user - accessible_uids={len(accessible_uids)}, allow_system={allow_system}")
 
         all_registered_uids = {d.grafana_uid for d in db.query(GrafanaDashboard).all()}
 
@@ -245,15 +250,6 @@ class GrafanaProxyService:
             if db_dash and not show_hidden and user_id in (db_dash.hidden_by or []):
                 continue
 
-            if label_key:
-                if not db_dash:
-                    continue
-                dash_labels = db_dash.labels or {}
-                if label_key not in dash_labels:
-                    continue
-                if label_value and dash_labels.get(label_key) != label_value:
-                    continue
-
             if team_id:
                 if not db_dash:
                     continue
@@ -266,7 +262,6 @@ class GrafanaProxyService:
             payload["created_by"] = db_dash.created_by if db_dash else None
             payload["is_hidden"] = bool(db_dash and user_id in (db_dash.hidden_by or []))
             payload["is_owned"] = bool(db_dash and db_dash.created_by == user_id)
-            payload["labels"] = db_dash.labels or {}
 
             filtered.append(DashboardSearchResult(**payload))
 
@@ -286,10 +281,9 @@ class GrafanaProxyService:
     async def create_dashboard(
         self, db: Session, dashboard_create: DashboardCreate, user_id: str, tenant_id: str,
         group_ids: List[str], visibility: str = "private",
-        shared_group_ids: List[str] = None, labels: Optional[Dict[str, str]] = None,
-        is_admin: bool = False,
+        shared_group_ids: List[str] = None, is_admin: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Create a dashboard with ownership tracking, labels, and Grafana permissions."""
+        """Create a dashboard with ownership tracking and Grafana permissions."""
         try:
             # Validate group visibility settings
             if visibility == "group":
@@ -333,7 +327,7 @@ class GrafanaProxyService:
                 title=dashboard_data.get("title", "Untitled"),
                 folder_uid=folder_uid, visibility=visibility,
                 tags=dashboard_data.get("tags", []),
-                labels=labels or {}, hidden_by=[],
+                hidden_by=[],
             )
 
             if visibility == "group" and shared_group_ids:
@@ -356,7 +350,6 @@ class GrafanaProxyService:
         self, db: Session, uid: str, dashboard_update: DashboardUpdate,
         user_id: str, tenant_id: str, group_ids: List[str],
         visibility: Optional[str] = None, shared_group_ids: Optional[List[str]] = None,
-        labels: Optional[Dict[str, str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Update a dashboard with access control and label support."""
         db_dashboard = self._check_dashboard_access(db, uid, user_id, tenant_id, group_ids, require_write=True)
@@ -370,9 +363,6 @@ class GrafanaProxyService:
         dashboard_data = result.get("dashboard", {})
         db_dashboard.title = dashboard_data.get("title", db_dashboard.title)
         db_dashboard.tags = dashboard_data.get("tags", [])
-
-        if labels is not None:
-            db_dashboard.labels = labels
 
         if visibility:
             db_dashboard.visibility = visibility
@@ -404,8 +394,7 @@ class GrafanaProxyService:
         return success
 
     # ------------------------------------------------------------------
-    # Dashboard hide/show & labels
-    # ------------------------------------------------------------------
+        # Dashboard hide/show
 
     def toggle_dashboard_hidden(self, db: Session, uid: str, user_id: str, tenant_id: str, hidden: bool) -> bool:
         db_dash = db.query(GrafanaDashboard).filter(
@@ -422,23 +411,13 @@ class GrafanaProxyService:
         db.commit()
         return True
 
-    def update_dashboard_labels(self, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str], labels: Dict[str, str]) -> bool:
-        db_dash = self._check_dashboard_access(db, uid, user_id, tenant_id, group_ids, require_write=True)
-        if not db_dash:
-            return False
-        db_dash.labels = labels
-        db.commit()
-        return True
-
     # ------------------------------------------------------------------
-    # Datasource CRUD with hide/show, labels, UID search
-    # ------------------------------------------------------------------
+        # Datasource CRUD with hide/show, UID search
 
     async def get_datasources(
         self, db: Session, user_id: str, tenant_id: str, group_ids: List[str],
-        uid: Optional[str] = None, label_key: Optional[str] = None,
-        label_value: Optional[str] = None, team_id: Optional[str] = None,
-        show_hidden: bool = False,
+        uid: Optional[str] = None, team_id: Optional[str] = None,
+        show_hidden: bool = False, is_admin: bool = False,
     ) -> List[Datasource]:
         """Get datasources with filtering."""
         if uid:
@@ -455,11 +434,18 @@ class GrafanaProxyService:
             payload["created_by"] = db_ds.created_by if db_ds else None
             payload["is_hidden"] = bool(db_ds and user_id in (db_ds.hidden_by or []))
             payload["is_owned"] = bool(db_ds and db_ds.created_by == user_id)
-            payload["labels"] = db_ds.labels or {} if db_ds else {}
             return [Datasource(**payload)]
 
         all_datasources = await self.grafana_service.get_datasources()
-        accessible_uids, allow_system = self._get_accessible_datasource_uids(db, user_id, tenant_id, group_ids)
+        
+        # Admin users see ALL datasources
+        if is_admin:
+            accessible_uids = {ds.uid for ds in all_datasources}
+            allow_system = True
+        else:
+            accessible_uids, allow_system = self._get_accessible_datasource_uids(db, user_id, tenant_id, group_ids)
+            accessible_uids = set(accessible_uids)
+        
         all_registered_uids = {ds.grafana_uid for ds in db.query(GrafanaDatasource).all()}
         db_datasources = {d.grafana_uid: d for d in db.query(GrafanaDatasource).filter(GrafanaDatasource.tenant_id == tenant_id).all()}
 
@@ -470,14 +456,6 @@ class GrafanaProxyService:
             db_ds = db_datasources.get(ds.uid)
             if db_ds and not show_hidden and user_id in (db_ds.hidden_by or []):
                 continue
-            if label_key:
-                if not db_ds:
-                    continue
-                ds_labels = db_ds.labels or {}
-                if label_key not in ds_labels:
-                    continue
-                if label_value and ds_labels.get(label_key) != label_value:
-                    continue
             if team_id:
                 if not db_ds:
                     continue
@@ -489,7 +467,6 @@ class GrafanaProxyService:
             payload["created_by"] = db_ds.created_by if db_ds else None
             payload["is_hidden"] = bool(db_ds and user_id in (db_ds.hidden_by or []))
             payload["is_owned"] = bool(db_ds and db_ds.created_by == user_id)
-            payload["labels"] = db_ds.labels or {} if db_ds else {}
 
             filtered.append(Datasource(**payload))
 
@@ -505,8 +482,7 @@ class GrafanaProxyService:
     async def create_datasource(
         self, db: Session, datasource_create: DatasourceCreate, user_id: str, tenant_id: str,
         group_ids: List[str], visibility: str = "private",
-        shared_group_ids: List[str] = None, labels: Optional[Dict[str, str]] = None,
-        is_admin: bool = False,
+        shared_group_ids: List[str] = None, is_admin: bool = False,
     ) -> Optional[Datasource]:
         try:
             if datasource_create.type in {"prometheus", "loki", "tempo"}:
@@ -538,7 +514,7 @@ class GrafanaProxyService:
                 tenant_id=tenant_id, created_by=user_id,
                 grafana_uid=datasource.uid, grafana_id=datasource.id,
                 name=datasource.name, type=datasource.type,
-                visibility=visibility, labels=labels or {}, hidden_by=[],
+                visibility=visibility, hidden_by=[],
             )
             if visibility == "group" and shared_group_ids:
                 groups = db.query(Group).filter(Group.id.in_(shared_group_ids), Group.tenant_id == tenant_id).all()
@@ -555,7 +531,6 @@ class GrafanaProxyService:
         self, db: Session, uid: str, datasource_update: DatasourceUpdate,
         user_id: str, tenant_id: str, group_ids: List[str],
         visibility: Optional[str] = None, shared_group_ids: Optional[List[str]] = None,
-        labels: Optional[Dict[str, str]] = None,
     ) -> Optional[Datasource]:
         db_datasource = self._check_datasource_access(db, uid, user_id, tenant_id, group_ids, require_write=True)
         if not db_datasource:
@@ -576,8 +551,6 @@ class GrafanaProxyService:
 
         db_datasource.name = datasource.name
         db_datasource.type = datasource.type
-        if labels is not None:
-            db_datasource.labels = labels
 
         if visibility:
             if visibility == "group" and shared_group_ids is not None:
@@ -608,8 +581,7 @@ class GrafanaProxyService:
         return success
 
     # ------------------------------------------------------------------
-    # Datasource hide/show & labels
-    # ------------------------------------------------------------------
+        # Datasource hide/show
 
     def toggle_datasource_hidden(self, db: Session, uid: str, user_id: str, tenant_id: str, hidden: bool) -> bool:
         db_ds = db.query(GrafanaDatasource).filter(GrafanaDatasource.grafana_uid == uid, GrafanaDatasource.tenant_id == tenant_id).first()
@@ -624,45 +596,27 @@ class GrafanaProxyService:
         db.commit()
         return True
 
-    def update_datasource_labels(self, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str], labels: Dict[str, str]) -> bool:
-        db_ds = self._check_datasource_access(db, uid, user_id, tenant_id, group_ids, require_write=True)
-        if not db_ds:
-            return False
-        db_ds.labels = labels
-        db.commit()
-        return True
-
     # ------------------------------------------------------------------
     # Metadata for filtering UI
     # ------------------------------------------------------------------
 
     def get_dashboard_metadata(self, db: Session, tenant_id: str) -> Dict[str, Any]:
         dashboards = db.query(GrafanaDashboard).filter(GrafanaDashboard.tenant_id == tenant_id).all()
-        all_labels: Dict[str, set] = {}
         all_teams = set()
         for d in dashboards:
-            for k, v in (d.labels or {}).items():
-                all_labels.setdefault(k, set()).add(v)
             for g in d.shared_groups:
                 all_teams.add(g.id)
         return {
-            "label_keys": sorted(list(all_labels.keys())),
-            "label_values": {k: sorted(v) for k, v in all_labels.items()},
             "team_ids": sorted(all_teams),
         }
 
     def get_datasource_metadata(self, db: Session, tenant_id: str) -> Dict[str, Any]:
         datasources = db.query(GrafanaDatasource).filter(GrafanaDatasource.tenant_id == tenant_id).all()
-        all_labels: Dict[str, set] = {}
         all_teams = set()
         for ds in datasources:
-            for k, v in (ds.labels or {}).items():
-                all_labels.setdefault(k, set()).add(v)
             for g in ds.shared_groups:
                 all_teams.add(g.id)
         return {
-            "label_keys": sorted(list(all_labels.keys())),
-            "label_values": {k: sorted(v) for k, v in all_labels.items()},
             "team_ids": sorted(all_teams),
         }
 

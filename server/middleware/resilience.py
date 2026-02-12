@@ -34,6 +34,19 @@ def with_retry(
                 try:
                     return await func(*args, **kwargs)
                 except (httpx.HTTPError, asyncio.TimeoutError) as e:
+                    # Do not retry on deterministic client errors (4xx HTTP responses).
+                    # httpx raises an HTTPStatusError for non-2xx responses when
+                    # `response.raise_for_status()` is used by callers.
+                    if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
+                        status_code = e.response.status_code
+                        if 400 <= status_code < 500:
+                            # Client error — fail fast and don't retry
+                            logger.debug(
+                                "%s: non-retriable HTTPStatusError %s — failing fast",
+                                func.__name__, status_code
+                            )
+                            raise
+
                     last_exception = e
                     if attempt < max_retries:
                         wait_time = backoff * (2 ** attempt)
@@ -47,7 +60,7 @@ def with_retry(
                             f"All {max_retries + 1} attempts failed for "
                             f"{func.__name__}: {e}"
                         )
-            
+
             raise last_exception
         
         return wrapper

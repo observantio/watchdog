@@ -55,6 +55,7 @@ function AppContent() {
   const [info, setInfo] = useState(null)
   const { isAuthenticated, user, refreshUser } = useAuth()
   const [showPasswordChange, setShowPasswordChange] = useState(false)
+  const location = useLocation()
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -142,9 +143,11 @@ function AppContent() {
         </Suspense>
       </main>
 
-      <footer className="container text-center text-xs text-sre-text-muted mt-8 mb-8">
-        © Be Observant — MIT License
-      </footer>
+      {location.pathname !== '/login' && (
+        <footer className="container text-center text-xs text-sre-text-muted mt-8 mb-8">
+          © Be Observant — MIT License
+        </footer>
+      )}
     </div>
   )
 }

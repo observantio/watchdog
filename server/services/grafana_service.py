@@ -33,17 +33,24 @@ class GrafanaService:
         """
         self.grafana_url = grafana_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
+        self._using_api_key = False
+        self._basic_auth_header: Optional[str] = None
         
         # Prefer API key (Bearer token) over Basic auth for better security
         api_key = api_key or config.GRAFANA_API_KEY
         if api_key:
             self.auth_header = f"Bearer {api_key}"
+            self._using_api_key = True
             logger.info("Using Grafana API key authentication")
         else:
             credentials = f"{username}:{password}"
             encoded = base64.b64encode(credentials.encode()).decode()
             self.auth_header = f"Basic {encoded}"
             logger.info("Using Grafana Basic authentication (consider using API key)")
+
+        credentials = f"{username}:{password}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        self._basic_auth_header = f"Basic {encoded}"
         
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout),
@@ -56,6 +63,27 @@ class GrafanaService:
             "Authorization": self.auth_header,
             "Content-Type": "application/json"
         }
+
+    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Perform request and fallback to basic auth if API key is invalid."""
+        url = f"{self.grafana_url}{path}"
+        headers = kwargs.pop("headers", None) or self._get_headers()
+
+        response = await self._client.request(method, url, headers=headers, **kwargs)
+
+        if (
+            response.status_code == 401
+            and self._using_api_key
+            and self._basic_auth_header
+            and headers.get("Authorization", "").startswith("Bearer ")
+        ):
+            logger.warning("Grafana API key rejected (401). Falling back to basic auth.")
+            self.auth_header = self._basic_auth_header
+            self._using_api_key = False
+            fallback_headers = self._get_headers()
+            response = await self._client.request(method, url, headers=fallback_headers, **kwargs)
+
+        return response
     
     @with_retry()
     @with_timeout()
@@ -88,11 +116,7 @@ class GrafanaService:
             params["starred"] = starred
         
         try:
-            response = await self._client.get(
-                f"{self.grafana_url}/api/search",
-                params=params,
-                headers=self._get_headers()
-            )
+            response = await self._request("GET", "/api/search", params=params)
             response.raise_for_status()
             data = response.json()
             
@@ -114,10 +138,7 @@ class GrafanaService:
             Dashboard data or None if not found
         """
         try:
-            response = await self._client.get(
-                f"{self.grafana_url}/api/dashboards/uid/{uid}",
-                headers=self._get_headers()
-            )
+            response = await self._request("GET", f"/api/dashboards/uid/{uid}")
             response.raise_for_status()
             return response.json()
             
@@ -139,11 +160,7 @@ class GrafanaService:
         try:
             data = dashboard_create.model_dump(by_alias=True, exclude_none=True)
             
-            response = await self._client.post(
-                f"{self.grafana_url}/api/dashboards/db",
-                json=data,
-                headers=self._get_headers()
-            )
+            response = await self._request("POST", "/api/dashboards/db", json=data)
             response.raise_for_status()
             return response.json()
             
@@ -178,11 +195,7 @@ class GrafanaService:
         try:
             data = dashboard_update.model_dump(by_alias=True, exclude_none=True)
             
-            response = await self._client.post(
-                f"{self.grafana_url}/api/dashboards/db",
-                json=data,
-                headers=self._get_headers()
-            )
+            response = await self._request("POST", "/api/dashboards/db", json=data)
             response.raise_for_status()
             return response.json()
             
@@ -202,10 +215,7 @@ class GrafanaService:
             True if successful, False otherwise
         """
         try:
-            response = await self._client.delete(
-                f"{self.grafana_url}/api/dashboards/uid/{uid}",
-                headers=self._get_headers()
-            )
+            response = await self._request("DELETE", f"/api/dashboards/uid/{uid}")
             response.raise_for_status()
             return True
             
@@ -224,10 +234,7 @@ class GrafanaService:
             List of Datasource objects
         """
         try:
-            response = await self._client.get(
-                f"{self.grafana_url}/api/datasources",
-                headers=self._get_headers()
-            )
+            response = await self._request("GET", "/api/datasources")
             response.raise_for_status()
             data = response.json()
             
@@ -249,10 +256,7 @@ class GrafanaService:
             Datasource object or None if not found
         """
         try:
-            response = await self._client.get(
-                f"{self.grafana_url}/api/datasources/uid/{uid}",
-                headers=self._get_headers()
-            )
+            response = await self._request("GET", f"/api/datasources/uid/{uid}")
             response.raise_for_status()
             data = response.json()
             
@@ -274,10 +278,7 @@ class GrafanaService:
             Datasource object or None if not found
         """
         try:
-            response = await self._client.get(
-                f"{self.grafana_url}/api/datasources/name/{name}",
-                headers=self._get_headers()
-            )
+            response = await self._request("GET", f"/api/datasources/name/{name}")
             response.raise_for_status()
             data = response.json()
             
@@ -301,11 +302,7 @@ class GrafanaService:
         try:
             data = datasource.model_dump(by_alias=True, exclude_none=True, exclude={"org_id"})
             
-            response = await self._client.post(
-                f"{self.grafana_url}/api/datasources",
-                json=data,
-                headers=self._get_headers()
-            )
+            response = await self._request("POST", "/api/datasources", json=data)
             response.raise_for_status()
             result = response.json()
             
@@ -352,11 +349,7 @@ class GrafanaService:
         try:
             data = datasource_update.model_dump(by_alias=True, exclude_none=True, exclude={"org_id"})
             
-            response = await self._client.put(
-                f"{self.grafana_url}/api/datasources/uid/{uid}",
-                json=data,
-                headers=self._get_headers()
-            )
+            response = await self._request("PUT", f"/api/datasources/uid/{uid}", json=data)
             response.raise_for_status()
             result = response.json()
             
@@ -391,10 +384,7 @@ class GrafanaService:
             True if successful, False otherwise
         """
         try:
-            response = await self._client.delete(
-                f"{self.grafana_url}/api/datasources/uid/{uid}",
-                headers=self._get_headers()
-            )
+            response = await self._request("DELETE", f"/api/datasources/uid/{uid}")
             response.raise_for_status()
             return True
             
@@ -411,10 +401,7 @@ class GrafanaService:
             List of Folder objects
         """
         try:
-            response = await self._client.get(
-                f"{self.grafana_url}/api/folders",
-                headers=self._get_headers()
-            )
+            response = await self._request("GET", "/api/folders")
             response.raise_for_status()
             data = response.json()
             
@@ -436,11 +423,7 @@ class GrafanaService:
             Created Folder object or None if error
         """
         try:
-            response = await self._client.post(
-                f"{self.grafana_url}/api/folders",
-                json={"title": title},
-                headers=self._get_headers()
-            )
+            response = await self._request("POST", "/api/folders", json={"title": title})
             response.raise_for_status()
             data = response.json()
             
@@ -462,10 +445,7 @@ class GrafanaService:
             True if successful, False otherwise
         """
         try:
-            response = await self._client.delete(
-                f"{self.grafana_url}/api/folders/{uid}",
-                headers=self._get_headers()
-            )
+            response = await self._request("DELETE", f"/api/folders/{uid}")
             response.raise_for_status()
             return True
             

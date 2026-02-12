@@ -236,7 +236,7 @@ export default function UsersPage() {
                 else if (u.role === 'user') roleBorderColor = 'border-yellow-500';
                 else if (u.role === 'viewer') roleBorderColor = 'border-green-500';
                 return (
-                <Card key={u.id} className="p-0 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm rounded-lg group">
+                <Card key={u.id} className={`p-0 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 ${roleBorderColor} hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm rounded-lg group`}>
                   <div className="p-6">
                     <div className="flex items-start gap-4 mb-4">
                       <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-sre-primary/20 to-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold border border-sre-border/50 flex-shrink-0">

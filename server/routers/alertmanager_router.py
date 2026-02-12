@@ -6,17 +6,17 @@ import logging
 import httpx
 from urllib.parse import quote
 
-from models.alertmanager_models import (
-    Alert, AlertGroup, Silence, SilenceCreate, SilenceCreateRequest, Visibility,
-    AlertManagerStatus, AlertRule, AlertRuleCreate,
-    NotificationChannel, NotificationChannelCreate
-)
+from models.alerts import Alert, AlertGroup, AlertStatus, AlertState
+from models.silences import Silence, SilenceCreate, SilenceCreateRequest, Visibility
+from models.receivers import AlertManagerStatus
+from models.rules import AlertRule, AlertRuleCreate
+from models.channels import NotificationChannel, NotificationChannelCreate
 from services.alertmanager_service import AlertManagerService
 from services.storage_db_service import DatabaseStorageService
 from services.notification_service import NotificationService
 from config import config, constants
 from middleware.rate_limit import enforce_ip_rate_limit
-from models.alertmanager_models import AlertStatus, AlertState
+# AlertStatus and AlertState are already imported from models.alerts
 from datetime import datetime, timezone
 from models.auth_models import TokenData, Permission
 

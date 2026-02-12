@@ -37,10 +37,8 @@ run_column_migration("alert_rules", "org_id", "VARCHAR")
 # Grafana enterprise feature columns
 run_column_migration("users", "grafana_user_id", "INTEGER")
 run_column_migration("groups", "grafana_team_id", "INTEGER")
-run_column_migration("grafana_dashboards", "labels", "JSON DEFAULT '{}'")
 run_column_migration("grafana_dashboards", "is_hidden", "BOOLEAN DEFAULT FALSE")
 run_column_migration("grafana_dashboards", "hidden_by", "JSON DEFAULT '[]'")
-run_column_migration("grafana_datasources", "labels", "JSON DEFAULT '{}'")
 run_column_migration("grafana_datasources", "is_hidden", "BOOLEAN DEFAULT FALSE")
 run_column_migration("grafana_datasources", "hidden_by", "JSON DEFAULT '[]'")
 
@@ -130,31 +128,6 @@ async def general_exception_handler(
         content={"detail": constants.ERROR_INTERNAL},
     )
 
-
-@app.on_event("shutdown")
-async def _shutdown_http_clients() -> None:
-    """Close shared httpx.AsyncClient instances for a clean shutdown."""
-    clients = []
-    for svc in (
-        getattr(tempo_router, "tempo_service", None),
-        getattr(loki_router, "loki_service", None),
-        getattr(alertmanager_router, "alertmanager_service", None),
-        getattr(alertmanager_router, "notification_service", None),
-        getattr(grafana_router, "grafana_service", None),
-        getattr(agents_router, "loki_service", None),
-        getattr(agents_router, "tempo_service", None),
-    ):
-        client = getattr(svc, "_client", None)
-        if client is not None:
-            clients.append(client)
-
-    extra = getattr(agents_router, "_mimir_client", None)
-    if extra is not None:
-        clients.append(extra)
-
-    unique = {id(c): c for c in clients}.values()
-    if unique:
-        await asyncio.gather(*(c.aclose() for c in unique), return_exceptions=True)
 
 app.include_router(auth_router.router)
 app.include_router(gateway_router.router)

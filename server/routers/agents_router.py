@@ -10,9 +10,6 @@ from fastapi.responses import JSONResponse
 
 from models.agent_models import AgentHeartbeat
 from services.agent_service import AgentService
-from services.loki_service import LokiService
-from services.tempo_service import TempoService
-from models.tempo_models import TraceQuery
 from models.auth_models import TokenData
 from config import config
 
@@ -20,7 +17,7 @@ from routers.auth_router import get_current_user, auth_service
 from middleware.rate_limit import enforce_ip_rate_limit
 
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
-from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
+
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 
 logger = logging.getLogger(__name__)
@@ -30,8 +27,6 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 _otlp_router = APIRouter(tags=["otlp"])
 
 agent_service = AgentService()
-loki_service = LokiService()
-tempo_service = TempoService()
 _mimir_client = httpx.AsyncClient(
     timeout=httpx.Timeout(config.DEFAULT_TIMEOUT),
     limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
@@ -105,35 +100,9 @@ async def _key_activity(key_value: str) -> Dict[str, Any]:
     # Use same 1-hour window as dashboard
     start_ns = int((now - timedelta(hours=1)).timestamp() * 1_000_000_000)
     end_ns = int(now.timestamp() * 1_000_000_000)
-    start_us = int((now - timedelta(hours=1)).timestamp() * 1_000_000)
-    end_us = int(now.timestamp() * 1_000_000)
 
-    logs_active = False
-    traces_active = False
     metrics_active = False
-    logs_count = 0
-    traces_count = 0
     metrics_count = 0
-
-    try:
-        vol = await loki_service.get_log_volume("{service_name=~\".+\"}", start=start_ns, end=end_ns, step=60, tenant_id=key_value)
-        if vol and getattr(vol, "data", None):
-            for series in vol.data.result:
-                for value in series.values:
-                    try:
-                        logs_count += int(float(value[1]))
-                    except Exception:
-                        continue
-        logs_active = logs_count > 0
-    except Exception:
-        logs_active = False
-
-    try:
-        query = TraceQuery(start=start_us, end=end_us, limit=config.MAX_QUERY_LIMIT)
-        traces_count = await tempo_service.count_traces(query, tenant_id=key_value)
-        traces_active = traces_count > 0
-    except Exception:
-        traces_active = False
 
     try:
         resp = await _mimir_client.get(
@@ -154,11 +123,7 @@ async def _key_activity(key_value: str) -> Dict[str, Any]:
         metrics_active = False
 
     return {
-        "logs_active": logs_active,
-        "traces_active": traces_active,
         "metrics_active": metrics_active,
-        "logs_count": logs_count,
-        "traces_count": traces_count,
         "metrics_count": metrics_count,
     }
 
@@ -185,15 +150,12 @@ async def list_active_agents(current_user: TokenData = Depends(get_current_user)
                 "success": False,
                 "clean": False,
                 "host_names": [],
-                "logs_active": False,
-                "traces_active": False,
                 "metrics_active": False,
-                "logs_count": 0,
-                "traces_count": 0
+                "metrics_count": 0
             })
             continue
 
-        active = bool(result.get("logs_active") or result.get("traces_active") or result.get("metrics_active"))
+        active = bool(result.get("metrics_active"))
         host_names = sorted({a.host_name for a in recent_agents if a.tenant_id == key.key and a.host_name})
         activity.append({
             "name": key.name,
@@ -242,30 +204,6 @@ async def otlp_traces(request: Request):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"detail": "Invalid OTLP traces payload"},
-        )
-
-
-@_otlp_router.post("/v1/logs")
-async def otlp_logs(request: Request):
-    """Receive OTLP log exports and update agent registry."""
-    enforce_ip_rate_limit(
-        request,
-        scope="otlp_logs",
-        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
-        window_seconds=60,
-    )
-    _require_otlp_ingest_token(request)
-    body = await request.body()
-    try:
-        msg = ExportLogsServiceRequest()
-        msg.ParseFromString(body)
-        count = _update_agents_from_resources(msg.resource_logs, "logs")
-        return {"status": "ok", "agents_updated": count}
-    except Exception as exc:
-        logger.warning("Failed to parse OTLP logs payload: %s", exc)
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": "Invalid OTLP logs payload"},
         )
 
 

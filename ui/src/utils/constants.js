@@ -4,7 +4,7 @@
 
 // API Configuration
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4319'
-export const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL || 'https://localhost/grafana'
+export const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL || 'http://localhost:8080/grafana'
 // External service endpoints (configurable via Vite env)
 export const LOKI_OTLP_ENDPOINT = import.meta.env.VITE_LOKI_OTLP_ENDPOINT || 'http://loki:3100/otlp'
 export const LOKI_BASE = import.meta.env.VITE_LOKI_URL || 'http://loki:3100'

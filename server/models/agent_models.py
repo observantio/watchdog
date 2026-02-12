@@ -2,14 +2,12 @@ from datetime import datetime
 from typing import Dict, Optional, List
 from pydantic import BaseModel, Field
 
-
 class AgentHeartbeat(BaseModel):
     name: str = Field(..., description="Agent name")
     tenant_id: str = Field(..., description="Tenant ID (API key) associated with the agent")
     signal: Optional[str] = Field(None, description="Signal type (logs, traces, metrics)")
     attributes: Dict[str, str] = Field(default_factory=dict)
     timestamp: Optional[datetime] = None
-
 
 class AgentInfo(BaseModel):
     id: str

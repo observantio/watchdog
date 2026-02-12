@@ -484,13 +484,6 @@ export async function toggleDashboardHidden(uid, hidden = true) {
     body: JSON.stringify({ hidden })
   })
 }
-export async function updateDashboardLabels(uid, labels) {
-  return request(`/api/grafana/dashboards/${encodeURIComponent(uid)}/labels`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(labels)
-  })
-}
 export async function getDashboardFilterMeta() {
   return request('/api/grafana/dashboards/meta/filters')
 }
@@ -534,13 +527,6 @@ export async function toggleDatasourceHidden(uid, hidden = true) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hidden })
-  })
-}
-export async function updateDatasourceLabels(uid, labels) {
-  return request(`/api/grafana/datasources/${encodeURIComponent(uid)}/labels`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(labels)
   })
 }
 export async function getDatasourceFilterMeta() {

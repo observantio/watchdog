@@ -74,6 +74,9 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
       } else {
         onClose()
       }
+    } catch (error) {
+      // Error toast is handled automatically by the API error handler
+      console.error('Password update failed:', error)
     } finally {
       setLoading(false)
     }

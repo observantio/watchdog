@@ -10,9 +10,9 @@ export default function GrafanaContent({
   onSearch, onClearFilters, hasActiveFilters,
   dashboardMeta, datasourceMeta,
   openDashboardEditor, onOpenGrafana, onDeleteDashboard,
-  onToggleDashboardHidden, onEditDashboardLabels,
+  onToggleDashboardHidden,
   openDatasourceEditor, onDeleteDatasource,
-  onToggleDatasourceHidden, onEditDatasourceLabels,
+  onToggleDatasourceHidden,
   getDatasourceIcon, onCreateFolder, onDeleteFolder
 }) {
   if (loading) {
@@ -40,7 +40,6 @@ export default function GrafanaContent({
         onOpenGrafana={onOpenGrafana}
         onDeleteDashboard={onDeleteDashboard}
         onToggleHidden={onToggleDashboardHidden}
-        onEditLabels={onEditDashboardLabels}
       />
     )
   }
@@ -59,7 +58,6 @@ export default function GrafanaContent({
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={onDeleteDatasource}
         onToggleHidden={onToggleDatasourceHidden}
-        onEditLabels={onEditDatasourceLabels}
         getDatasourceIcon={getDatasourceIcon}
       />
     )

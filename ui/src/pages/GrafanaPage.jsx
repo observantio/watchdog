@@ -3,9 +3,8 @@ import {
   searchDashboards, createDashboard, updateDashboard, deleteDashboard,
   getDatasources, createDatasource, updateDatasource, deleteDatasource,
   getFolders, createFolder, deleteFolder, getGroups,
-  toggleDashboardHidden, updateDashboardLabels,
-  toggleDatasourceHidden, updateDatasourceLabels,
-  getDashboardFilterMeta, getDatasourceFilterMeta
+  toggleDashboardHidden, toggleDatasourceHidden,
+  getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard
 } from '../api'
 import {  Button, Input, Modal, ConfirmDialog, Select, Checkbox } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
@@ -13,7 +12,7 @@ import HelpTooltip from '../components/HelpTooltip'
 import GrafanaTabs from '../components/grafana/GrafanaTabs'
 import GrafanaContent from '../components/grafana/GrafanaContent'
 import { useAuth } from '../contexts/AuthContext'
-import { API_BASE, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, DATASOURCE_TYPES as DS_TYPES, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS } from '../utils/constants'
+import { API_BASE, GRAFANA_URL, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, DATASOURCE_TYPES as DS_TYPES, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS } from '../utils/constants'
 
 const DATASOURCE_TYPES = DS_TYPES
   .filter(dt => ['prometheus', 'loki', 'tempo'].includes(dt.value))
@@ -38,22 +37,14 @@ export default function GrafanaPage() { // NOSONAR
   const [groups, setGroups] = useState([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [dashboardMeta, setDashboardMeta] = useState({})
+  const [datasourceMeta, setDatasourceMeta] = useState({})
 
   // Filter state
   const [filters, setFilters] = useState({
-    uid: '',
-    labelKey: '',
-    labelValue: '',
     teamId: '',
     showHidden: false,
   })
-  const [dashboardMeta, setDashboardMeta] = useState({ label_keys: [], label_values: {}, team_ids: [] })
-  const [datasourceMeta, setDatasourceMeta] = useState({ label_keys: [], label_values: {}, team_ids: [] })
-
-  // Label editor state
-  const [labelEditor, setLabelEditor] = useState({ isOpen: false, type: '', uid: '', labels: {} })
-  const [newLabelKey, setNewLabelKey] = useState('')
-  const [newLabelValue, setNewLabelValue] = useState('')
 
   const toast = useToast()
 
@@ -123,27 +114,42 @@ export default function GrafanaPage() { // NOSONAR
   // Confirm and open Grafana in a new tab (dashboard or proxy)
   function confirmOpenInGrafana() {
     const { path } = grafanaConfirmDialog || {}
-    const base = API_BASE.replace(/\/$/, '')
-
-    // Extract dashboard UID for iframe embedding with full edit capability
-    if (path && path.includes('/d/')) {
-      const match = path.match(/\/d\/([^\/]+)(?:\/([^\/\?]+))?/)
-      if (match) {
-        const uid = match[1]
-        const slug = match[2] || ''
-        const token = localStorage.getItem('auth_token')
-        const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
-        window.open(`${base}/api/grafana/view/d/${uid}${slug ? '/' + slug : ''}${tokenParam}`, '_blank', 'noopener,noreferrer')
-        setGrafanaConfirmDialog({ isOpen: false, path: null })
-        return
+    let rawPath = '/dashboards'
+    if (typeof path === 'string' && path.trim()) {
+      const trimmedPath = path.trim()
+      if (trimmedPath.startsWith('http://') || trimmedPath.startsWith('https://')) {
+        try {
+          const absoluteUrl = new URL(trimmedPath)
+          rawPath = `${absoluteUrl.pathname || '/'}${absoluteUrl.search || ''}${absoluteUrl.hash || ''}`
+        } catch {
+          rawPath = '/dashboards'
+        }
+      } else {
+        rawPath = trimmedPath.startsWith('/') ? trimmedPath : `/${trimmedPath}`
       }
     }
-
-    // For other paths, use proxy
-    const safePath = path?.startsWith('/') ? path : `/${path || ''}`
+    
+    // Normalize: strip any /grafana prefix, ensure leading slash, fallback to dashboards
+    let normalizedPath = rawPath.replace(/^\/grafana(?=\/|$)/, '') || '/dashboards'
+    
+    // Ensure path starts with /
+    if (!normalizedPath.startsWith('/')) {
+      normalizedPath = `/${normalizedPath}`
+    }
+    
     const token = localStorage.getItem('auth_token')
-    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
-    window.open(`${base}/api/grafana/proxy${safePath}${tokenParam}`, '_blank', 'noopener,noreferrer')
+
+    // ALWAYS use port 8080 (the authenticated proxy) - never allow direct Grafana access
+    const proxyOrigin = `${window.location.protocol}//${window.location.hostname}:8080`
+    const targetPath = `/grafana${normalizedPath}`
+    
+    // Always use bootstrap flow to set auth cookie before redirect
+    const launchUrl = token
+      ? `${proxyOrigin}/grafana/bootstrap?token=${encodeURIComponent(token)}&next=${encodeURIComponent(targetPath)}`
+      : `${proxyOrigin}${targetPath}`
+
+    // Open in new tab - user will be authenticated via proxy on port 8080
+    window.open(launchUrl, '_blank', 'noopener,noreferrer')
     setGrafanaConfirmDialog({ isOpen: false, path: null })
   }
 
@@ -152,7 +158,6 @@ export default function GrafanaPage() { // NOSONAR
   useEffect(() => {
     loadData()
     loadGroups()
-    loadFilterMeta()
   }, [activeTab])
 
   async function loadGroups() {
@@ -162,45 +167,34 @@ export default function GrafanaPage() { // NOSONAR
     } catch { /* silent */ }
   }
 
-  async function loadFilterMeta() {
-    try {
-      const [dbMeta, dsMeta] = await Promise.all([
-        getDashboardFilterMeta().catch(() => ({})),
-        getDatasourceFilterMeta().catch(() => ({})),
-      ])
-      setDashboardMeta(dbMeta || {})
-      setDatasourceMeta(dsMeta || {})
-    } catch { /* silent */ }
-  }
-
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
       if (activeTab === 'dashboards') {
-        const [dashboardsData, foldersData, datasourcesData] = await Promise.all([
+        const [dashboardsData, foldersData, datasourcesData, dashboardMetaData] = await Promise.all([
           searchDashboards({
             query: query || undefined,
-            uid: filters.uid || undefined,
-            labelKey: filters.labelKey || undefined,
-            labelValue: filters.labelValue || undefined,
             teamId: filters.teamId || undefined,
             showHidden: filters.showHidden,
           }).catch(() => []),
           getFolders().catch(() => []),
           getDatasources().catch(() => []),
+          getDashboardFilterMeta().catch(() => ({})),
         ])
         setDashboards(dashboardsData)
         setFolders(foldersData)
         setDatasources(datasourcesData)
+        setDashboardMeta(dashboardMetaData)
       } else if (activeTab === 'datasources') {
-        const datasourcesData = await getDatasources({
-          uid: filters.uid || undefined,
-          labelKey: filters.labelKey || undefined,
-          labelValue: filters.labelValue || undefined,
-          teamId: filters.teamId || undefined,
-          showHidden: filters.showHidden,
-        }).catch(() => [])
+        const [datasourcesData, datasourceMetaData] = await Promise.all([
+          getDatasources({
+            teamId: filters.teamId || undefined,
+            showHidden: filters.showHidden,
+          }).catch(() => []),
+          getDatasourceFilterMeta().catch(() => ({})),
+        ])
         setDatasources(datasourcesData)
+        setDatasourceMeta(datasourceMetaData)
       } else if (activeTab === 'folders') {
         const foldersData = await getFolders().catch(() => [])
         setFolders(foldersData)
@@ -218,7 +212,7 @@ export default function GrafanaPage() { // NOSONAR
   }
 
   function clearFilters() {
-    setFilters({ uid: '', labelKey: '', labelValue: '', teamId: '', showHidden: false })
+    setFilters({ teamId: '', showHidden: false })
     setQuery('')
   }
 
@@ -261,60 +255,36 @@ export default function GrafanaPage() { // NOSONAR
     })
   }
 
-  // ---- Labels ----
-  function openLabelEditor(type, uid, currentLabels) {
-    setLabelEditor({ isOpen: true, type, uid, labels: { ...(currentLabels || {}) } })
-    setNewLabelKey('')
-    setNewLabelValue('')
-  }
-
-  function addLabel() {
-    const key = newLabelKey.trim()
-    const val = newLabelValue.trim()
-    if (!key) return
-    setLabelEditor(prev => ({
-      ...prev,
-      labels: { ...prev.labels, [key]: val }
-    }))
-    setNewLabelKey('')
-    setNewLabelValue('')
-  }
-
-  function removeLabel(key) {
-    setLabelEditor(prev => {
-      const next = { ...prev.labels }
-      delete next[key]
-      return { ...prev, labels: next }
-    })
-  }
-
-  async function saveLabelEditor() {
-    try {
-      if (labelEditor.type === 'dashboard') {
-        await updateDashboardLabels(labelEditor.uid, labelEditor.labels)
-      } else {
-        await updateDatasourceLabels(labelEditor.uid, labelEditor.labels)
-      }
-      toast.success('Labels updated')
-      setLabelEditor({ isOpen: false, type: '', uid: '', labels: {} })
-      loadData()
-      loadFilterMeta()
-    } catch (e) { handleApiError(e) }
-  }
-
   // ---- Dashboard CRUD ----
   function openDashboardEditor(dashboard = null) {
     if (dashboard) {
       setEditingDashboard(dashboard)
+
+      // Try to extract datasource UID from the lightweight dashboard object first
+      const dsFromTemplating = dashboard?.templating?.list?.find(v => v?.type === 'datasource')?.current?.value || ''
+
       setDashboardForm({
         title: dashboard.title || '',
         tags: dashboard.tags?.join(', ') || '',
         folderId: dashboard.folderId || 0,
         refresh: dashboard.refresh || '30s',
-        datasourceUid: '',
+        datasourceUid: dsFromTemplating || '',
         visibility: 'private',
         sharedGroupIds: [],
       })
+
+      // If we couldn't find a datasource in the provided object, fetch the full dashboard
+      if (!dsFromTemplating && dashboard?.uid) {
+        (async () => {
+          try {
+            const full = await getDashboard(dashboard.uid).catch(() => null)
+            const ds = full?.templating?.list?.find(v => v?.type === 'datasource')?.current?.value || ''
+            if (ds) setDashboardForm(prev => ({ ...prev, datasourceUid: ds }))
+          } catch (e) {
+            /* ignore - leave datasource blank */
+          }
+        })()
+      }
     } else {
       setEditingDashboard(null)
       setDashboardForm({
@@ -549,7 +519,7 @@ export default function GrafanaPage() { // NOSONAR
     return found ? found.icon : '🔧'
   }
 
-  const hasActiveFilters = filters.uid || filters.labelKey || filters.labelValue || filters.teamId || filters.showHidden
+  const hasActiveFilters = filters.teamId || filters.showHidden
 
   return (
     <div className="animate-fade-in">
@@ -583,48 +553,13 @@ export default function GrafanaPage() { // NOSONAR
         onOpenGrafana={openInGrafana}
         onDeleteDashboard={handleDeleteDashboard}
         onToggleDashboardHidden={handleToggleDashboardHidden}
-        onEditDashboardLabels={(d) => openLabelEditor('dashboard', d.uid, d.labels)}
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={handleDeleteDatasource}
         onToggleDatasourceHidden={handleToggleDatasourceHidden}
-        onEditDatasourceLabels={(ds) => openLabelEditor('datasource', ds.uid, ds.labels)}
         getDatasourceIcon={getDatasourceIcon}
         onCreateFolder={() => setShowFolderCreator(true)}
         onDeleteFolder={handleDeleteFolder}
       />
-
-      {/* Label Editor Modal */}
-      <Modal
-        isOpen={labelEditor.isOpen}
-        onClose={() => setLabelEditor({ isOpen: false, type: '', uid: '', labels: {} })}
-        title={`Edit Labels — ${labelEditor.type === 'dashboard' ? 'Dashboard' : 'Datasource'}`}
-        size="sm"
-        footer={
-          <div className="flex gap-3 justify-end">
-            <Button variant="ghost" onClick={() => setLabelEditor({ isOpen: false, type: '', uid: '', labels: {} })}>Cancel</Button>
-            <Button variant="primary" onClick={saveLabelEditor}>Save Labels</Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(labelEditor.labels || {}).map(([k, v]) => (
-              <span key={k} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200">
-                {k}{v ? `=${v}` : ''}
-                <button type="button" onClick={() => removeLabel(k)} className="ml-1 hover:text-red-500">&times;</button>
-              </span>
-            ))}
-            {Object.keys(labelEditor.labels || {}).length === 0 && (
-              <p className="text-sm text-sre-text-muted">No labels yet</p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Input size="sm" value={newLabelKey} onChange={e => setNewLabelKey(e.target.value)} placeholder="Key" className="flex-1" />
-            <Input size="sm" value={newLabelValue} onChange={e => setNewLabelValue(e.target.value)} placeholder="Value (optional)" className="flex-1" />
-            <Button size="sm" onClick={addLabel} disabled={!newLabelKey.trim()}>Add</Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Dashboard Editor Modal */}
       <Modal

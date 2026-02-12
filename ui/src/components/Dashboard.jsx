@@ -29,8 +29,6 @@ AgentStatusBadges.propTypes = {
 
 const formatActivityLabel = (agent) => {
   const parts = [
-    agent.logs_count > 0 && `Logs (last 1h): ${agent.logs_count}`,
-    agent.traces_count > 0 && `Traces (last 1h): ${agent.traces_count}`,
     agent.metrics_count > 0 && `Metrics: ${agent.metrics_count}`
   ].filter(Boolean);
   
@@ -63,8 +61,6 @@ AgentCard.propTypes = {
   agent: PropTypes.shape({
     name: PropTypes.string.isRequired,
     host_names: PropTypes.arrayOf(PropTypes.string),
-    logs_count: PropTypes.number,
-    traces_count: PropTypes.number,
     metrics_count: PropTypes.number,
     is_enabled: PropTypes.bool,
     active: PropTypes.bool,
@@ -545,7 +541,7 @@ const layoutComponents = [
     {
       id: 'active-otel-agents',
       title: "Active OTEL Agents",
-      subtitle: "Activity by API key (last 1 hour)",
+      subtitle: "Metrics activity by API key (last 1 hour)",
       className: "",
       content: (
         <AgentActivityContent loading={loadingAgents} agents={agentActivity} />
@@ -748,7 +744,7 @@ const layoutComponents = [
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {sanitizedLayoutOrder.map((layoutIndex, displayIndex) => {
           const component = layoutComponents[layoutIndex]
           if (!component) return null

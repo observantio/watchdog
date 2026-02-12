@@ -4,10 +4,9 @@ import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timezone, timedelta
 
-from models.alertmanager_models import (
-    Alert, AlertGroup, Silence, SilenceCreate, 
-    AlertManagerStatus, Matcher
-)
+from models.alerts import Alert, AlertGroup
+from models.silences import Silence, SilenceCreate, Matcher
+from models.receivers import AlertManagerStatus
 from config import config
 from middleware.resilience import with_retry, with_timeout
 

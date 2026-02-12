@@ -34,17 +34,24 @@ class GrafanaUserSyncService:
     ):
         self.grafana_url = grafana_url.rstrip("/")
         self.timeout = config.DEFAULT_TIMEOUT
+        self._using_api_key = False
+        self._basic_auth_header: Optional[str] = None
         
         # Prefer API key (Bearer token) over Basic auth for better security
         api_key = api_key or config.GRAFANA_API_KEY
         if api_key:
             self.auth_header = f"Bearer {api_key}"
+            self._using_api_key = True
             logger.info("Using Grafana API key authentication for user sync")
         else:
             credentials = f"{admin_user}:{admin_pass}"
             encoded = base64.b64encode(credentials.encode()).decode()
             self.auth_header = f"Basic {encoded}"
             logger.info("Using Grafana Basic authentication for user sync (consider using API key)")
+
+        credentials = f"{admin_user}:{admin_pass}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        self._basic_auth_header = f"Basic {encoded}"
         
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout),
@@ -56,6 +63,25 @@ class GrafanaUserSyncService:
             "Authorization": self.auth_header,
             "Content-Type": "application/json",
         }
+
+    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        url = f"{self.grafana_url}{path}"
+        headers = kwargs.pop("headers", None) or self._headers()
+
+        response = await self._client.request(method, url, headers=headers, **kwargs)
+
+        if (
+            response.status_code == 401
+            and self._using_api_key
+            and self._basic_auth_header
+            and headers.get("Authorization", "").startswith("Bearer ")
+        ):
+            logger.warning("Grafana API key rejected for user-sync (401). Falling back to basic auth.")
+            self.auth_header = self._basic_auth_header
+            self._using_api_key = False
+            response = await self._client.request(method, url, headers=self._headers(), **kwargs)
+
+        return response
 
     # ------------------------------------------------------------------
     # Grafana User CRUD

@@ -803,4 +803,3 @@ Checkbox.propTypes = {
   helperText: PropTypes.string,
   className: PropTypes.string,
 }
-

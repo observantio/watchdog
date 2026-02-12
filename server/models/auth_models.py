@@ -1,12 +1,11 @@
+"""Authentication models."""
 from enum import Enum
 from typing import List, Optional
-from datetime import datetime
 from pydantic import BaseModel, Field, EmailStr, validator
 import re
 
 from config import config
 
-# Compiled once at module level for reuse
 _USERNAME_RE = re.compile(r'^[a-z0-9._-]{3,50}$')
 
 
@@ -33,10 +32,12 @@ def _normalize_username(v: str, *, full_check: bool = True) -> str:
         )
     return uname
 
+
 class Role(str, Enum):
     ADMIN = "admin"
     USER = "user"
     VIEWER = "viewer"
+
 
 class Permission(str, Enum):
     READ_ALERTS = "read:alerts"
@@ -57,6 +58,7 @@ class Permission(str, Enum):
     READ_GROUPS = "read:groups"
     MANAGE_TENANTS = "manage:tenants"
 
+
 ROLE_PERMISSIONS = {
     Role.ADMIN: list(Permission),
     Role.USER: [
@@ -73,122 +75,6 @@ ROLE_PERMISSIONS = {
 }
 
 
-class GroupBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-
-
-class GroupCreate(GroupBase):
-    pass
-
-
-class GroupUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-
-
-class GroupMembersUpdate(BaseModel):
-    user_ids: List[str] = Field(default_factory=list)
-
-
-class PermissionInfo(BaseModel):
-    id: str
-    name: str
-    display_name: str
-    description: Optional[str] = None
-    resource_type: str
-    action: str
-    
-    class Config:
-        from_attributes = True
-
-
-class Group(GroupBase):
-    id: str
-    tenant_id: str
-    created_at: datetime
-    updated_at: datetime
-    permissions: List[PermissionInfo] = Field(default_factory=list)
-    
-    class Config:
-        from_attributes = True
-
-
-class UserBase(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
-    full_name: Optional[str] = None
-    org_id: str = Field(default=config.DEFAULT_ORG_ID, max_length=100, description="Organization ID for multi-tenant observability")
-    role: Role = Role.USER
-    group_ids: List[str] = Field(default_factory=list)
-    is_active: bool = True
-
-    @validator('username', pre=True, always=True)
-    def normalize_username(cls, v):
-        return _normalize_username(v, full_check=True)
-
-
-class UserCreate(UserBase):
-    password: str = Field(..., min_length=8)
-
-
-class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    full_name: Optional[str] = None
-    org_id: Optional[str] = None
-    role: Optional[Role] = None
-    group_ids: Optional[List[str]] = None
-    is_active: Optional[bool] = None
-
-
-class UserPasswordUpdate(BaseModel):
-    current_password: str
-    new_password: str = Field(..., min_length=8)
-
-
-class ApiKeyBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-
-
-class ApiKeyCreate(ApiKeyBase):
-    key: Optional[str] = Field(None, min_length=3, max_length=200, description="Optional custom API key value (org_id / X-Scope-OrgID)")
-
-
-class ApiKeyUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    is_enabled: Optional[bool] = None
-    is_default: Optional[bool] = None
-
-
-class ApiKey(ApiKeyBase):
-    id: str
-    key: str
-    otlp_token: Optional[str] = Field(None, description="Secure OTLP ingest token for gateway authentication")
-    is_default: bool = False
-    is_enabled: bool = True
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-
-class User(UserBase):
-    id: str
-    tenant_id: str
-    created_at: datetime
-    updated_at: datetime
-    last_login: Optional[datetime] = None
-    needs_password_change: bool = False
-    grafana_user_id: Optional[int] = None
-    api_keys: List[ApiKey] = Field(default_factory=list)
-
-    class Config:
-        from_attributes = True
-
-
-class UserInDB(User):
-    hashed_password: str
-
-
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -202,42 +88,5 @@ class TokenData(BaseModel):
     org_id: str
     role: Role
     is_superuser: bool = False
-    permissions: List[str] 
-    group_ids: List[str] = Field(default_factory=list) 
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-    @validator('username', pre=True, always=True)
-    def normalize_login_username(cls, v):
-        return _normalize_username(v, full_check=False)
-
-class RegisterRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
-    password: str = Field(..., min_length=8)
-    full_name: Optional[str] = None
-
-    @validator('username', pre=True, always=True)
-    def normalize_register_username(cls, v):
-        return _normalize_username(v, full_check=True)
-
-
-class UserResponse(BaseModel):
-    id: str
-    username: str
-    email: str
-    full_name: Optional[str]
-    role: Role
-    group_ids: List[str]
-    is_active: bool
-    org_id: str
-    tenant_id: str
-    created_at: datetime
-    last_login: Optional[datetime]
-    permissions: List[Permission]
-    direct_permissions: List[str] = Field(default_factory=list)
-    needs_password_change: bool = False
-    api_keys: List[ApiKey] = Field(default_factory=list)
+    permissions: List[str]
+    group_ids: List[str] = Field(default_factory=list)

@@ -28,11 +28,16 @@ except Exception:
         from db_models import User, Tenant, Group, Permission, AuditLog, UserApiKey
     else:
         raise
-from models.auth_models import (
-    User as UserSchema, UserCreate, UserUpdate, UserPasswordUpdate, Role,
-    Group as GroupSchema, GroupCreate, GroupUpdate, Token, TokenData, ROLE_PERMISSIONS,
-    PermissionInfo, ApiKey, ApiKeyCreate, ApiKeyUpdate
+from models.user_models import (
+    User as UserSchema, UserCreate, UserUpdate, UserPasswordUpdate
 )
+from models.group_models import (
+    Group as GroupSchema, GroupCreate, GroupUpdate, PermissionInfo
+)
+from models.api_key_models import (
+    ApiKey, ApiKeyCreate, ApiKeyUpdate
+)
+from models.auth_models import Role, Token, TokenData, ROLE_PERMISSIONS
 from config import config
 from database import get_db_session
 
@@ -858,6 +863,9 @@ class DatabaseAuthService:
             if not self.verify_password(password_update.current_password, user.hashed_password):
                 return False
             
+            # Check if new password is different from current password
+            if self.verify_password(password_update.new_password, user.hashed_password):
+                raise ValueError("New password must be different from current password")
             
             if len(password_update.new_password) < 8:
                 raise ValueError("Password must be at least 8 characters long")

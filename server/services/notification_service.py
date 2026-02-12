@@ -4,7 +4,8 @@ import logging
 from typing import Optional
 from datetime import datetime
 
-from models.alertmanager_models import NotificationChannel, Alert, ChannelType
+from models.channels import NotificationChannel, ChannelType
+from models.alerts import Alert
 from config import config
 
 logger = logging.getLogger(__name__)
