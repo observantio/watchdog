@@ -4,7 +4,8 @@ import {
   getAlerts, getSilences, createSilence, deleteSilence,
   getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule,
   getNotificationChannels, createNotificationChannel, updateNotificationChannel,
-  deleteNotificationChannel, testNotificationChannel, testAlertRule
+  deleteNotificationChannel, testNotificationChannel, testAlertRule,
+  getIncidents, updateIncident,
 } from '../api'
 import { Card, Button, Select, Alert, Badge, Spinner, Modal } from '../components/ui'
 import ConfirmModal from '../components/ConfirmModal'
@@ -34,6 +35,8 @@ export default function AlertManagerPage() {
   const [silences, setSilences] = useState([])
   const [rules, setRules] = useState([])
   const [channels, setChannels] = useState([])
+  const [incidents, setIncidents] = useState([])
+  const [incidentDrafts, setIncidentDrafts] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showRuleEditor, setShowRuleEditor] = useState(false)
@@ -61,16 +64,18 @@ export default function AlertManagerPage() {
     setLoading(true)
     setError(null)
     try {
-      const [alertsData, silencesData, rulesData, channelsData] = await Promise.all([
+      const [alertsData, silencesData, rulesData, channelsData, incidentsData] = await Promise.all([
         getAlerts().catch(() => []),
         getSilences().catch(() => []),
         getAlertRules().catch(() => []),
-        getNotificationChannels().catch(() => [])
+        getNotificationChannels().catch(() => []),
+        getIncidents().catch(() => [])
       ])
       setAlerts(alertsData)
       setSilences(silencesData)
       setRules(Array.isArray(rulesData) ? rulesData.map(normalizeRuleForUI) : [])
       setChannels(channelsData)
+      setIncidents(Array.isArray(incidentsData) ? incidentsData : [])
     } catch (e) {
       handleApiError(e)
     } finally {
@@ -203,6 +208,23 @@ export default function AlertManagerPage() {
     })
   }
 
+  async function handleSaveIncident(incident) {
+    const draft = incidentDrafts[incident.id] || {}
+    const payload = {
+      assignee: draft.assignee ?? incident.assignee ?? null,
+      status: draft.status ?? incident.status,
+      note: draft.note || undefined,
+    }
+
+    try {
+      await updateIncident(incident.id, payload)
+      setIncidentDrafts((prev) => ({ ...prev, [incident.id]: { assignee: '', note: '', status: payload.status } }))
+      await loadData()
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   const filteredAlerts = useMemo(() => {
     if (filterSeverity === 'all') return alerts
     return alerts.filter(a => a.labels?.severity === filterSeverity)
@@ -225,8 +247,10 @@ export default function AlertManagerPage() {
     enabledRules: rules.filter(r => r.enabled).length,
     totalRules: rules.length,
     enabledChannels: channels.filter(c => c.enabled).length,
-    totalChannels: channels.length
-  }), [alerts, silences, rules, channels])
+    totalChannels: channels.length,
+    openIncidents: incidents.filter(i => i.status === 'open').length,
+    totalIncidents: incidents.length,
+  }), [alerts, silences, rules, channels, incidents])
 
   return (
     <div className="animate-fade-in">
@@ -300,7 +324,8 @@ export default function AlertManagerPage() {
           { key: 'alerts', label: 'Alerts', icon: 'notification_important' },
           { key: 'rules', label: 'Rules', icon: 'rule' },
           { key: 'channels', label: 'Channels', icon: 'send' },
-          { key: 'silences', label: 'Silences', icon: 'volume_off' }
+          { key: 'silences', label: 'Silences', icon: 'volume_off' },
+          { key: 'incidents', label: 'Incidents', icon: 'assignment' }
         ].map(tab => (
           <button
             type="button"
@@ -921,6 +946,126 @@ export default function AlertManagerPage() {
                     </div>
                   )}
                 </div>
+            </>
+          )}
+
+          {activeTab === 'incidents' && (
+            <>
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="material-icons text-2xl text-sre-primary">assignment</span>
+                    <div>
+                      <h2 className="text-xl font-semibold text-sre-text">Incident History</h2>
+                      <p className="text-sm text-sre-text-muted">
+                        {stats.openIncidents} open · {stats.totalIncidents} total incidents
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {incidents.length > 0 ? (
+                  <div className="space-y-4">
+                    {incidents.map((incident) => {
+                      const draft = incidentDrafts[incident.id] || {}
+                      return (
+                        <div key={incident.id} className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="font-semibold text-sre-text">{incident.alertName}</h3>
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  incident.status === 'resolved'
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
+                                }`}>
+                                  {incident.status}
+                                </span>
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                                  {incident.severity}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-sre-text-muted mb-3">
+                                Last seen: {new Date(incident.lastSeenAt).toLocaleString()}
+                              </p>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block text-xs text-sre-text-muted mb-1">Assignee</label>
+                                  <input
+                                    type="text"
+                                    value={draft.assignee ?? incident.assignee ?? ''}
+                                    onChange={(e) => setIncidentDrafts((prev) => ({
+                                      ...prev,
+                                      [incident.id]: { ...(prev[incident.id] || {}), assignee: e.target.value }
+                                    }))}
+                                    className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
+                                    placeholder="Unassigned"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-sre-text-muted mb-1">Status</label>
+                                  <select
+                                    value={draft.status ?? incident.status}
+                                    onChange={(e) => setIncidentDrafts((prev) => ({
+                                      ...prev,
+                                      [incident.id]: { ...(prev[incident.id] || {}), status: e.target.value }
+                                    }))}
+                                    className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
+                                  >
+                                    <option value="open">open</option>
+                                    <option value="resolved">resolved</option>
+                                  </select>
+                                </div>
+                                <div className="md:col-span-1 flex items-end">
+                                  <Button onClick={() => handleSaveIncident(incident)}>Save</Button>
+                                </div>
+                              </div>
+
+                              <div className="mt-3">
+                                <label className="block text-xs text-sre-text-muted mb-1">Add note</label>
+                                <textarea
+                                  value={draft.note ?? ''}
+                                  onChange={(e) => setIncidentDrafts((prev) => ({
+                                    ...prev,
+                                    [incident.id]: { ...(prev[incident.id] || {}), note: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
+                                  rows={2}
+                                  placeholder="Investigation updates, mitigation notes, etc."
+                                />
+                              </div>
+
+                              {Array.isArray(incident.notes) && incident.notes.length > 0 && (
+                                <div className="mt-3 p-3 bg-sre-bg-alt border border-sre-border rounded">
+                                  <p className="text-xs font-semibold text-sre-text mb-2">Notes</p>
+                                  <div className="space-y-2">
+                                    {incident.notes.slice().reverse().slice(0, 5).map((note, idx) => (
+                                      <div key={`${incident.id}-note-${idx}`} className="text-xs text-sre-text-muted">
+                                        <span className="font-medium text-sre-text">{note.author}</span> · {new Date(note.createdAt).toLocaleString()}<br />
+                                        {note.text}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
+                    <span className="material-icons text-5xl text-sre-text-muted mb-4 block">assignment_turned_in</span>
+                    <h3 className="text-xl font-semibold text-sre-text mb-2">No Incident History Yet</h3>
+                    <p className="text-sre-text-muted max-w-md mx-auto">
+                      Incidents will appear here automatically as alerts fire and resolve.
+                    </p>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </>

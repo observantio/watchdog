@@ -198,6 +198,37 @@ def get_current_user(
     return token_data
 
 
+def get_current_user_or_mfa_setup(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> TokenData:
+    """Allow either a fully-authenticated token or a short-lived MFA-setup token.
+
+    Used by `/api/auth/mfa/*` endpoints so a freshly-logged-in admin can
+    use the provided setup token to enroll/verify TOTP without having full
+    application sessions yet.
+    """
+    token = credentials.credentials
+    token_data = auth_service.decode_token(token)
+
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if getattr(token_data, "is_mfa_setup", False):
+        user = auth_service.get_user_by_id(token_data.user_id)
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+        if getattr(user, 'mfa_enabled', False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="MFA setup not permitted for this user")
+        return token_data
+
+    return get_current_user(request, credentials)
+
+
 def require_permission(permission: Permission | str):
     """FastAPI dependency that enforces a specific permission.
 

@@ -7,6 +7,8 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func
 from fastapi import HTTPException
+import pyotp
+from cryptography.fernet import Fernet, InvalidToken
 
 try:
     from db_models import User, Tenant, Group, Permission, AuditLog, UserApiKey
@@ -43,6 +45,7 @@ from services.auth.oidc_service import OIDCService
 from services.auth.auth_ops import (
     authenticate_user as authenticate_user_op,
     create_access_token as create_access_token_op,
+    create_mfa_setup_token as create_mfa_setup_token_op,
     decode_token as decode_token_op,
     update_password as update_password_op,
     validate_otlp_token as validate_otlp_token_op,
@@ -137,7 +140,8 @@ class DatabaseAuthService:
                         role=Role.ADMIN,
                         is_active=True,
                         is_superuser=True,
-                        hashed_password=self.hash_password(config.DEFAULT_ADMIN_PASSWORD)
+                        hashed_password=self.hash_password(config.DEFAULT_ADMIN_PASSWORD),
+                        must_setup_mfa=True,
                     )
                     db.add(admin_user)
                     db.flush()
@@ -237,7 +241,150 @@ class DatabaseAuthService:
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return pwd_context.verify(plain_password, hashed_password)
-    
+
+    # ------------------------- TOTP / MFA helpers -------------------------
+    def _get_fernet(self) -> Optional[Fernet]:
+        if not config.DATA_ENCRYPTION_KEY:
+            return None
+        try:
+            return Fernet(config.DATA_ENCRYPTION_KEY)
+        except Exception:
+            logger.error("Invalid DATA_ENCRYPTION_KEY – TOTP secrets will be stored unencrypted")
+            return None
+
+    def _encrypt_mfa_secret(self, secret: str) -> str:
+        f = self._get_fernet()
+        if not f:
+            raise ValueError("DATA_ENCRYPTION_KEY is not configured")
+        return f.encrypt(secret.encode()).decode()
+
+    def _decrypt_mfa_secret(self, token: str) -> str:
+        f = self._get_fernet()
+        if not f:
+            raise ValueError("DATA_ENCRYPTION_KEY is not configured")
+        try:
+            return f.decrypt(token.encode()).decode()
+        except InvalidToken as exc:
+            raise ValueError("Cannot decrypt TOTP secret") from exc
+
+    def _generate_recovery_codes(self, count: int = 10) -> List[str]:
+        codes = [secrets.token_urlsafe(10) for _ in range(count)]
+        return codes
+
+    def _hash_recovery_codes(self, codes: List[str]) -> List[str]:
+        return [pwd_context.hash(c) for c in codes]
+
+    def _verify_and_consume_recovery_code(self, db, user: User, code: str) -> bool:
+        hashes = getattr(user, 'mfa_recovery_hashes', []) or []
+        for i, h in enumerate(hashes):
+            try:
+                if pwd_context.verify(code, h):
+                    # consume this code
+                    hashes.pop(i)
+                    user.mfa_recovery_hashes = hashes
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def enroll_totp(self, user_id: str) -> Dict[str, str]:
+        """Generate a TOTP secret for user and persist encrypted secret (not enabled yet)."""
+        if not config.DATA_ENCRYPTION_KEY:
+            raise ValueError("DATA_ENCRYPTION_KEY must be configured to use TOTP")
+        with get_db_session() as db:
+            user = db.query(User).filter_by(id=user_id).first()
+            if not user:
+                raise ValueError("User not found")
+            secret = pyotp.random_base32()
+            encrypted = self._encrypt_mfa_secret(secret)
+            user.totp_secret = encrypted
+            db.add(user)
+            db.flush()
+            otp = pyotp.totp.TOTP(secret)
+            uri = otp.provisioning_uri(name=user.email or user.username, issuer_name= "Be Observant")
+            return {"otpauth_url": uri, "secret": secret}
+
+    def verify_enable_totp(self, user_id: str, code: str) -> List[str]:
+        """Verify provided TOTP code and enable MFA for the user, returning recovery codes."""
+        with get_db_session() as db:
+            user = db.query(User).filter_by(id=user_id).first()
+            if not user or not user.totp_secret:
+                raise ValueError("TOTP not enrolled for user")
+            secret = self._decrypt_mfa_secret(user.totp_secret)
+            if not pyotp.TOTP(secret).verify(code, valid_window=1):
+                raise ValueError("Invalid TOTP code")
+            # enable MFA and generate recovery codes
+            user.mfa_enabled = True
+            user.must_setup_mfa = False
+            codes = self._generate_recovery_codes()
+            user.mfa_recovery_hashes = self._hash_recovery_codes(codes)
+            db.add(user)
+            self._log_audit(db, user.tenant_id, user.id, "mfa.enabled", "users", user.id, {})
+            return codes
+
+    def verify_totp_code(self, user: User, code: str) -> bool:
+        """Verify a TOTP or recovery code for *user*. If recovery code used, consume it (single-use)."""
+        if not user or not user.totp_secret:
+            return False
+        # operate with a fresh DB session to consume recovery codes safely
+        with get_db_session() as db:
+            db_user = db.query(User).filter_by(id=user.id).first()
+            if not db_user or not db_user.totp_secret:
+                return False
+            # check recovery codes
+            hashes = getattr(db_user, 'mfa_recovery_hashes', []) or []
+            for i, h in enumerate(hashes):
+                try:
+                    if pwd_context.verify(code, h):
+                        hashes.pop(i)
+                        db_user.mfa_recovery_hashes = hashes
+                        db.add(db_user)
+                        return True
+                except Exception:
+                    continue
+            # verify TOTP
+            try:
+                secret = self._decrypt_mfa_secret(db_user.totp_secret)
+            except Exception:
+                return False
+            return bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+
+    def disable_totp(self, user_id: str, *, current_password: Optional[str] = None, code: Optional[str] = None) -> bool:
+        """Disable MFA for the given user after verifying password or TOTP code."""
+        with get_db_session() as db:
+            user = db.query(User).filter_by(id=user_id).first()
+            if not user or not user.mfa_enabled:
+                return False
+            # require either password verification or valid code
+            ok = False
+            if current_password and self.verify_password(current_password, user.hashed_password):
+                ok = True
+            if not ok and code:
+                if self.verify_totp_code(user, code):
+                    ok = True
+            if not ok:
+                return False
+            user.mfa_enabled = False
+            user.totp_secret = None
+            user.mfa_recovery_hashes = None
+            db.add(user)
+            self._log_audit(db, user.tenant_id, user.id, "mfa.disabled", "users", user.id, {})
+            return True
+
+    def reset_totp(self, user_id: str, admin_id: str) -> bool:
+        """Admin-initiated reset of a user's TOTP state (clears secret and recovery codes)."""
+        with get_db_session() as db:
+            user = db.query(User).filter_by(id=user_id).first()
+            if not user:
+                return False
+            user.mfa_enabled = False
+            user.totp_secret = None
+            user.mfa_recovery_hashes = None
+            db.add(user)
+            self._log_audit(db, user.tenant_id, admin_id, "mfa.reset", "users", user.id, {"admin_id": admin_id})
+            return True
+
+    # ------------------------------------------------------------------
     def create_access_token(self, user: User) -> Token:
         """Create JWT access token for user."""
         return create_access_token_op(self, user)
@@ -345,8 +492,13 @@ class DatabaseAuthService:
             db.refresh(user)
             return user
 
-    def login(self, username: str, password: str) -> Optional[Token]:
-        """Authenticate using configured provider and return access token."""
+    def login(self, username: str, password: str, mfa_code: Optional[str] = None) -> Optional[Token | dict]:
+        """Authenticate using configured provider and return access token.
+
+        If the user has MFA enabled and no `mfa_code` is provided, return a
+        challenge dict {"mfa_required": True}. If `mfa_code` is provided it
+        will be validated before issuing the local token.
+        """
         if self.is_external_auth_enabled():
             if not self.is_password_auth_enabled():
                 return None
@@ -374,6 +526,21 @@ class DatabaseAuthService:
         user = self.authenticate_user(username, password)
         if not user:
             return None
+
+        # If user must setup MFA before using the app, return a short-lived
+        # setup token so they can enroll/verify TOTP without a full session.
+        if getattr(user, 'must_setup_mfa', False) and not getattr(user, 'mfa_enabled', False):
+            setup_token = create_mfa_setup_token_op(self, user)
+            return {"mfa_setup_required": True, "setup_token": setup_token.access_token}
+
+        # If user has MFA enabled require second factor
+        if getattr(user, 'mfa_enabled', False):
+            if not mfa_code:
+                return {"mfa_required": True}
+            ok = self.verify_totp_code(user, mfa_code)
+            if not ok:
+                return None
+
         return self.create_access_token(user)
 
     def exchange_oidc_authorization_code(self, code: str, redirect_uri: str) -> Optional[Token]:
@@ -390,6 +557,10 @@ class DatabaseAuthService:
             user = self._sync_user_from_oidc_claims(claims)
             if not user or not user.is_active:
                 return None
+            # Enforce must-setup-mfa for externally-provisioned users as well.
+            if getattr(user, 'must_setup_mfa', False) and not getattr(user, 'mfa_enabled', False):
+                setup_token = create_mfa_setup_token_op(self, user)
+                return {"mfa_setup_required": True, "setup_token": setup_token.access_token}
             return Token(
                 access_token=access_token,
                 token_type=oidc_token.get("token_type", "bearer"),
@@ -497,6 +668,8 @@ class DatabaseAuthService:
             last_login=user.last_login,
             needs_password_change=getattr(user, 'needs_password_change', False),
             api_keys=api_keys,
+            mfa_enabled=getattr(user, 'mfa_enabled', False),
+            must_setup_mfa=getattr(user, 'must_setup_mfa', False),
         )
         grafana_uid = getattr(user, "grafana_user_id", None)
         if grafana_uid is not None:

@@ -12,6 +12,9 @@ from database import get_db_session
 from db_models import User, Group, UserApiKey
 from models.access.auth_models import Role, Token, TokenData
 
+# expose a reference to the create_mfa_setup_token operation for service layer
+create_mfa_setup_token_op = create_mfa_setup_token if 'create_mfa_setup_token' in globals() else None
+
 
 def create_access_token(service, user: User) -> Token:
     expires_delta = timedelta(minutes=config.JWT_EXPIRATION_MINUTES)
@@ -54,6 +57,24 @@ def create_access_token(service, user: User) -> Token:
     )
 
 
+def create_mfa_setup_token(service, user: User, minutes: int = 10) -> Token:
+    """Create a short-lived token usable only for MFA setup endpoints.
+
+    The token includes the claim `mfa_setup: True` so the middleware can
+    allow MFA enroll/verify calls without granting full app permissions.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    to_encode = {
+        "sub": user.id,
+        "username": user.username,
+        "tenant_id": user.tenant_id,
+        "mfa_setup": True,
+        "exp": expire,
+    }
+    encoded_jwt = jwt.encode(to_encode, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
+    return Token(access_token=encoded_jwt, token_type="bearer", expires_in=minutes * 60)
+
+
 def decode_token(service, token: str) -> Optional[TokenData]:
     try:
         payload = jwt.decode(token, config.JWT_SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
@@ -65,20 +86,25 @@ def decode_token(service, token: str) -> Optional[TokenData]:
         is_superuser: bool = payload.get("is_superuser", False)
         permissions: List[str] = payload.get("permissions", [])
         group_ids: List[str] = payload.get("group_ids", [])
+        is_mfa_setup: bool = payload.get("mfa_setup", False)
 
         if user_id is None or username is None:
             return None
 
-        return TokenData(
+        td = TokenData(
             user_id=user_id,
             username=username,
             tenant_id=tenant_id,
             org_id=org_id,
-            role=Role(role),
+            role=Role(role) if role is not None else Role.USER,
             is_superuser=is_superuser,
             permissions=permissions,
             group_ids=group_ids
         )
+        # Attach mfa_setup marker when present in JWT payload so callers may
+        # treat it specially (limited setup token).
+        setattr(td, 'is_mfa_setup', is_mfa_setup)
+        return td
     except JWTError as e:
         service.logger.error(f"JWT decode error: {e}")
         return None

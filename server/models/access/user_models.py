@@ -55,6 +55,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: Optional[str] = Field(None, min_length=8)
+    must_setup_mfa: Optional[bool] = False
 
 
 class UserUpdate(BaseModel):
@@ -64,6 +65,7 @@ class UserUpdate(BaseModel):
     role: Optional[Role] = None
     group_ids: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    must_setup_mfa: Optional[bool] = None
 
 
 class UserPasswordUpdate(BaseModel):
@@ -80,6 +82,8 @@ class User(UserBase):
     needs_password_change: bool = False
     grafana_user_id: Optional[int] = None
     api_keys: List[ApiKey] = Field(default_factory=list)
+    mfa_enabled: bool = False
+    must_setup_mfa: bool = False
 
     class Config:
         from_attributes = True
@@ -105,11 +109,14 @@ class UserResponse(BaseModel):
     direct_permissions: List[str] = Field(default_factory=list)
     needs_password_change: bool = False
     api_keys: List[ApiKey] = Field(default_factory=list)
+    mfa_enabled: bool = False
+    must_setup_mfa: bool = False
 
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+    mfa_code: Optional[str] = None
 
     @validator('username', pre=True, always=True)
     def normalize_login_username(cls, v):
@@ -125,3 +132,21 @@ class RegisterRequest(BaseModel):
     @validator('username', pre=True, always=True)
     def normalize_register_username(cls, v):
         return _normalize_username(v, full_check=True)
+
+
+class TotpEnrollResponse(BaseModel):
+    otpauth_url: str
+    secret: str
+
+
+class MfaVerifyRequest(BaseModel):
+    code: str
+
+
+class MfaDisableRequest(BaseModel):
+    current_password: Optional[str] = None
+    code: Optional[str] = None
+
+
+class RecoveryCodesResponse(BaseModel):
+    recovery_codes: List[str]

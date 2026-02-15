@@ -27,6 +27,7 @@ class Visibility(str, Enum):
     PRIVATE = "private"  # Only visible to creator
     GROUP = "group"      # Visible to specified groups
     TENANT = "tenant"    # Visible to all users in tenant
+    PUBLIC = "public"    # Visible to everyone
 
 
 class Matcher(BaseModel):

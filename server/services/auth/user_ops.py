@@ -78,6 +78,7 @@ def create_user(service, user_create: UserCreate, tenant_id: str, creator_id: st
             needs_password_change=(not is_external),
             auth_provider=auth_provider,
             external_subject=external_subject,
+            must_setup_mfa=getattr(user_create, 'must_setup_mfa', False),
         )
 
         if user_create.group_ids:

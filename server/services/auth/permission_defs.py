@@ -26,6 +26,9 @@ PERMISSION_DEFS = [
     ("delete:channels", "Delete Channels", "Delete notification channels", "channels", "delete"),
     ("test:channels", "Test Channels", "Send test notifications through channels", "channels", "test"),
 
+    ("read:incidents", "Read Incidents", "View alert incident history", "incidents", "read"),
+    ("update:incidents", "Update Incidents", "Update incident assignee, notes, and status", "incidents", "update"),
+
     ("read:logs", "Read Logs", "Query and view logs", "logs", "read"),
     ("read:traces", "Read Traces", "Query and view traces", "traces", "read"),
 

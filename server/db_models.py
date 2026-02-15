@@ -80,6 +80,7 @@ class Tenant(Base):
     users = relationship('User', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
     groups = relationship('Group', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
     alert_rules = relationship('AlertRule', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
+    alert_incidents = relationship('AlertIncident', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
     notification_channels = relationship('NotificationChannel', back_populates='tenant', cascade=CASCADE_ALL_DELETE_ORPHAN)
 
     __table_args__ = (
@@ -102,6 +103,13 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_superuser = Column(Boolean, default=False, nullable=False)
     needs_password_change = Column(Boolean, default=False, nullable=False)
+
+    # MFA / TOTP fields
+    mfa_enabled = Column(Boolean, default=False, nullable=False)
+    must_setup_mfa = Column(Boolean, default=False, nullable=False)
+    totp_secret = Column(Text, nullable=True)
+    mfa_recovery_hashes = Column(JSON, nullable=True)
+
     grafana_user_id = Column(Integer, nullable=True, index=True)  
     auth_provider = Column(String(50), nullable=False, default="local", index=True)
     external_subject = Column(String(255), nullable=True, unique=True, index=True)
@@ -119,6 +127,7 @@ class User(Base):
     __table_args__ = (
         Index('idx_users_tenant_active', 'tenant_id', 'is_active'),
         Index('idx_users_role', 'role'),
+        Index('idx_users_mfa_enabled', 'mfa_enabled'),
     )
 
 
@@ -221,6 +230,34 @@ class AlertRule(Base):
         Index('idx_alert_rules_tenant_enabled', 'tenant_id', 'enabled'),
         Index('idx_alert_rules_severity', 'severity'),
         Index('idx_alert_rules_visibility', 'visibility'),
+    )
+
+
+class AlertIncident(Base):
+    """Historical alert incidents with lightweight ticket metadata."""
+    __tablename__ = 'alert_incidents'
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    tenant_id = Column(String, ForeignKey(TENANTS_ID, ondelete='CASCADE'), nullable=False, index=True)
+    fingerprint = Column(String(255), nullable=False, index=True)
+    alert_name = Column(String(200), nullable=False, index=True)
+    severity = Column(String(20), nullable=False, default='warning', index=True)
+    status = Column(String(20), nullable=False, default='open', index=True)
+    assignee = Column(String(200), nullable=True)
+    notes = Column(JSON, default=list)
+    labels = Column(JSON, default=dict)
+    annotations = Column(JSON, default=dict)
+    starts_at = Column(DateTime, nullable=True, index=True)
+    last_seen_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    resolved_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    tenant = relationship('Tenant', back_populates='alert_incidents')
+
+    __table_args__ = (
+        Index('idx_alert_incidents_tenant_status', 'tenant_id', 'status'),
+        Index('idx_alert_incidents_tenant_fingerprint', 'tenant_id', 'fingerprint', unique=True),
     )
 
 

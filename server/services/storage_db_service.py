@@ -7,6 +7,7 @@ visibility / access-control semantics (private / group / tenant).
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -20,8 +21,13 @@ from models.alerting.channels import (
     NotificationChannel as NotificationChannelPydantic,
     NotificationChannelCreate,
 )
+from models.alerting.incidents import (
+    AlertIncident as AlertIncidentPydantic,
+    AlertIncidentUpdateRequest,
+)
 from db_models import (
     AlertRule as AlertRuleDB,
+    AlertIncident as AlertIncidentDB,
     NotificationChannel as NotificationChannelDB,
     Group,
 )
@@ -58,6 +64,8 @@ def _has_access(
        one group with the resource.
     """
     if created_by == user_id:
+        return True
+    if visibility == "public":
         return True
     if visibility == "tenant":
         return True
@@ -134,6 +142,157 @@ class DatabaseStorageService:
             visibility=ch.visibility or "private",
             shared_group_ids=_get_shared_group_ids(ch),
         )
+
+    def _incident_to_pydantic(self, incident: AlertIncidentDB) -> AlertIncidentPydantic:
+        note_items = []
+        for note in (incident.notes or []):
+            if not isinstance(note, dict):
+                continue
+            note_items.append({
+                "author": note.get("author", "system"),
+                "text": note.get("text", ""),
+                "createdAt": note.get("createdAt") or datetime.now(timezone.utc),
+            })
+
+        return AlertIncidentPydantic(
+            id=incident.id,
+            fingerprint=incident.fingerprint,
+            alertName=incident.alert_name,
+            severity=incident.severity,
+            status=incident.status,
+            assignee=incident.assignee,
+            notes=note_items,
+            labels=incident.labels or {},
+            annotations=incident.annotations or {},
+            startsAt=incident.starts_at,
+            lastSeenAt=incident.last_seen_at,
+            resolvedAt=incident.resolved_at,
+            createdAt=incident.created_at,
+            updatedAt=incident.updated_at,
+        )
+
+    def sync_incidents_from_alerts(self, tenant_id: str, alerts: List[Dict[str, Any]]) -> None:
+        """Upsert incidents from active alerts and resolve missing open incidents."""
+        now = datetime.now(timezone.utc)
+        active_fingerprints: set[str] = set()
+
+        with get_db_session() as db:
+            for alert in alerts or []:
+                labels = alert.get("labels", {}) or {}
+                annotations = alert.get("annotations", {}) or {}
+                fingerprint = alert.get("fingerprint") or labels.get("fingerprint")
+                if not fingerprint:
+                    continue
+                active_fingerprints.add(fingerprint)
+
+                incident = (
+                    db.query(AlertIncidentDB)
+                    .filter(AlertIncidentDB.tenant_id == tenant_id, AlertIncidentDB.fingerprint == fingerprint)
+                    .first()
+                )
+
+                starts_at = alert.get("startsAt") or alert.get("starts_at")
+                parsed_starts = None
+                if starts_at:
+                    try:
+                        parsed_starts = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+                    except ValueError:
+                        parsed_starts = None
+
+                if not incident:
+                    incident = AlertIncidentDB(
+                        id=str(uuid.uuid4()),
+                        tenant_id=tenant_id,
+                        fingerprint=fingerprint,
+                        alert_name=labels.get("alertname") or "Unnamed alert",
+                        severity=labels.get("severity") or "warning",
+                        status="open",
+                        labels=labels,
+                        annotations=annotations,
+                        starts_at=parsed_starts,
+                        last_seen_at=now,
+                        resolved_at=None,
+                        notes=[],
+                    )
+                    db.add(incident)
+                else:
+                    incident.alert_name = labels.get("alertname") or incident.alert_name
+                    incident.severity = labels.get("severity") or incident.severity
+                    incident.labels = labels
+                    incident.annotations = annotations
+                    if parsed_starts and not incident.starts_at:
+                        incident.starts_at = parsed_starts
+                    incident.status = "open"
+                    incident.last_seen_at = now
+                    incident.resolved_at = None
+
+            open_incidents = (
+                db.query(AlertIncidentDB)
+                .filter(AlertIncidentDB.tenant_id == tenant_id, AlertIncidentDB.status == "open")
+                .all()
+            )
+            for incident in open_incidents:
+                if incident.fingerprint not in active_fingerprints:
+                    incident.status = "resolved"
+                    incident.resolved_at = now
+
+    def list_incidents(self, tenant_id: str, status: Optional[str] = None) -> List[AlertIncidentPydantic]:
+        with get_db_session() as db:
+            query = db.query(AlertIncidentDB).filter(AlertIncidentDB.tenant_id == tenant_id)
+            if status:
+                query = query.filter(AlertIncidentDB.status == status)
+            incidents = query.order_by(AlertIncidentDB.updated_at.desc()).all()
+            return [self._incident_to_pydantic(i) for i in incidents]
+
+    def update_incident(
+        self,
+        incident_id: str,
+        tenant_id: str,
+        user_id: str,
+        payload: AlertIncidentUpdateRequest,
+    ) -> Optional[AlertIncidentPydantic]:
+        with get_db_session() as db:
+            incident = (
+                db.query(AlertIncidentDB)
+                .filter(AlertIncidentDB.id == incident_id, AlertIncidentDB.tenant_id == tenant_id)
+                .first()
+            )
+            if not incident:
+                return None
+
+            if payload.assignee is not None:
+                incident.assignee = payload.assignee.strip() or None
+
+            if payload.status is not None:
+                incident.status = str(payload.status)
+                if str(payload.status) == "resolved":
+                    incident.resolved_at = datetime.now(timezone.utc)
+                else:
+                    incident.resolved_at = None
+
+            if payload.note:
+                notes = incident.notes or []
+                notes.append(
+                    {
+                        "author": user_id,
+                        "text": payload.note,
+                        "createdAt": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                incident.notes = notes
+
+            db.flush()
+            return self._incident_to_pydantic(incident)
+
+    def get_public_alert_rules(self, tenant_id: str) -> List[AlertRulePydantic]:
+        with get_db_session() as db:
+            rules = (
+                db.query(AlertRuleDB)
+                .options(joinedload(AlertRuleDB.shared_groups))
+                .filter(AlertRuleDB.tenant_id == tenant_id, AlertRuleDB.visibility == "public", AlertRuleDB.enabled.is_(True))
+                .all()
+            )
+            return [self._rule_to_pydantic(r) for r in rules]
 
     def get_alert_rules(
         self, tenant_id: str, user_id: str, group_ids: Optional[List[str]] = None,

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
+import { setSetupToken } from '../api'
 
 const ToastContext = createContext();
 
@@ -42,6 +43,9 @@ export function ToastProvider({ children }) {
         }
       }
 
+      // Simple server error shape: { detail: "Invalid TOTP code" }
+      if (typeof m.detail === 'string') return m.detail
+
       if (m.message) return String(m.message)
       if (m.msg) return String(m.msg)
       if (m.error) return String(m.error)
@@ -76,6 +80,22 @@ export function ToastProvider({ children }) {
   useEffect(() => {
     const handler = (e) => {
       const { status, body } = e.detail || {}
+
+      // Special-case: MFA setup challenge (sent as a 401 with
+      // { mfa_setup_required: true, setup_token: '...' }). The
+      // global API error handler used to stringify that object and
+      // show a cryptic toast. Instead, show a clear message and
+      // stash the setup token so the Login flow / MFA UI can use it.
+      const challenge = (body && (body.detail || body)) || null
+      const mfaRequired = Boolean(challenge && (challenge.mfa_setup_required === true || (challenge.detail && challenge.detail.mfa_setup_required === true)))
+      if (status === 401 && mfaRequired) {
+        try {
+          if (challenge.setup_token) setSetupToken(challenge.setup_token)
+        } catch (_) { /* ignore */ }
+        error('Multi‑factor setup is required — please complete 2FA setup to continue.')
+        return
+      }
+
       const raw = (body && (body.detail || body.message || body.error || body)) || 'API error'
       const msg = formatMessage(raw)
       if (status >= 400) {

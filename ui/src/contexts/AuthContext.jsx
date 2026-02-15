@@ -96,8 +96,8 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const login = useCallback(async (username, password) => {
-    const response = await api.login(username, password)
+  const login = useCallback(async (username, password, mfa_code) => {
+    const response = await api.login(username, password, mfa_code)
     const { access_token } = response
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)

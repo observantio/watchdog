@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext'
 import PermissionEditor from '../components/PermissionEditor'
 import ConfirmModal from '../components/ConfirmModal'
 import HelpTooltip from '../components/HelpTooltip'
+import TwoFactorModal from '../components/TwoFactorModal'
 import * as api from '../api'
 import { USER_ROLES } from '../utils/constants'
 import { getRoleVariant, getRoleBorderColor, getUserInitials } from '../components/users/userUiUtils'
@@ -26,7 +27,8 @@ export default function UsersPage() {
     email: '',
     full_name: '',
     role: 'user',
-    is_active: true
+    is_active: true,
+    must_setup_mfa: false,
   })
   const [searchQuery, setSearchQuery] = useState('')
   const [confirmDialog, setConfirmDialog] = useState({
@@ -36,6 +38,7 @@ export default function UsersPage() {
     onConfirm: null
   })
   const [selectedUser, setSelectedUser] = useState(null)
+  const [showTwoFactor, setShowTwoFactor] = useState(false)
   
   const { user: currentUser, hasPermission } = useAuth()
 
@@ -112,7 +115,8 @@ export default function UsersPage() {
         email: editUserData.email,
         full_name: editUserData.full_name,
         role: editUserData.role,
-        is_active: editUserData.is_active
+        is_active: editUserData.is_active,
+        must_setup_mfa: editUserData.must_setup_mfa,
       })
       toast.success('User updated successfully')
       closeEditUser()
@@ -248,6 +252,7 @@ export default function UsersPage() {
                         <Badge variant={roleVariant} className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.role}</Badge>
                         {!u.is_active && <Badge variant="warning" className="whitespace-nowrap text-xs px-3 py-1 font-medium">Inactive</Badge>}
                         {u.group_ids?.length > 0 && <Badge variant="success" className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.group_ids.length} group{u.group_ids.length > 1 ? 's' : ''}</Badge>}
+                        {u.must_setup_mfa && <Badge variant="danger" className="whitespace-nowrap text-xs px-3 py-1 font-medium">MFA required</Badge>}
                       </div>
                     </div>
 
@@ -351,6 +356,16 @@ export default function UsersPage() {
                   />
                   <HelpTooltip text={editUserData.id === currentUser?.id ? "You cannot disable your own account" : (editUserData.role === 'admin' && !isCurrentUserAdmin) ? "Only administrators can modify admin accounts" : "Inactive users cannot log in but their account data is preserved."} />
                 </div>
+
+                <div className="flex items-center gap-2 mt-2">
+                  <Checkbox
+                    checked={editUserData.must_setup_mfa}
+                    onChange={() => setEditUserData({ ...editUserData, must_setup_mfa: !editUserData.must_setup_mfa })}
+                    label="Require Two‑Factor"
+                    disabled={editUserData.id === currentUser?.id || (editUserData.role === 'admin' && !isCurrentUserAdmin)}
+                  />
+                  <HelpTooltip text="Require this user to enroll in 2FA at next login." />
+                </div>
               </div>
             </Modal>
             </div>
@@ -405,6 +420,23 @@ export default function UsersPage() {
                 <p className="text-sm text-sre-text-muted">{(selectedUser.group_ids || []).length} group{(selectedUser.group_ids || []).length !== 1 ? 's' : ''}</p>
               </div>
             </div>
+
+            <div className="mt-4 flex gap-2">
+              {selectedUser.id === currentUser?.id && (
+                <Button size="sm" variant="secondary" onClick={() => setShowTwoFactor(true)}>Manage Two‑Factor</Button>
+              )}
+              {canManageUsers && selectedUser.id !== currentUser?.id && (
+                <Button size="sm" variant="danger" onClick={async () => {
+                  try {
+                    await api.resetUserMFA(selectedUser.id)
+                    toast.success('User 2FA has been reset')
+                    loadData()
+                  } catch (err) {
+                    toast.error('Failed to reset user 2FA: ' + (err?.message || 'Unknown'))
+                  }
+                }}>Reset 2FA</Button>
+              )}
+            </div>
           </div>
         </Modal>
       )}
@@ -420,6 +452,8 @@ export default function UsersPage() {
           variant="danger"
         />
       )}
+
+      <TwoFactorModal isOpen={showTwoFactor} onClose={() => { setShowTwoFactor(false); loadData() }} />
     </div>
   )
 }

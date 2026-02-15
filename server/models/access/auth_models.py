@@ -65,6 +65,9 @@ class Permission(str, Enum):
     DELETE_CHANNELS = "delete:channels"
     TEST_CHANNELS = "test:channels"
 
+    READ_INCIDENTS = "read:incidents"
+    UPDATE_INCIDENTS = "update:incidents"
+
     READ_LOGS = "read:logs"
     READ_TRACES = "read:traces"
 
@@ -120,6 +123,8 @@ ROLE_PERMISSIONS = {
         Permission.READ_SILENCES,
         Permission.READ_RULES,
         Permission.READ_CHANNELS,
+        Permission.READ_INCIDENTS,
+        Permission.UPDATE_INCIDENTS,
         Permission.READ_LOGS,
         Permission.READ_TRACES,
         Permission.READ_DASHBOARDS,
@@ -149,6 +154,7 @@ class TokenData(BaseModel):
     is_superuser: bool = False
     permissions: List[str]
     group_ids: List[str] = Field(default_factory=list)
+    is_mfa_setup: bool = False  # token used only for MFA setup flows (short‑lived)
 
 
 class OIDCAuthURLRequest(BaseModel):

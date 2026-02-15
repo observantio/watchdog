@@ -20,7 +20,8 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
     password: '',
     full_name: '',
     role: 'user',
-    group_ids: []
+    group_ids: [],
+    must_setup_mfa: false,
   })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
@@ -270,6 +271,11 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
             </select>
           </div>
           <HelpTooltip text="User role determines baseline permissions. Admin has full access, User can read and modify most resources, Viewer has read-only access." />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Checkbox checked={formData.must_setup_mfa} onChange={() => setFormData({ ...formData, must_setup_mfa: !formData.must_setup_mfa })} label="Require Two‑Factor on first login" />
+          <HelpTooltip text="When enabled the user will be required to enroll in 2FA at their next login." />
         </div>
 
         <div>

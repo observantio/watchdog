@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from config import config
 from models.access.user_models import (
     LoginRequest, RegisterRequest, UserResponse,
-    UserCreate, UserUpdate, UserPasswordUpdate
+    UserCreate, UserUpdate, UserPasswordUpdate,
+    TotpEnrollResponse, MfaVerifyRequest, MfaDisableRequest, RecoveryCodesResponse,
 )
 from models.access.group_models import (
     Group, GroupCreate, GroupUpdate, GroupMembersUpdate
@@ -19,6 +20,7 @@ from models.access.auth_models import AuthModeResponse
 
 from middleware.dependencies import (
     get_current_user,
+    get_current_user_or_mfa_setup,
     require_permission,
     require_any_permission_with_scope,
     auth_service,
@@ -58,9 +60,9 @@ async def login(request: Request, login_request: LoginRequest):
         window_seconds=60,
         allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
     )
-    token = auth_service.login(login_request.username, login_request.password)
+    token_or_challenge = auth_service.login(login_request.username, login_request.password, getattr(login_request, 'mfa_code', None))
 
-    if not token:
+    if not token_or_challenge:
         if auth_service.is_external_auth_enabled() and not auth_service.is_password_auth_enabled():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -68,11 +70,19 @@ async def login(request: Request, login_request: LoginRequest):
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect username or password or invalid MFA code",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return token
+    # MFA challenge response
+    if isinstance(token_or_challenge, dict):
+        if token_or_challenge.get('mfa_required'):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="MFA required")
+        if token_or_challenge.get('mfa_setup_required'):
+            # return setup token to the client so it can enroll/verify TOTP
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=token_or_challenge)
+
+    return token_or_challenge
 
 
 @router.post("/oidc/authorize-url", response_model=OIDCAuthURLResponse)
@@ -95,10 +105,12 @@ async def oidc_authorize_url(payload: OIDCAuthURLRequest):
 async def oidc_exchange_token(payload: OIDCCodeExchangeRequest):
     if not auth_service.is_external_auth_enabled():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC is not enabled")
-    token = auth_service.exchange_oidc_authorization_code(payload.code, payload.redirect_uri)
-    if not token:
+    token_or_challenge = auth_service.exchange_oidc_authorization_code(payload.code, payload.redirect_uri)
+    if not token_or_challenge:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed")
-    return token
+    if isinstance(token_or_challenge, dict) and token_or_challenge.get('mfa_setup_required'):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=token_or_challenge)
+    return token_or_challenge
 
 
 @router.post("/register", response_model=UserResponse)
@@ -139,6 +151,43 @@ async def get_current_user_info(current_user: TokenData = Depends(require_authen
         )
     
     return auth_service.build_user_response(user, fallback_permissions=current_user.permissions)
+
+
+@router.post('/mfa/enroll', response_model=TotpEnrollResponse)
+async def mfa_enroll(current_user: TokenData = Depends(get_current_user_or_mfa_setup)):
+    """Generate a TOTP secret for the current user (persist encrypted secret, not enabled until verify)."""
+    try:
+        payload = auth_service.enroll_totp(current_user.user_id)
+        return TotpEnrollResponse(**payload)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post('/mfa/verify', response_model=RecoveryCodesResponse)
+async def mfa_verify(payload: MfaVerifyRequest, current_user: TokenData = Depends(get_current_user_or_mfa_setup)):
+    """Verify TOTP code and enable MFA for the current user; return recovery codes."""
+    try:
+        codes = auth_service.verify_enable_totp(current_user.user_id, payload.code)
+        return RecoveryCodesResponse(recovery_codes=codes)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post('/mfa/disable')
+async def mfa_disable(payload: MfaDisableRequest, current_user: TokenData = Depends(require_authenticated_with_scope("auth"))):
+    """Disable MFA after verifying password or TOTP code."""
+    ok = auth_service.disable_totp(current_user.user_id, current_password=payload.current_password, code=payload.code)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to disable MFA")
+    return {"message": "MFA disabled"}
+
+
+@router.post('/users/{user_id}/mfa/reset')
+async def admin_reset_user_mfa(user_id: str, current_user: TokenData = Depends(require_any_permission_with_scope([Permission.MANAGE_USERS], "auth"))):
+    ok = auth_service.reset_totp(user_id, current_user.user_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
+    return {"message": "User MFA reset"}
 
 
 @router.put("/me", response_model=UserResponse)

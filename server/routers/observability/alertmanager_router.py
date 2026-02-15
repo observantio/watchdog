@@ -5,6 +5,7 @@ import httpx
 import logging
 
 from models.alerting.alerts import Alert, AlertGroup, AlertStatus, AlertState
+from models.alerting.incidents import AlertIncident, AlertIncidentUpdateRequest
 from models.alerting.silences import Silence, SilenceCreate, SilenceCreateRequest, Visibility
 from models.alerting.receivers import AlertManagerStatus
 from models.alerting.rules import AlertRule, AlertRuleCreate
@@ -143,7 +144,34 @@ async def get_alerts(
         silenced=silenced,
         inhibited=inhibited
     )
+    try:
+        storage_service.sync_incidents_from_alerts(
+            current_user.tenant_id,
+            [alert.model_dump(by_alias=True) for alert in alerts],
+        )
+    except Exception as exc:
+        logger.warning("Incident sync skipped due to error: %s", exc)
     return alerts
+
+
+@router.get("/incidents", response_model=List[AlertIncident])
+async def get_incidents(
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by incident status: open|resolved"),
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_INCIDENTS, "alertmanager")),
+):
+    return storage_service.list_incidents(current_user.tenant_id, status_filter)
+
+
+@router.patch("/incidents/{incident_id}", response_model=AlertIncident)
+async def patch_incident(
+    incident_id: str,
+    payload: AlertIncidentUpdateRequest,
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
+):
+    updated = storage_service.update_incident(incident_id, current_user.tenant_id, current_user.user_id, payload)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
+    return updated
 
 
 @router.get("/alerts/groups", response_model=List[AlertGroup])
@@ -371,6 +399,29 @@ async def get_alert_rules(current_user: TokenData = Depends(require_permission_w
         result.append(rule)
 
     return result
+
+
+@router.get("/public/rules", response_model=List[AlertRule])
+async def get_public_alert_rules(request: Request):
+    """Public endpoint that returns only rules marked with visibility='public'."""
+    enforce_public_endpoint_security(
+        request,
+        scope="alertmanager_public_rules",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
+        allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
+    )
+    tenant_id = config.DEFAULT_ADMIN_TENANT
+    from database import get_db_session
+    from db_models import Tenant
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        if not tenant:
+            return []
+        tenant_id = tenant.id
+
+    return storage_service.get_public_alert_rules(tenant_id)
 
 
 @router.get("/metrics/names")

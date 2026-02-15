@@ -4,8 +4,17 @@
 import { API_BASE } from './utils/constants'
 
 let authToken = null
+let setupToken = null
 let userOrgIds = []
 let isPromotingOrgId = false
+
+export function setSetupToken(token) {
+  setupToken = token
+}
+
+export function clearSetupToken() {
+  setupToken = null
+}
 
 export function setAuthToken(token) {
   authToken = token
@@ -118,8 +127,59 @@ export async function fetchSystemMetrics() {
   return request('/api/system/metrics')
 }
 
-export async function login(username, password) {
-  return requestJson('/api/auth/login', { payload: { username, password } })
+export async function login(username, password, mfa_code) {
+  const payload = { username, password }
+  if (mfa_code) payload.mfa_code = mfa_code
+  return requestJson('/api/auth/login', { payload })
+}
+
+export async function enrollMFA() {
+  // prefer authenticated session, otherwise use setupToken for initial admin/setup flows
+  if (authToken) return requestJson('/api/auth/mfa/enroll', { method: 'POST' })
+  if (!setupToken) throw new Error('Not authenticated')
+  const res = await fetch(`${API_BASE}/api/auth/mfa/enroll`, { method: 'POST', headers: { 'Authorization': `Bearer ${setupToken}` } })
+  if (!res.ok) {
+    const text = await res.text()
+    let body
+    try {
+      body = text?.startsWith('{') ? JSON.parse(text) : { message: text }
+    } catch {
+      body = { message: text }
+    }
+    const msg = body.message || body.detail || text || res.statusText
+    const err = new Error(msg)
+    err.body = body
+    throw err
+  }
+  return await res.json()
+}
+
+export async function verifyMFA(code) {
+  if (authToken) return requestJson('/api/auth/mfa/verify', { method: 'POST', payload: { code } })
+  if (!setupToken) throw new Error('Not authenticated')
+  const res = await fetch(`${API_BASE}/api/auth/mfa/verify`, { method: 'POST', headers: { 'Authorization': `Bearer ${setupToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
+  if (!res.ok) {
+    const text = await res.text()
+    let body
+    try {
+      body = text?.startsWith('{') ? JSON.parse(text) : { message: text }
+    } catch {
+      body = { message: text }
+    }
+    const msg = body.message || body.detail || text || res.statusText
+    const err = new Error(msg)
+    err.body = body
+    throw err
+  }
+  return await res.json()
+}
+
+export async function disableMFA({ current_password, code } = {}) {
+  return requestJson('/api/auth/mfa/disable', { method: 'POST', payload: { current_password, code } })
+}
+
+export async function resetUserMFA(userId) {
+  return request(`/api/auth/users/${encodeURIComponent(userId)}/mfa/reset`, { method: 'POST' })
 }
 
 export async function getAuthMode() {
@@ -279,6 +339,19 @@ export async function deleteAlerts(filter) {
 }
 export async function getAlertRules() {
   return request('/api/alertmanager/rules')
+}
+export async function getPublicAlertRules() {
+  return request('/api/alertmanager/public/rules')
+}
+export async function getIncidents(status) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+  return request(`/api/alertmanager/incidents${qs}`)
+}
+export async function updateIncident(incidentId, payload) {
+  return requestJson(`/api/alertmanager/incidents/${encodeURIComponent(incidentId)}`, {
+    method: 'PATCH',
+    payload
+  })
 }
 export async function createAlertRule(payload) {
   return requestJson('/api/alertmanager/rules', { payload })

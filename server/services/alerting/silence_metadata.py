@@ -15,9 +15,7 @@ def normalize_visibility(value: Optional[str]) -> str:
     if not value:
         return Visibility.PRIVATE.value
     normalized = str(value).lower()
-    if normalized == "public":
-        normalized = Visibility.TENANT.value
-    if normalized not in {Visibility.PRIVATE.value, Visibility.GROUP.value, Visibility.TENANT.value}:
+    if normalized not in {Visibility.PRIVATE.value, Visibility.GROUP.value, Visibility.TENANT.value, Visibility.PUBLIC.value}:
         raise ValueError("Invalid visibility value")
     return normalized
 
