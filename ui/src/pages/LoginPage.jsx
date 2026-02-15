@@ -351,7 +351,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       className="px-4 py-2 bg-sre-primary text-white rounded"
-                      disabled={!verifiedSetupCode || setupRecoveryCodes.length === 0}
+                      disabled={!verifiedSetupCode || setupRecoveryCodes.length === 0 || setupLoading}
                       onClick={async () => {
                         setSetupLoading(true)
                         setError('')
@@ -371,7 +371,12 @@ export default function LoginPage() {
                         }
                       }}
                     >
-                      Login
+                      {setupLoading ? (
+                        <span className="flex items-center gap-2">
+                          <Spinner size="sm" />
+                          Logging in...
+                        </span>
+                      ) : 'Login'}
                     </button>
                   </div>
 

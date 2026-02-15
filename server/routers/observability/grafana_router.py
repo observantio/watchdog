@@ -48,7 +48,7 @@ async def grafana_auth(
     orig: Optional[str] = Query(None, description="Original proxied URI"),
     db: Session = Depends(get_db),
 ):
-    headers = grafana_proxy_service.authorize_proxy_request(
+    headers = await grafana_proxy_service.authorize_proxy_request(
         request=request,
         db=db,
         auth_service=auth_service,
@@ -68,7 +68,7 @@ async def datasource_query(
 ):
     """Proxy Grafana datasource queries after datasource access validation."""
     is_admin = is_admin_user(current_user)
-    grafana_proxy_service.enforce_datasource_query_access(
+    await grafana_proxy_service.enforce_datasource_query_access(
         db=db,
         payload=payload,
         user_id=current_user.user_id,
@@ -201,7 +201,7 @@ async def delete_dashboard(
         tenant_id=current_user.tenant_id, group_ids=user_group_ids(current_user),
     )
     if not success:
-        raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found, access denied, or delete failed")
+        raise HTTPException(status_code=404, detail=f"You have no permission to delete dashboard {uid} or it does not exist")
     return {"status": "success", "message": f"Dashboard {uid} deleted"}
 
 
@@ -345,7 +345,7 @@ async def delete_datasource(
         tenant_id=current_user.tenant_id, group_ids=user_group_ids(current_user),
     )
     if not success:
-        raise HTTPException(status_code=404, detail=f"Datasource {uid} not found, access denied, or delete failed")
+        raise HTTPException(status_code=404, detail=f"You have no permission to delete datasource {uid} or it does not exist")
     return {"status": "success", "message": f"Datasource {uid} deleted"}
 
 

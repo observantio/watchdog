@@ -145,12 +145,11 @@ export default function Header() {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg flex items-center">
                 <svg className="w-6 h-6 text-sre-primary eye-blink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zm11 3a3 3 0 100-6 3 3 0 000 6z" />
                 </svg>
               </div>
-              <span className="text-base font-normal text-sre-primary">Observing</span>
             </div>
           </div>
 
@@ -278,6 +277,10 @@ function UserMenu({ user, logout, hasPermission, openChangePassword }) {
 
           <NavLink to="/apikey" role="menuitem" tabIndex={0} className="block px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50" onClick={() => setOpen(false)}>
             <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>key</span>{' '}API Key
+          </NavLink>
+
+          <NavLink to="/integrations" role="menuitem" tabIndex={0} className="block px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50" onClick={() => setOpen(false)}>
+            <span className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted" aria-hidden>integration_instructions</span>{' '}Integrations
           </NavLink>
 
           <button type="button" role="menuitem" onClick={() => { setOpen(false); openChangePassword?.() }} className="w-full text-left px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50">

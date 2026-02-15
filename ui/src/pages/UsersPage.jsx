@@ -215,8 +215,9 @@ export default function UsersPage() {
       <Card
         title="Users"
         subtitle={`We've found ${filteredUsers.length} user${filteredUsers.length === 1 ? '' : 's'} from the database${searchQuery ? ' (filtered)' : ''}`}
+        className="border-0"
       >
-        <CreateUserModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={loadData} groups={groups} />
+        <CreateUserModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={loadData} groups={groups} users={users} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredUsers.length === 0 ? (

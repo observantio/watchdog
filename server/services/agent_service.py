@@ -1,6 +1,10 @@
 import logging
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Any
+
+import httpx
+
+from config import config
 
 from models.observability.agent_models import AgentHeartbeat, AgentInfo
 
@@ -45,3 +49,37 @@ class AgentService:
 
     def list_agents(self) -> List[AgentInfo]:
         return sorted(self._agents.values(), key=lambda a: a.last_seen, reverse=True)
+
+    @staticmethod
+    def extract_metrics_count(payload: Dict[str, Any]) -> int:
+        result = payload.get("data", {}).get("result", [])
+        if not result:
+            return 0
+        value = result[0].get("value", [0, 0])[1]
+        return int(float(value))
+
+    async def key_activity(self, key_value: str, mimir_client: httpx.AsyncClient) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        start_ns = int((now - timedelta(hours=1)).timestamp() * 1_000_000_000)
+        end_ns = int(now.timestamp() * 1_000_000_000)
+
+        metrics_active = False
+        metrics_count = 0
+
+        try:
+            response = await mimir_client.get(
+                f"{config.MIMIR_URL.rstrip('/')}/prometheus/api/v1/query",
+                params={"query": "count({__name__=~\".+\"})", "start": start_ns, "end": end_ns},
+                headers={"X-Scope-OrgID": key_value},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            metrics_count = self.extract_metrics_count(payload)
+            metrics_active = metrics_count > 0
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            metrics_active = False
+
+        return {
+            "metrics_active": metrics_active,
+            "metrics_count": metrics_count,
+        }

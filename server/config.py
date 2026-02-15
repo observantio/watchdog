@@ -99,6 +99,14 @@ class Config:
     # Alerting and notifications defaults
     DEFAULT_RULE_GROUP: str = os.getenv("DEFAULT_RULE_GROUP", "default")
     DEFAULT_SLACK_CHANNEL: str = os.getenv("DEFAULT_SLACK_CHANNEL", "default")
+    ENABLED_NOTIFICATION_CHANNEL_TYPES: list = [
+        channel_type.strip().lower()
+        for channel_type in os.getenv(
+            "ENABLED_NOTIFICATION_CHANNEL_TYPES",
+            "email,slack,teams,webhook,pagerduty",
+        ).split(",")
+        if channel_type.strip()
+    ]
 
 
 class Constants:

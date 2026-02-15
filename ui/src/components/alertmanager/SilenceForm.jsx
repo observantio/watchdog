@@ -15,14 +15,9 @@ export default function SilenceForm({ onSave, onCancel }) {
   const [matchers, setMatchers] = useState([{ id: genId(), name: '', value: '', isRegex: false, isEqual: true }])
   const [duration, setDuration] = useState('1')
   const [comment, setComment] = useState('')
-  const [createdBy, setCreatedBy] = useState('')
   const [visibility, setVisibility] = useState('private')
   const [groups, setGroups] = useState([])
   const [selectedGroups, setSelectedGroups] = useState(new Set())
-
-  useEffect(() => {
-    if (user?.username) setCreatedBy(user.username)
-  }, [user])
 
   useEffect(() => {
     loadGroups()
@@ -82,14 +77,14 @@ export default function SilenceForm({ onSave, onCancel }) {
         {matchers.map((matcher, index) => (
           <div key={matcher.id} className="flex gap-2 items-end">
             <Input
-              label={index === 0 ? <>Label <HelpTooltip text="The alert label name to match against (e.g., alertname, severity)." /></> : ""}
+              label={index === 0 ? "Label" : ""}
               value={matcher.name}
               onChange={(e) => updateMatcher(matcher.id, 'name', e.target.value)}
               placeholder="label name"
               required
             />
             <Input
-              label={index === 0 ? <>Value <HelpTooltip text="The value that the label should match. Use regex for pattern matching." /></> : ""}
+              label={index === 0 ? "Value" : ""}
               value={matcher.value}
               onChange={(e) => updateMatcher(matcher.id, 'value', e.target.value)}
               placeholder="label value"
@@ -132,16 +127,6 @@ export default function SilenceForm({ onSave, onCancel }) {
             required
           />
         </div>
-      </div>
-
-      <div>
-        <Input
-          label="Created By"
-          value={createdBy}
-          placeholder="Your name"
-          disabled
-          readOnly
-        />
       </div>
 
       <div className="border-t border-sre-border pt-4 space-y-3">

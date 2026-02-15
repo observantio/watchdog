@@ -29,6 +29,9 @@ from middleware.dependencies import (
     require_permission_with_scope,
 )
 from middleware.error_handlers import handle_route_errors
+from services.notification_service import NotificationService
+from database import get_db_session
+from db_models import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,7 @@ USER_NOT_FOUND = "User not found"
 GROUP_NOT_FOUND = "Group not found"
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+notification_service = NotificationService()
 
 
 @router.get("/mode", response_model=AuthModeResponse)
@@ -135,7 +139,21 @@ async def register(request: Request, register_request: RegisterRequest):
         full_name=register_request.full_name
     )
 
-    user = auth_service.create_user(user_create, tenant_id=config.DEFAULT_ORG_ID)
+    with get_db_session() as db:
+        default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = default_tenant.id if default_tenant else config.DEFAULT_ADMIN_TENANT
+
+    user = auth_service.create_user(user_create, tenant_id=tenant_id)
+
+    try:
+        await notification_service.send_user_welcome_email(
+            recipient_email=user.email,
+            username=user.username,
+            full_name=user.full_name,
+            login_url=None,
+        )
+    except Exception as exc:
+        logger.warning("User welcome email skipped: %s", exc)
 
     return auth_service.build_user_response(user, fallback_permissions=ROLE_PERMISSIONS.get(user.role, []))
 
@@ -267,6 +285,15 @@ async def create_user(
     )
 ):
     user = auth_service.create_user(user_create, current_user.tenant_id)
+    try:
+        await notification_service.send_user_welcome_email(
+            recipient_email=user.email,
+            username=user.username,
+            full_name=user.full_name,
+            login_url=None,
+        )
+    except Exception as exc:
+        logger.warning("User welcome email skipped: %s", exc)
 
     return auth_service.build_user_response(user, fallback_permissions=ROLE_PERMISSIONS.get(user.role, []))
 

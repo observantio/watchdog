@@ -9,14 +9,15 @@ import EmailChannelFields from './channelForms/EmailChannelFields'
  * ChannelEditor component with group/user scoping
  * @param {object} props - Component props
  */
-export default function ChannelEditor({ channel, onSave, onCancel }) {
+export default function ChannelEditor({ channel, onSave, onCancel, allowedTypes = [], visibility = 'private' }) {
   const [formData, setFormData] = useState(channel || {
     name: '',
     type: 'webhook',
     enabled: true,
     config: {},
-    visibility: 'private',
-    sharedGroupIds: []
+    // visibility is controlled by the Integrations page tab (passed in via `visibility` prop)
+    visibility: channel?.visibility || visibility,
+    sharedGroupIds: channel?.sharedGroupIds || []
   })
   const [groups, setGroups] = useState([])
   const [selectedGroups, setSelectedGroups] = useState(new Set(channel?.sharedGroupIds || []))
@@ -58,7 +59,7 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
         return <EmailChannelFields formData={formData} setFormData={setFormData} />
       case 'slack':
         return (
-          <>
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-sre-text mb-2">
                 Webhook URL <HelpTooltip text="The Slack webhook URL for sending notifications to your Slack channel." />
@@ -71,6 +72,7 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
                 })}
                 placeholder="https://hooks.slack.com/services/..."
                 required
+                className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
               />
             </div>
             <div>
@@ -81,9 +83,10 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
                 value={formData.config.channel || ''}
                 onChange={(e) => setFormData({ ...formData, config: { ...formData.config, channel: e.target.value }})}
                 placeholder="#alerts"
+                className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
               />
             </div>
-          </>
+          </div>
         )
       case 'teams':
         return (
@@ -99,12 +102,13 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
               })}
               placeholder="https://outlook.office.com/webhook/..."
               required
+              className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
             />
           </div>
         )
       case 'webhook':
         return (
-          <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-sre-text mb-2">
                 Webhook URL <HelpTooltip text="The HTTP endpoint URL where alert notifications will be sent." />
@@ -114,6 +118,7 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
                 onChange={(e) => setFormData({ ...formData, config: { ...formData.config, url: e.target.value }})}
                 placeholder="https://example.com/webhook"
                 required
+                className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
               />
             </div>
             <div>
@@ -123,12 +128,13 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
               <Select
                 value={formData.config.method || 'POST'}
                 onChange={(e) => setFormData({ ...formData, config: { ...formData.config, method: e.target.value }})}
+                className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
               >
                 <option value="POST">POST</option>
                 <option value="PUT">PUT</option>
               </Select>
             </div>
-          </>
+          </div>
         )
 
       case 'pagerduty':
@@ -145,6 +151,7 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
               })}
               placeholder="Your PagerDuty integration key"
               required
+              className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
             />
           </div>
         )
@@ -154,100 +161,150 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
     }
   }
 
+  const channelTypeOptions = [
+    { value: 'email', label: 'Email', icon: 'email', description: 'Send notifications via email' },
+    { value: 'slack', label: 'Slack', icon: 'chat', description: 'Post messages to Slack channels' },
+    { value: 'teams', label: 'Microsoft Teams', icon: 'groups', description: 'Send notifications to Teams channels' },
+    { value: 'webhook', label: 'Webhook', icon: 'link', description: 'Send HTTP requests to custom endpoints' },
+    { value: 'pagerduty', label: 'PagerDuty', icon: 'notifications_active', description: 'Create incidents in PagerDuty' },
+  ].filter((item) => {
+    if (!Array.isArray(allowedTypes) || allowedTypes.length === 0) return true
+    return allowedTypes.includes(item.value)
+  })
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-sre-text mb-2">
-            Channel Name <HelpTooltip text="Enter a descriptive name for this notification channel." />
-          </label>
-          <Input
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-            placeholder="e.g., Team Slack Channel"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-sre-text mb-2">
-            Channel Type <HelpTooltip text="Select the type of notification service you want to integrate with." />
-          </label>
-          <Select
-            value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value, config: {} })}
-          >
-            <option value="email">Email</option>
-            <option value="slack">Slack</option>
-            <option value="teams">Microsoft Teams</option>
-            <option value="webhook">Webhook</option>
-            <option value="pagerduty">PagerDuty</option>
-          </Select>
-        </div>
-      </div>
-
-      {renderConfigFields()}
-
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="channel-enabled"
-          checked={formData.enabled}
-          onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-          className="w-4 h-4"
-        />
-        <label htmlFor="channel-enabled" className="text-sm text-sre-text">
-          Enable this channel <HelpTooltip text="Only enabled channels will receive alert notifications." />
-        </label>
-      </div>
-
-      {/* Visibility Settings */}
-      <div className="border-t border-sre-border pt-4 space-y-3">
-        <div>
-          <label htmlFor="channel-visibility" className="block text-sm font-semibold text-sre-text mb-2">
-            <span className="material-icons text-sm align-middle mr-1">visibility</span> Visibility <HelpTooltip text="Control who can view and edit this notification channel." />
-          </label>
-          <Select
-            id="channel-visibility"
-            value={formData.visibility || 'private'}
-            onChange={(e) => {
-              const newVisibility = e.target.value
-              setFormData({ ...formData, visibility: newVisibility })
-              if (newVisibility !== 'group') {
-                setSelectedGroups(new Set())
-              }
-            }}
-          >
-            <option value="private">Private - Only visible to me</option>
-            <option value="group">Group - Share with specific groups</option>
-            <option value="tenant">Tenant - Visible to all users in tenant</option>
-          </Select>
-          <p className="text-xs text-sre-text-muted mt-3">
-            {formData.visibility === 'private' && 'Only you can view and edit this channel'}
-            {formData.visibility === 'group' && 'Users in selected groups can view this channel'}
-            {formData.visibility === 'tenant' && 'All users in your organization can view this channel'}
-          </p>
-        </div>
-
-        {/* Group Sharing - only show when visibility is 'group' */}
-        {formData.visibility === 'group' && groups?.length > 0 && (
-          <div>
-            <label htmlFor="channel-groups" className="block text-sm font-medium text-sre-text mb-2">
-              Share with Groups <HelpTooltip text="Select which user groups can view and edit this notification channel." />
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Basic Information Section */}
+      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+        <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
+          <span className="material-icons text-sre-primary">info</span>
+          Basic Information
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-sre-text">
+              Channel Name <HelpTooltip text="Enter a descriptive name for this notification channel." />
             </label>
-            <div id="channel-groups" className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-sre-border rounded bg-sre-surface">
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+              placeholder="e.g., Team Slack Channel"
+              className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-sre-text">
+              Channel Type <HelpTooltip text="Select the type of notification service you want to integrate with." />
+            </label>
+            <Select
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value, config: {} })}
+              className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
+            >
+              {channelTypeOptions.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </Select>
+            {channelTypeOptions.length === 0 && (
+              <p className="text-xs text-sre-text-muted mt-2">No channel types are enabled by organization policy.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Channel Type Preview */}
+      {formData.type && (
+        <div className="bg-gradient-to-r from-sre-primary/5 to-sre-accent/5 rounded-xl p-6 border border-sre-primary/20">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-sre-primary/10 flex items-center justify-center">
+              <span className="material-icons text-2xl text-sre-primary">
+                {channelTypeOptions.find(opt => opt.value === formData.type)?.icon || 'notifications'}
+              </span>
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold text-sre-text">
+                {channelTypeOptions.find(opt => opt.value === formData.type)?.label}
+              </h4>
+              <p className="text-sm text-sre-text-muted">
+                {channelTypeOptions.find(opt => opt.value === formData.type)?.description}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Configuration Section */}
+      {renderConfigFields() && (
+        <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+          <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
+            <span className="material-icons text-sre-primary">settings</span>
+            Configuration
+          </h3>
+          <div className="space-y-4">
+            {renderConfigFields()}
+          </div>
+        </div>
+      )}
+
+      {/* Settings Section */}
+      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+        <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
+          <span className="material-icons text-sre-primary">tune</span>
+          Settings
+        </h3>
+        
+        <div className="space-y-4">
+          <label className="flex items-center gap-3 p-3 bg-sre-bg/50 rounded-lg border border-sre-border/30 hover:border-sre-primary/30 transition-colors cursor-pointer">
+            <input
+              type="checkbox"
+              id="channel-enabled"
+              checked={formData.enabled}
+              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+              className="w-5 h-5 text-sre-primary border-sre-border rounded focus:ring-sre-primary focus:ring-2"
+            />
+            <div className="flex-1">
+              <div className="font-medium text-sre-text">Enable this channel</div>
+              <div className="text-sm text-sre-text-muted">Only enabled channels will receive alert notifications</div>
+            </div>
+            <HelpTooltip text="Only enabled channels will receive alert notifications." />
+          </label>
+        </div>
+      </div>
+
+      {/* Group sharing when in the 'group' tab — visibility itself is set by the Integrations page tab */}
+      {formData.visibility === 'group' && groups?.length > 0 && (
+        <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+          <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
+            <span className="material-icons text-sre-primary">group</span>
+            Group Sharing
+          </h3>
+          
+          <div className="space-y-3">
+            <div className="text-sm text-sre-text-muted mb-3">
+              Select which user groups can view and edit this notification channel.
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto p-3 border border-sre-border/30 rounded-lg bg-sre-bg/30">
               {groups.map((group) => (
                 <label
                   key={group.id}
-                  className="flex items-center gap-2 p-2 bg-sre-bg-alt rounded cursor-pointer hover:bg-sre-accent/10 transition-colors"
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+                    selectedGroups.has(group.id)
+                      ? 'bg-sre-primary/10 border-sre-primary/30 text-sre-primary'
+                      : 'bg-sre-surface/50 border-sre-border/20 hover:border-sre-primary/20 hover:bg-sre-primary/5'
+                  }`}
                 >
                   <input
                     type="checkbox"
                     checked={selectedGroups.has(group.id)}
                     onChange={() => toggleGroup(group.id)}
-                    className="w-4 h-4"
+                    className="w-4 h-4 text-sre-primary border-sre-border rounded focus:ring-sre-primary focus:ring-2"
                   />
-                  <div className="flex-1 text-sm">
-                    <div className="font-medium text-sre-text">{group.name}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sre-text truncate">{group.name}</div>
                     {group.description && (
                       <div className="text-xs text-sre-text-muted truncate">{group.description}</div>
                     )}
@@ -255,17 +312,29 @@ export default function ChannelEditor({ channel, onSave, onCancel }) {
                 </label>
               ))}
             </div>
-            <p className="text-xs text-sre-text-muted mt-2">
+            
+            <div className="text-xs text-sre-text-muted">
               {selectedGroups.size} group{selectedGroups.size === 1 ? '' : 's'} selected
-            </p>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">
-          <span className="material-icons text-sm mr-2">save</span>{' '}
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-sre-border/50">
+        <Button 
+          type="button" 
+          variant="ghost" 
+          onClick={onCancel}
+          className="px-6 py-2"
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="submit"
+          className="px-6 py-2 bg-sre-primary hover:bg-sre-primary-light text-white shadow-lg hover:shadow-xl transition-all"
+        >
+          <span className="material-icons text-sm mr-2">save</span>
           Save Channel
         </Button>
       </div>
@@ -283,4 +352,7 @@ ChannelEditor.propTypes = {
   }),
   onSave: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
+  allowedTypes: PropTypes.arrayOf(PropTypes.string),
+  // the Integrations page tab controls visibility (private|group|tenant)
+  visibility: PropTypes.oneOf(['private','group','tenant']),
 }

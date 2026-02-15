@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import { Button, Input, Select } from '../ui'
 import RuleEditorWizard from './RuleEditorWizard'
@@ -214,7 +215,10 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
           canProceed={canProceedToNextStep()}
           isSubmitting={saving}
           hasErrors={hasErrors}
+          showButtons={false}
         />
+
+        {/* main content... (wizard footer will be shown below) */}
 
         {/* Step Content */}
         <div className="min-h-[500px] bg-gradient-to-br from-sre-bg to-sre-surface/30 rounded-xl p-6 border border-sre-border/50 shadow-inner overflow-hidden">
@@ -297,7 +301,7 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
                     </div>
                     <p className="text-sm text-sre-text-muted">Start from a known-good template, then tune the expression and thresholds for your environment.</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {RULE_TEMPLATES.map((template) => {
                       const isSelected = selectedTemplate === template.id
                       return (
@@ -410,7 +414,7 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
                           Load metric names from Mimir for the selected product and click to insert them into your PromQL expression.
                         </p>
                       </div>
-                      <Button type="button" variant="outline" size="lg" onClick={loadMetrics} disabled={loadingMetrics}>
+                      <Button type="button" variant="secondary" size="lg" onClick={loadMetrics} disabled={loadingMetrics}>
                         {loadingMetrics ? (
                           <>
                             <span className="material-icons text-base mr-2 animate-spin">progress_activity</span>
@@ -517,7 +521,7 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
                     </div>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       onClick={() => setLabelPairs([...labelPairs, { id: Math.random().toString(36).substr(2, 9), key: '', value: '' }])}
                     >
@@ -759,11 +763,15 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
                         </div>
                       </>
                     ) : (
-                      <div className="text-center py-12 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
+                      <div className="text-center py-8 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
                         <span className="material-icons text-4xl text-sre-text-muted mb-4 block">notifications_off</span>
                         <h4 className="text-base font-semibold text-sre-text mb-2">No Channels Configured</h4>
-                        <p className="text-sre-text-muted mb-4">Configure notification channels first before assigning them to alerts.</p>
-                        <p className="text-sm text-sre-text-muted">You can assign channels later after creating the rule.</p>
+                        <p className="text-sre-text-muted mb-4">Configure notification channels before assigning them to alerts.</p>
+                        <div className="flex items-center justify-center gap-3">
+                          <a href="/integrations#integrations" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">Manage Integrations</a>
+                          <Button variant="ghost" onClick={() => setFormData({ ...formData, notificationChannels: [] })}>Skip for now</Button>
+                        </div>
+                        <p className="text-sm text-sre-text-muted mt-3">You can assign channels later after creating the rule.</p>
                       </div>
                     )}
                   </div>
@@ -848,6 +856,18 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
           )}
         </div>
 
+        <RuleEditorWizard
+          currentStep={currentStep}
+          totalSteps={totalSteps}
+          onNext={handleNext}
+          onPrevious={handlePrevious}
+          onSubmit={handleWizardSubmit}
+          canProceed={canProceedToNextStep()}
+          isSubmitting={saving}
+          hasErrors={hasErrors}
+          showIndicator={false}
+        />
+
         {/* Checks and Issues - Collapsible */}
         {(hasErrors || validationWarnings.length > 0 || saveError) && (
           <div className="border-2 border-red-200 dark:border-red-800 rounded-xl p-4 bg-red-50 dark:bg-red-900/20 shadow-inner">
@@ -910,7 +930,7 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
         {/* Test Rule Button - Only show for existing rules */}
         {rule?.id && (
           <div className="flex justify-center pt-4">
-            <Button type="button" variant="outline" onClick={handleTestRule} disabled={testing}>
+            <Button type="button" variant="secondary" onClick={handleTestRule} disabled={testing}>
               <span className="material-icons text-base mr-2" aria-hidden="true">science</span>{' '}
               {testing ? 'Testing...' : 'Test Current Rule'}
             </Button>

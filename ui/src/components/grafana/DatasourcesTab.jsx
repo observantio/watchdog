@@ -3,29 +3,66 @@ import PropTypes from 'prop-types'
 import { Button, Badge, Input, Select } from '../ui'
 
 function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, meta, groups }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
   return (
-    <div className="flex flex-wrap items-center gap-4 p-4 bg-sre-bg-alt rounded-lg border border-sre-border">
-      <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-sre-text-muted">Group:</label>
-        <select
-          value={filters.teamId}
-          onChange={e => setFilters({...filters, teamId: e.target.value})}
-          className="px-3 py-1.5 text-sm bg-sre-surface border border-sre-border rounded text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
-        >
-          <option value="">All teams</option>
-          {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-        </select>
-      </div>
-      <label className="flex items-center gap-2 text-sm text-sre-text cursor-pointer">
-        <input type="checkbox" checked={filters.showHidden} onChange={e => setFilters({...filters, showHidden: e.target.checked})} className="w-4 h-4" />
-        Show hidden datasources
-      </label>
-      <div className="flex gap-2 ml-auto">
-        {hasActiveFilters && (
-          <Button size="sm" variant="ghost" onClick={onClearFilters}>Clear</Button>
-        )}
-        <Button size="sm" onClick={onSearch}>Apply</Button>
-      </div>
+    <div className="bg-gradient-to-r from-sre-surface to-sre-bg-alt rounded-xl border border-sre-border/50 shadow-sm overflow-hidden">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-4 hover:bg-sre-surface/50 transition-colors duration-200"
+      >
+        <div className="flex items-center gap-3">
+          <span className="material-icons text-sre-primary">
+            {isExpanded ? 'expand_less' : 'expand_more'}
+          </span>
+          <span className="text-sm font-semibold text-sre-text">Filters</span>
+          {hasActiveFilters && (
+            <Badge variant="primary" className="text-xs px-2 py-0.5">
+              Active
+            </Badge>
+          )}
+        </div>
+        <div className="text-xs text-sre-text-muted">
+          {hasActiveFilters ? 'Filters applied' : 'Click to filter'}
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="px-4 pb-4 border-t border-sre-border/30">
+          <div className="flex flex-wrap items-center gap-4 pt-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-sre-text-muted">Group:</label>
+              <select
+                value={filters.teamId}
+                onChange={e => setFilters({...filters, teamId: e.target.value})}
+                className="px-3 py-2 text-sm bg-sre-bg border border-sre-border rounded-lg text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
+              >
+                <option value="">All teams</option>
+                {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-sre-text cursor-pointer p-2 rounded-lg hover:bg-sre-surface/50 transition-colors">
+              <input 
+                type="checkbox" 
+                checked={filters.showHidden} 
+                onChange={e => setFilters({...filters, showHidden: e.target.checked})} 
+                className="w-4 h-4 text-sre-primary rounded focus:ring-sre-primary focus:ring-2" 
+              />
+              <span className="font-medium">Show hidden datasources</span>
+            </label>
+            <div className="flex gap-2 ml-auto">
+              {hasActiveFilters && (
+                <Button size="sm" variant="ghost" onClick={onClearFilters} className="hover:bg-sre-surface/50">
+                  Clear
+                </Button>
+              )}
+              <Button size="sm" onClick={onSearch} className="bg-sre-primary hover:bg-sre-primary/90 shadow-sm">
+                Apply
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -89,7 +126,7 @@ export default function DatasourcesTab({
       />
 
       {filtered.length ? (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map((ds) => (
             <div
               key={ds.uid}
@@ -132,6 +169,9 @@ export default function DatasourcesTab({
                         }`}>
                           {ds.access}
                         </span>
+                        {ds.visibility && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-sre-surface text-sre-text-muted dark:bg-gray-800 capitalize">{ds.visibility}</span>
+                        )}
                       </div>
                     </div>
                   </div>

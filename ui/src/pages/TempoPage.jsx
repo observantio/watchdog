@@ -377,8 +377,8 @@ export default function TempoPage() {
             <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
               <span className="material-icons text-5xl text-sre-text-muted mb-4 block">hub</span>
               <h3 className="text-xl font-semibold text-sre-text mb-2">No Traces Found</h3>
-              <p className="text-sre-text-muted mb-6 max-w-md mx-auto">
-                Try adjusting your search criteria, expanding the time range, or pasting a trace ID above.
+              <p className="text-sre-text-muted mb-6 text-sm max-w-md mx-auto">
+                Try adjusting your search criteria, expanding the time range, or pasting a trace ID above. You also must select the right key to look at
               </p>
             </div>
           )}
@@ -489,8 +489,8 @@ export default function TempoPage() {
             <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
               <span className="material-icons text-5xl text-sre-text-muted mb-4 block">timeline</span>
               <h3 className="text-xl font-semibold text-sre-text mb-2">No Traces Found</h3>
-              <p className="text-sre-text-muted mb-6 max-w-md mx-auto">
-                Try adjusting your search criteria, expanding the time range, or pasting a trace ID above.
+              <p className="text-sre-text-muted text-sm mb-6 max-w-md mx-auto">
+                Try adjusting your search criteria, expanding the time range, or pasting a trace ID above. You also must select the right key to look at.
               </p>
             </div>
           )}

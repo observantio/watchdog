@@ -292,7 +292,12 @@ export default function ApiKeyPage() {
 
         {/* Default key modal */}
         <Modal isOpen={showDefaultModal} onClose={() => setShowDefaultModal(false)} title="Update Default API Key"  size="md" closeOnOverlayClick={false}>
-          <form onSubmit={handleSaveOrgId} className="space-y-4">
+          <form onSubmit={handleSaveOrgId} className="space-y-4" onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              handleSaveOrgId(e)
+            }
+          }}>
             <Select value={orgId} onChange={(e) => setOrgId(e.target.value)} className="w-full" required>
               {apiKeys.length === 0 ? (
                 <option value="">No API keys available</option>
@@ -316,7 +321,12 @@ export default function ApiKeyPage() {
 
         {/* Add key modal */}
         <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add API Key" size="md" closeOnOverlayClick={false}>
-          <form onSubmit={handleCreateKey} className="space-y-4">
+          <form onSubmit={handleCreateKey} className="space-y-4" onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              handleCreateKey(e)
+            }
+          }}>
             <div>
               <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-sre-text mb-2">Key Name</label>

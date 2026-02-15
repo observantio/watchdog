@@ -315,6 +315,19 @@ export const updatePassword = updateUserPassword
 export async function getAlerts() {
   return request('/api/alertmanager/alerts')
 }
+
+/**
+ * Get alerts filtered by labels and optional active/silenced/inhibited flags.
+ * Example: getAlertsByFilter({ fingerprint: 'abc' }, true)
+ */
+export async function getAlertsByFilter(filter = {}, active = true) {
+  const params = new URLSearchParams()
+  if (filter && Object.keys(filter).length > 0) params.set('filter_labels', JSON.stringify(filter))
+  if (typeof active !== 'undefined' && active !== null) params.set('active', String(active))
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  return request(`/api/alertmanager/alerts${qs}`)
+}
+
 export async function getAlertGroups() {
   return request('/api/alertmanager/alerts/groups')
 }
@@ -343,8 +356,12 @@ export async function getAlertRules() {
 export async function getPublicAlertRules() {
   return request('/api/alertmanager/public/rules')
 }
-export async function getIncidents(status) {
-  const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+export async function getIncidents(status, visibility, groupId) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (visibility) params.set('visibility', visibility)
+  if (groupId) params.set('group_id', groupId)
+  const qs = params.toString() ? `?${params.toString()}` : ''
   return request(`/api/alertmanager/incidents${qs}`)
 }
 export async function updateIncident(incidentId, payload) {
@@ -352,6 +369,69 @@ export async function updateIncident(incidentId, payload) {
     method: 'PATCH',
     payload
   })
+}
+
+export async function createIncidentJira(incidentId, payload) {
+  return requestJson(`/api/alertmanager/incidents/${encodeURIComponent(incidentId)}/jira`, {
+    method: 'POST',
+    payload
+  })
+}
+export async function getJiraConfig() {
+  return request('/api/alertmanager/jira/config')
+}
+export async function updateJiraConfig(payload) {
+  return requestJson('/api/alertmanager/jira/config', {
+    method: 'PUT',
+    payload
+  })
+}
+export async function listJiraProjects() {
+  return request('/api/alertmanager/jira/projects')
+}
+export async function listJiraProjectsByIntegration(integrationId) {
+  return request(`/api/alertmanager/integrations/jira/${encodeURIComponent(integrationId)}/projects`)
+}
+export async function listJiraIssueTypes(projectKey, integrationId) {
+  if (integrationId) {
+    return request(`/api/alertmanager/integrations/jira/${encodeURIComponent(integrationId)}/projects/${encodeURIComponent(projectKey)}/issue-types`)
+  }
+  return request(`/api/alertmanager/jira/projects/${encodeURIComponent(projectKey)}/issue-types`)
+}
+export async function listIncidentJiraComments(incidentId) {
+  return request(`/api/alertmanager/incidents/${encodeURIComponent(incidentId)}/jira/comments`)
+}
+export async function createIncidentJiraComment(incidentId, payload) {
+  return requestJson(`/api/alertmanager/incidents/${encodeURIComponent(incidentId)}/jira/comments`, {
+    method: 'POST',
+    payload
+  })
+}
+export async function syncIncidentJiraComments(incidentId) {
+  return request(`/api/alertmanager/incidents/${encodeURIComponent(incidentId)}/jira/sync-comments`, {
+    method: 'POST'
+  })
+}
+export async function importAlertRules(payload) {
+  return requestJson('/api/alertmanager/rules/import', {
+    method: 'POST',
+    payload
+  })
+}
+export async function getAllowedChannelTypes() {
+  return request('/api/alertmanager/integrations/channel-types')
+}
+export async function listJiraIntegrations() {
+  return request('/api/alertmanager/integrations/jira')
+}
+export async function createJiraIntegration(payload) {
+  return requestJson('/api/alertmanager/integrations/jira', { method: 'POST', payload })
+}
+export async function updateJiraIntegration(integrationId, payload) {
+  return requestJson(`/api/alertmanager/integrations/jira/${encodeURIComponent(integrationId)}`, { method: 'PUT', payload })
+}
+export async function deleteJiraIntegration(integrationId) {
+  return request(`/api/alertmanager/integrations/jira/${encodeURIComponent(integrationId)}`, { method: 'DELETE' })
 }
 export async function createAlertRule(payload) {
   return requestJson('/api/alertmanager/rules', { payload })

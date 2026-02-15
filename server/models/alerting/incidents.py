@@ -11,6 +11,12 @@ class IncidentStatus(str, Enum):
     RESOLVED = "resolved"
 
 
+class IncidentVisibility(str, Enum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+    GROUP = "group"
+
+
 class IncidentNote(BaseModel):
     author: str
     text: str
@@ -30,11 +36,20 @@ class AlertIncident(BaseModel):
     notes: List[IncidentNote] = Field(default_factory=list)
     labels: Dict[str, str] = Field(default_factory=dict)
     annotations: Dict[str, str] = Field(default_factory=dict)
+    visibility: IncidentVisibility = IncidentVisibility.PUBLIC
+    shared_group_ids: List[str] = Field(default_factory=list, alias="sharedGroupIds")
+    jira_ticket_key: Optional[str] = Field(None, alias="jiraTicketKey")
+    jira_ticket_url: Optional[str] = Field(None, alias="jiraTicketUrl")
+    jira_integration_id: Optional[str] = Field(None, alias="jiraIntegrationId")
     starts_at: Optional[datetime] = Field(None, alias="startsAt")
     last_seen_at: datetime = Field(..., alias="lastSeenAt")
     resolved_at: Optional[datetime] = Field(None, alias="resolvedAt")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
+    # Indicates the incident has been manually reopened / marked for investigation
+    user_managed: bool = Field(False, alias="userManaged")
+    # When true the incident will be hidden from default listings once resolved
+    hide_when_resolved: bool = Field(False, alias="hideWhenResolved")
 
     class Config:
         use_enum_values = True
@@ -42,6 +57,13 @@ class AlertIncident(BaseModel):
 
 
 class AlertIncidentUpdateRequest(BaseModel):
-    status: Optional[IncidentStatus] = None
+    status: Optional[str] = None
     assignee: Optional[str] = None
     note: Optional[str] = None
+    visibility: Optional[IncidentVisibility] = None
+    shared_group_ids: Optional[List[str]] = Field(default=None, alias="sharedGroupIds")
+    jira_ticket_key: Optional[str] = Field(None, alias="jiraTicketKey")
+    jira_ticket_url: Optional[str] = Field(None, alias="jiraTicketUrl")
+    jira_integration_id: Optional[str] = Field(None, alias="jiraIntegrationId")
+    # Allow clients to toggle hiding after resolve
+    hide_when_resolved: Optional[bool] = Field(None, alias="hideWhenResolved")

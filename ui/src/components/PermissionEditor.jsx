@@ -290,8 +290,11 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                       />
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium text-sre-text">{group.name}</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="font-medium text-sre-text truncate">{group.name}</div>
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">{(group.permissions || []).length} perm{(group.permissions || []).length === 1 ? '' : 's'}</Badge>
+                        </div>
                         <button
                           type="button"
                           onClick={() => toggleExpanded(group.id)}
@@ -310,23 +313,29 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                   </div>
 
                   {expandedGroups.has(group.id) && (
-                    <Card className="!p-3 ml-6 mt-2 rounded-lg border border-sre-border">
-                      <div className="text-sm font-semibold text-sre-text mb-2">Group Permissions</div>
-                      <div className="space-y-2">
-                        {(group.permissions || []).length === 0 && (
-                          <div className="text-xs text-sre-text-muted">No explicit permissions on this group</div>
-                        )}
-                        {(group.permissions || []).map((perm) => {
-                          const name = typeof perm === 'string' ? perm : (perm.display_name || perm.name || perm.id)
-                          const desc = typeof perm === 'string' ? '' : (perm.description || '')
-                          return (
-                            <div key={typeof perm === 'string' ? perm : perm.id} className="flex items-start gap-3">
-                              <div className="text-sm font-medium text-sre-text">{name}</div>
-                              {desc && <div className="text-xs text-sre-text-muted">{desc}</div>}
-                            </div>
-                          )
-                        })}
+                    <Card className="!p-4 ml-6 mt-3 rounded-lg border border-sre-border">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-sm font-semibold text-sre-text">Group Permissions</div>
+                        <div className="text-xs text-sre-text-muted">{(group.permissions || []).length} permissions</div>
                       </div>
+
+                      {(group.permissions || []).length === 0 ? (
+                        <div className="text-xs text-sre-text-muted">No explicit permissions on this group</div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {(group.permissions || []).map((perm) => {
+                            const permName = typeof perm === 'string' ? perm : (perm.display_name || perm.name || perm.id)
+                            const permDesc = typeof perm === 'string' ? '' : (perm.description || getPermissionDescription(permName))
+                            const key = typeof perm === 'string' ? perm : perm.id
+                            return (
+                              <div key={key} className="p-3 bg-sre-bg-alt border border-sre-border rounded-lg">
+                                <div className="font-medium text-sm text-sre-text truncate">{permName}</div>
+                                {permDesc && <div className="text-xs text-sre-text-muted mt-1 line-clamp-2">{permDesc}</div>}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </Card>
                   )}
                 </div>
@@ -381,7 +390,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                           onClick={() => deselectAllInCategory(category)}
                           disabled={!someSelected}
                         >
-                          Clear
+                          Clear All
                         </Button>
                       </div>
                     </div>

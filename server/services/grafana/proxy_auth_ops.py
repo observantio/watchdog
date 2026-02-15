@@ -39,6 +39,14 @@ def _required_permissions_for_path(path: str, method: str) -> Set[str]:
     if p.startswith("/grafana/api/ds/query"):
         return {Permission.QUERY_DATASOURCES.value}
 
+    if p.startswith("/grafana/api/query-history"):
+        if m in {"POST", "PUT", "PATCH", "DELETE"}:
+            return {Permission.QUERY_DATASOURCES.value}
+        return {
+            Permission.QUERY_DATASOURCES.value,
+            Permission.READ_DASHBOARDS.value,
+        }
+
     if p.startswith("/grafana/api/datasources/proxy/"):
         return {Permission.QUERY_DATASOURCES.value}
 
@@ -56,12 +64,21 @@ def _required_permissions_for_path(path: str, method: str) -> Set[str]:
             return {Permission.DELETE_DASHBOARDS.value}
 
     if p.startswith("/grafana/api/datasources/uid/"):
+        if "/resources/" in p or "/health" in p or p.endswith("/resources"):
+            if m in {"GET", "HEAD", "OPTIONS"}:
+                return {Permission.READ_DATASOURCES.value}
+            return {Permission.QUERY_DATASOURCES.value}
         if m == "GET":
             return {Permission.READ_DATASOURCES.value}
         if m == "PUT":
             return {Permission.UPDATE_DATASOURCES.value}
         if m == "DELETE":
             return {Permission.DELETE_DATASOURCES.value}
+
+    if p.startswith("/grafana/api/datasources/proxy/uid/"):
+        if m in {"GET", "HEAD", "OPTIONS"}:
+            return {Permission.READ_DATASOURCES.value}
+        return {Permission.QUERY_DATASOURCES.value}
 
     if p.startswith("/grafana/api/datasources"):
         if m == "GET":
@@ -96,11 +113,34 @@ def _is_dashboard_save_request(path: str, method: str) -> bool:
     return p.startswith("/grafana/api/dashboards/db") and m == "POST"
 
 
+def _is_dashboard_write_intent(path: str, method: str) -> bool:
+    p = (path or "").lower()
+    m = (method or "GET").upper()
+    return p.startswith("/grafana/api/dashboards/uid/") and m in {"DELETE", "PUT", "PATCH", "POST"}
+
+
+def _is_datasource_write_intent(path: str, method: str) -> bool:
+    p = (path or "").lower()
+    m = (method or "GET").upper()
+    if p.startswith("/grafana/api/datasources/uid/") and m in {"PUT", "PATCH", "DELETE"}:
+        return True
+    # Opening/editing datasource configuration page is a write-intent UI path.
+    if p.startswith("/grafana/connections/datasources/edit/"):
+        return True
+    return False
+
+
+async def _enforce_writable_datasource(service, datasource_uid: str) -> None:
+    datasource = await service.grafana_service.get_datasource(datasource_uid)
+    if datasource and (bool(getattr(datasource, "is_default", False)) or bool(getattr(datasource, "read_only", False))):
+        raise HTTPException(status_code=403, detail="Default/read-only datasources are view/query only")
+
+
 def is_admin_user(service, token_data: TokenData) -> bool:
     return token_data.role == Role.ADMIN or token_data.is_superuser
 
 
-def is_resource_accessible(service, resource, token_data: TokenData) -> bool:
+def is_resource_accessible(service, resource, token_data: TokenData, *, require_write: bool = False) -> bool:
     if not resource:
         return False
 
@@ -116,6 +156,13 @@ def is_resource_accessible(service, resource, token_data: TokenData) -> bool:
 
     if resource.created_by == token_data.user_id:
         return True
+
+    # Grafana default/read-only datasources are tenant-wide query/read resources.
+    if not require_write and (bool(getattr(resource, "is_default", False)) or bool(getattr(resource, "read_only", False))):
+        return True
+
+    if require_write:
+        return False
 
     visibility = getattr(resource, "visibility", "private") or "private"
     if visibility == "tenant":
@@ -185,7 +232,7 @@ def extract_proxy_token(service, request, token: Optional[str] = None) -> Option
     return request.headers.get("X-Auth-Token") or token
 
 
-def authorize_proxy_request(
+async def authorize_proxy_request(
     service,
     request,
     db: Session,
@@ -243,29 +290,45 @@ def authorize_proxy_request(
         raise HTTPException(status_code=403, detail="Insufficient permissions for this Grafana action")
 
     if not is_admin:
+        dashboard_write_intent = _is_dashboard_write_intent(original_path, original_method)
+        datasource_write_intent = _is_datasource_write_intent(original_path, original_method)
+
         dashboard_uid = extract_dashboard_uid(service, original_path)
         if dashboard_uid:
             dashboard = db.query(GrafanaDashboard).options(joinedload(GrafanaDashboard.shared_groups)).filter(
                 GrafanaDashboard.grafana_uid == dashboard_uid
             ).first()
-            if dashboard and not is_resource_accessible(service, dashboard, token_data):
-                raise HTTPException(status_code=403, detail="Dashboard access denied")
+            if dashboard:
+                if not is_resource_accessible(service, dashboard, token_data, require_write=dashboard_write_intent):
+                    raise HTTPException(status_code=403, detail="Dashboard access denied")
+            elif dashboard_write_intent:
+                raise HTTPException(status_code=403, detail="Dashboard write denied: unregistered dashboard")
 
         datasource_uid = extract_datasource_uid(service, original_path)
         if datasource_uid:
             datasource = db.query(GrafanaDatasource).options(joinedload(GrafanaDatasource.shared_groups)).filter(
                 GrafanaDatasource.grafana_uid == datasource_uid
             ).first()
-            if datasource and not is_resource_accessible(service, datasource, token_data):
-                raise HTTPException(status_code=403, detail="Datasource access denied")
+            if datasource:
+                if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
+                    raise HTTPException(status_code=403, detail="Datasource access denied")
+                if datasource_write_intent:
+                    await _enforce_writable_datasource(service, datasource.grafana_uid)
+            elif datasource_write_intent:
+                raise HTTPException(status_code=403, detail="Datasource write denied: unregistered datasource")
 
         datasource_id = extract_datasource_id(service, original_path)
         if datasource_id is not None:
             datasource = db.query(GrafanaDatasource).options(joinedload(GrafanaDatasource.shared_groups)).filter(
                 GrafanaDatasource.grafana_id == datasource_id
             ).first()
-            if datasource and not is_resource_accessible(service, datasource, token_data):
-                raise HTTPException(status_code=403, detail="Datasource access denied")
+            if datasource:
+                if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
+                    raise HTTPException(status_code=403, detail="Datasource access denied")
+                if datasource_write_intent:
+                    await _enforce_writable_datasource(service, datasource.grafana_uid)
+            elif datasource_write_intent:
+                raise HTTPException(status_code=403, detail="Datasource write denied: unregistered datasource")
 
     grafana_role = "Viewer"
     if is_admin:

@@ -380,7 +380,16 @@ class GrafanaService:
         
         try:
             data = datasource_update.model_dump(by_alias=True, exclude_none=True, exclude={"org_id"})
-            
+
+            # Grafana expects certain required fields on update (type/name/url/access/isDefault).
+            # Ensure we merge missing required fields from the existing datasource so Grafana receives a valid payload.
+            data.setdefault("type", existing.type)
+            data.setdefault("name", existing.name)
+            data.setdefault("url", existing.url)
+            data.setdefault("access", existing.access)
+            if existing.isDefault is not None:
+                data.setdefault("isDefault", existing.isDefault)
+
             response = await self._request("PUT", f"/api/datasources/uid/{uid}", json=data)
             response.raise_for_status()
             result = response.json()

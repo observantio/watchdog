@@ -4,6 +4,7 @@ import logging
 import json
 from typing import List, Optional, Dict
 
+from fastapi import Request
 from models.alerting.alerts import Alert, AlertGroup, AlertStatus, AlertState
 from models.alerting.silences import Silence, SilenceCreate, Matcher, Visibility
 from models.alerting.rules import AlertRule
@@ -42,6 +43,7 @@ from services.alerting.silences_ops import (
 )
 from services.alerting.channels_ops import notify_for_alerts, get_status, get_receivers
 from services.alerting.rules_ops import resolve_rule_org_id, sync_mimir_rules_for_org
+from middleware.dependencies import enforce_public_endpoint_security, enforce_header_token
 
 logger = logging.getLogger(__name__)
 LABELS_JSON_ERROR = "Invalid filter_labels JSON"
@@ -78,6 +80,40 @@ class AlertManagerService:
         if not isinstance(parsed, dict):
             raise ValueError(LABELS_JSON_ERROR)
         return {str(key): str(value) for key, value in parsed.items()}
+
+    def parse_filter_labels_or_none(self, filter_labels: Optional[str]) -> Optional[Dict[str, str]]:
+        if not filter_labels:
+            return None
+        return self.parse_filter_labels(filter_labels)
+
+    def user_scope(self, current_user: TokenData) -> tuple[str, str, List[str]]:
+        return (
+            current_user.tenant_id,
+            current_user.user_id,
+            getattr(current_user, "group_ids", []) or [],
+        )
+
+    def enforce_webhook_security(self, request: Request, *, scope: str) -> None:
+        enforce_public_endpoint_security(
+            request,
+            scope=scope,
+            limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+            window_seconds=60,
+            allowlist=config.WEBHOOK_IP_ALLOWLIST,
+        )
+        enforce_header_token(
+            request,
+            header_name="x-beobservant-webhook-token",
+            expected_token=config.INBOUND_WEBHOOK_TOKEN,
+            unauthorized_detail="Invalid webhook token",
+        )
+
+    def display_user_label(self, user_obj, fallback: str) -> str:
+        if not user_obj:
+            return fallback
+        name = (getattr(user_obj, "full_name", None) or getattr(user_obj, "username", None) or fallback or "system").strip()
+        email = (getattr(user_obj, "email", None) or "").strip()
+        return f"{name} <{email}>" if email else name
 
     def normalize_visibility(self, value: Optional[str]) -> str:
         return normalize_visibility(value)

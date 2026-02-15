@@ -11,7 +11,7 @@ import {
   buildCreateUserPayload,
 } from './createUserFormUtils'
 
-export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [] }) {
+export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [], users = [] }) {
   const toast = useToast()
   const { authMode } = useAuth()
   const [formData, setFormData] = useState({
@@ -295,7 +295,7 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
             </div>
           )}
           
-          <div className="max-h-48 overflow-y-auto border border-sre-border rounded p-3 bg-sre-surface">
+          <div className="max-h-48 overflow-y-auto bg-sre-surface">
             {groups.length === 0 && (
               <p className="text-sm text-sre-text-muted">No groups available</p>
             )}
@@ -336,7 +336,7 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sre-text text-sm truncate" title={group.name}>{group.name}</div>
                         <div className="text-xs text-sre-text-muted">
-                          {group.user_count || 0} member{(group.user_count || 0) !== 1 ? 's' : ''}
+                          {(() => { const n = (users || []).filter(u => (u.group_ids || []).includes(group.id)).length; return `${n} member${n === 1 ? '' : 's'}` })()}
                         </div>
                       </div>
                     </div>

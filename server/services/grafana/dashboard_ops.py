@@ -116,6 +116,9 @@ async def search_dashboards(
             created_by=created_by,
             is_hidden=is_hidden,
             is_owned=is_owned,
+            visibility=db_dash.visibility if db_dash else 'private',
+            shared_group_ids=[g.id for g in db_dash.shared_groups] if db_dash else [],
+            sharedGroupIds=[g.id for g in db_dash.shared_groups] if db_dash else [],
         )]
 
     all_dashboards = await service.grafana_service.search_dashboards(
@@ -164,6 +167,9 @@ async def search_dashboards(
         payload["created_by"] = db_dash.created_by if db_dash else None
         payload["is_hidden"] = bool(db_dash and user_id in (db_dash.hidden_by or []))
         payload["is_owned"] = bool(db_dash and db_dash.created_by == user_id)
+        payload["visibility"] = db_dash.visibility if db_dash else 'private'
+        payload["shared_group_ids"] = [g.id for g in db_dash.shared_groups] if db_dash else []
+        payload["sharedGroupIds"] = payload["shared_group_ids"]
 
         filtered.append(DashboardSearchResult(**payload))
 

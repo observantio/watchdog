@@ -376,7 +376,7 @@ export default function LokiPage() {
         </div>
 
         <div className="space-y-6">
-          {volume?.length > 0 && <LogVolume volume={volume} />}
+          <LogVolume volume={volume} />
           <LogQuickFilters
             labelValuesCache={labelValuesCache}
             topTerms={topTerms}

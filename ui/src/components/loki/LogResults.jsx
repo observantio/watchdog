@@ -34,8 +34,8 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
       <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
         <span className="material-icons text-5xl text-sre-text-muted mb-4 block">check_circle</span>
         <h3 className="text-xl font-semibold text-sre-text mb-2">No Logs Found</h3>
-        <p className="text-sre-text-muted mb-6 max-w-md mx-auto">
-          Try adjusting your filters or expanding the time range
+        <p className="text-sre-text-muted  text-sm mb-6 max-w-md mx-auto">
+          Try adjusting your filters or expanding the time range. You must select the right key to look at as well
         </p>
       </div>
     )

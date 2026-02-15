@@ -32,6 +32,7 @@ class NotificationChannel(BaseModel):
     type: ChannelType = Field(..., description=DESC_CHANNEL_TYPE)
     enabled: bool = Field(True, description=DESC_CHANNEL_ENABLED)
     config: Dict[str, Any] = Field(..., description=DESC_CHANNEL_SPECIFIC_CONFIG)
+    created_by: Optional[str] = Field(None, alias="createdBy", description="Owner user id")
     visibility: Visibility = Field(Visibility.PRIVATE, description=DESC_VISIBILITY_SCOPE)  # Using str for now, can import Visibility if needed
     shared_group_ids: List[str] = Field(default_factory=list, alias="sharedGroupIds", description=DESC_GROUP_IDS_CHANNEL_SHARED_WITH)
     

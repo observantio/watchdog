@@ -266,8 +266,8 @@ export default function GrafanaPage() { // NOSONAR
         folderId: dashboard.folderId || dashboard?.dashboard?.folderId || 0,
         refresh: dashboard.refresh || (dashboard?.dashboard?.refresh) || '30s',
         datasourceUid: resolvedUid || '',
-        visibility: 'private',
-        sharedGroupIds: [],
+        visibility: dashboard.visibility || 'private',
+        sharedGroupIds: dashboard.sharedGroupIds || dashboard.shared_group_ids || [],
       })
 
       // preload JSON editor with lightweight dashboard object if available, otherwise fetch full dashboard
@@ -473,8 +473,8 @@ export default function GrafanaPage() { // NOSONAR
         url: datasource.url || '',
         isDefault: datasource.isDefault || false,
         access: datasource.access || 'proxy',
-        visibility: 'private',
-        sharedGroupIds: [],
+        visibility: datasource.visibility || datasource.visibility || 'private',
+        sharedGroupIds: datasource.sharedGroupIds || datasource.shared_group_ids || [],
         apiKeyId: '',
       })
     } else {
@@ -620,6 +620,7 @@ export default function GrafanaPage() { // NOSONAR
         </div>
         <Button
           onClick={() => openInGrafana('/')}
+          size="sm"
           className="flex items-center gap-2"
           title="Open Grafana in new tab"
         >

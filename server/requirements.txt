@@ -34,3 +34,4 @@ passlib[bcrypt]==1.7.4
 email-validator==2.1.0
 aiosmtplib==1.1.6
 tenacity==8.2.2
+PyYAML==6.0.2

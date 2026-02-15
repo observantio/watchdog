@@ -1,7 +1,6 @@
 """Agents router for OTLP heartbeat and agent listing."""
 import logging
 import asyncio
-from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 import httpx
@@ -31,46 +30,10 @@ _mimir_client = httpx.AsyncClient(
     limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
 )
 
-
-def _extract_metrics_count(payload: Dict[str, Any]) -> int:
-    result = payload.get("data", {}).get("result", [])
-    if not result:
-        return 0
-    value = result[0].get("value", [0, 0])[1]
-    return int(float(value))
-
 @router.get("/")
 async def list_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))):
     """List known OTLP agents."""
     return [agent.model_dump() for agent in agent_service.list_agents()]
-
-
-async def _key_activity(key_value: str) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc)
-    start_ns = int((now - timedelta(hours=1)).timestamp() * 1_000_000_000)
-    end_ns = int(now.timestamp() * 1_000_000_000)
-
-    metrics_active = False
-    metrics_count = 0
-
-    try:
-        resp = await _mimir_client.get(
-            f"{config.MIMIR_URL.rstrip('/')}/prometheus/api/v1/query",
-            params={"query": "count({__name__=~\".+\"})"},
-            headers={"X-Scope-OrgID": key_value},
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-        metrics_count = _extract_metrics_count(payload)
-        metrics_active = metrics_count > 0
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        metrics_active = False
-
-    return {
-        "metrics_active": metrics_active,
-        "metrics_count": metrics_count,
-    }
-
 
 @router.get("/active")
 async def list_active_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))):
@@ -79,7 +42,7 @@ async def list_active_agents(current_user: TokenData = Depends(require_permissio
 
     tasks: List[asyncio.Task] = []
     for key in api_keys:
-        tasks.append(asyncio.create_task(_key_activity(key.key)))
+        tasks.append(asyncio.create_task(agent_service.key_activity(key.key, _mimir_client)))
 
     results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
 

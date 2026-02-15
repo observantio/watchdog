@@ -1,5 +1,5 @@
 """Grafana datasource models (split from grafana_models.py)."""
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -47,6 +47,8 @@ class Datasource(BaseModel):
     created_by: Optional[str] = Field(None, description="ID of the user who registered/created the datasource")
     is_hidden: bool = Field(False, description="Whether the datasource is hidden for the current user")
     is_owned: bool = Field(False, description="Whether the current user is the owner/creator")
+    visibility: Optional[str] = Field(None, description="Visibility for the datasource (private|group|tenant|public)")
+    shared_group_ids: List[str] = Field(default_factory=list, alias="shared_group_ids", description="IDs of groups shared with this datasource")
     
     class Config:
         populate_by_name = True

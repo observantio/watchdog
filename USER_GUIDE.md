@@ -41,6 +41,24 @@ For application and agent telemetry ingestion via the OTLP gateway (`:4320`):
 - Include the authentication token in requests: `x-otlp-token: <token>`
 - The gateway validates the token and automatically maps requests to the appropriate tenant and organization.
 
+## Email Notifications Configuration
+
+Be Observant supports SMTP-based email sending for both user onboarding and incident assignment notifications.
+
+- **New user welcome emails** are triggered on `/api/auth/users` and `/api/auth/register` when enabled.
+- **Incident assignment emails** are triggered when an incident assignee changes and email is enabled.
+
+Set these environment variables on the `beobservant` service (already exposed in `docker-compose.yml`):
+
+- `USER_WELCOME_EMAIL_ENABLED` (`true|false`)
+- `USER_WELCOME_SMTP_HOST`, `USER_WELCOME_SMTP_PORT`, `USER_WELCOME_SMTP_USERNAME`, `USER_WELCOME_SMTP_PASSWORD`
+- `USER_WELCOME_FROM`, `USER_WELCOME_SMTP_STARTTLS`, `USER_WELCOME_SMTP_USE_SSL`, `APP_LOGIN_URL`
+- `INCIDENT_ASSIGNMENT_EMAIL_ENABLED` (`true|false`)
+- `INCIDENT_ASSIGNMENT_SMTP_HOST`, `INCIDENT_ASSIGNMENT_SMTP_PORT`, `INCIDENT_ASSIGNMENT_SMTP_USERNAME`, `INCIDENT_ASSIGNMENT_SMTP_PASSWORD`
+- `INCIDENT_ASSIGNMENT_FROM`, `INCIDENT_ASSIGNMENT_SMTP_STARTTLS`, `INCIDENT_ASSIGNMENT_SMTP_USE_SSL`
+
+Keep secrets in `.env` (or your secret manager), not hard-coded in compose files.
+
 ## Common Workflows
 
 ### Creating a Dashboard

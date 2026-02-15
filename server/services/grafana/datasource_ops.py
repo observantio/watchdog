@@ -3,12 +3,23 @@
 import re
 from typing import List, Optional, Dict, Any, Set
 
+from fastapi import HTTPException
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from db_models import GrafanaDatasource, Group
 from models.grafana.grafana_datasource_models import DatasourceCreate, DatasourceUpdate, Datasource
 from config import config
+
+
+def _sanitize_datasource_payload(payload: Dict[str, Any], *, is_owner: bool) -> Dict[str, Any]:
+    if is_owner:
+        return payload
+    sanitized = dict(payload)
+    for key in ("password", "basicAuthPassword", "secureJsonData"):
+        if key in sanitized:
+            sanitized[key] = None
+    return sanitized
 
 
 def check_datasource_access(
@@ -126,7 +137,7 @@ def collect_datasource_refs_from_query_payload(service, payload: Any) -> Set[str
     return refs
 
 
-def enforce_datasource_query_access(
+async def enforce_datasource_query_access(
     service,
     db: Session,
     user_id: str,
@@ -157,13 +168,40 @@ def enforce_datasource_query_access(
             require_write=False,
         )
         if not ds:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=403, detail="Datasource access denied")
+            # Keep denying registered-but-inaccessible datasources; allow unknown IDs to pass
+            # because legacy/system datasources may be unregistered in Be Observant.
+            maybe_registered = db.query(GrafanaDatasource).filter(
+                GrafanaDatasource.grafana_id == int(id_match.group(1)),
+                GrafanaDatasource.tenant_id == tenant_id,
+            ).first()
+            if maybe_registered is not None:
+                raise HTTPException(status_code=403, detail="Datasource access denied")
 
     for datasource_uid in referenced_uids:
-        if not check_datasource_access(service, db, datasource_uid, user_id, tenant_id, group_ids):
-            from fastapi import HTTPException
+        ds = check_datasource_access(service, db, datasource_uid, user_id, tenant_id, group_ids)
+        if ds:
+            continue
+
+        # If datasource is registered in tenant but inaccessible, deny.
+        maybe_registered = db.query(GrafanaDatasource).filter(
+            GrafanaDatasource.grafana_uid == datasource_uid,
+            GrafanaDatasource.tenant_id == tenant_id,
+        ).first()
+        if maybe_registered is not None:
             raise HTTPException(status_code=403, detail="Datasource access denied")
+
+        # Allow safe Grafana system datasources that are unregistered in Be Observant
+        # (default/read-only are query-only by design).
+        grafana_ds = await service.grafana_service.get_datasource(datasource_uid)
+        if grafana_ds and (
+            bool(getattr(grafana_ds, "is_default", False))
+            or bool(getattr(grafana_ds, "isDefault", False))
+            or bool(getattr(grafana_ds, "read_only", False))
+            or bool(getattr(grafana_ds, "readOnly", False))
+        ):
+            continue
+
+        raise HTTPException(status_code=403, detail="Datasource access denied")
 
 
 async def get_datasources(
@@ -188,15 +226,27 @@ async def get_datasources(
             if not show_hidden and user_id in (db_ds.hidden_by or []):
                 return []
         payload = datasource.model_dump()
+        payload = _sanitize_datasource_payload(payload, is_owner=bool(db_ds and db_ds.created_by == user_id))
         payload["created_by"] = db_ds.created_by if db_ds else None
         payload["is_hidden"] = bool(db_ds and user_id in (db_ds.hidden_by or []))
         payload["is_owned"] = bool(db_ds and db_ds.created_by == user_id)
+        payload["visibility"] = db_ds.visibility if db_ds else 'private'
+        payload["shared_group_ids"] = [g.id for g in db_ds.shared_groups] if db_ds else []
+        payload["sharedGroupIds"] = payload["shared_group_ids"]
         return [Datasource(**payload)]
 
     all_datasources = await service.grafana_service.get_datasources()
 
     if is_admin:
-        return all_datasources
+        # Ensure visibility and shared-group metadata exist for admin responses
+        processed = []
+        for d in all_datasources:
+          payload = d.model_dump()
+          payload["visibility"] = payload.get("visibility") or 'private'
+          payload["shared_group_ids"] = payload.get("shared_group_ids") or []
+          payload["sharedGroupIds"] = payload["shared_group_ids"]
+          processed.append(Datasource(**payload))
+        return processed
 
     accessible_uids, allow_system = get_accessible_datasource_uids(service, db, user_id, tenant_id, group_ids)
     accessible_uids = set(accessible_uids)
@@ -225,9 +275,13 @@ async def get_datasources(
                 continue
 
         payload = d.model_dump()
+        payload = _sanitize_datasource_payload(payload, is_owner=bool(db_ds and db_ds.created_by == user_id))
         payload["created_by"] = db_ds.created_by if db_ds else None
         payload["is_hidden"] = bool(db_ds and user_id in (db_ds.hidden_by or []))
         payload["is_owned"] = bool(db_ds and db_ds.created_by == user_id)
+        payload["visibility"] = db_ds.visibility if db_ds else 'private'
+        payload["shared_group_ids"] = [g.id for g in db_ds.shared_groups] if db_ds else []
+        payload["sharedGroupIds"] = payload["shared_group_ids"]
         filtered.append(Datasource(**payload))
 
     return filtered
@@ -237,7 +291,18 @@ async def get_datasource(service, db: Session, uid: str, user_id: str, tenant_id
     db_datasource = db.query(GrafanaDatasource).filter(GrafanaDatasource.grafana_uid == uid).first()
     if db_datasource and check_datasource_access(service, db, uid, user_id, tenant_id, group_ids) is None:
         return None
-    return await service.grafana_service.get_datasource(uid)
+    ds = await service.grafana_service.get_datasource(uid)
+    if not ds:
+        return None
+    payload = ds.model_dump()
+    payload = _sanitize_datasource_payload(payload, is_owner=bool(db_datasource and db_datasource.created_by == user_id))
+    payload["created_by"] = db_datasource.created_by if db_datasource else None
+    payload["is_hidden"] = bool(db_datasource and user_id in (db_datasource.hidden_by or []))
+    payload["is_owned"] = bool(db_datasource and db_datasource.created_by == user_id)
+    payload["visibility"] = db_datasource.visibility if db_datasource else 'private'
+    payload["shared_group_ids"] = [g.id for g in db_datasource.shared_groups] if db_datasource else []
+    payload["sharedGroupIds"] = payload["shared_group_ids"]
+    return Datasource(**payload)
 
 
 async def create_datasource(
@@ -306,6 +371,10 @@ async def update_datasource(
     if not db_datasource:
         return None
 
+    existing = await service.grafana_service.get_datasource(uid)
+    if existing and (bool(getattr(existing, "is_default", False)) or bool(getattr(existing, "read_only", False))):
+        raise HTTPException(status_code=403, detail="Default/read-only datasources cannot be modified")
+
     if db_datasource.type in {"prometheus", "loki", "tempo"}:
         org_id = getattr(datasource_update, "org_id", None)
         if org_id is not None:
@@ -345,6 +414,10 @@ async def delete_datasource(service, db: Session, uid: str, user_id: str, tenant
     db_datasource = check_datasource_access(service, db, uid, user_id, tenant_id, group_ids, require_write=True)
     if not db_datasource:
         return False
+
+    existing = await service.grafana_service.get_datasource(uid)
+    if existing and (bool(getattr(existing, "is_default", False)) or bool(getattr(existing, "read_only", False))):
+        raise HTTPException(status_code=403, detail="Default/read-only datasources cannot be deleted")
 
     success = await service.grafana_service.delete_datasource(uid)
     if success:

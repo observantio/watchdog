@@ -18,12 +18,14 @@ import { fetchInfo } from './api'
 const TempoPage = lazy(() => import('./pages/TempoPage'))
 const LokiPage = lazy(() => import('./pages/LokiPage'))
 const AlertManagerPage = lazy(() => import('./pages/AlertManagerPage'))
+const IncidentBoardPage = lazy(() => import('./pages/IncidentBoardPage'))
 const GrafanaPage = lazy(() => import('./pages/GrafanaPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const OIDCCallbackPage = lazy(() => import('./pages/OIDCCallbackPage'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
 const GroupsPage = lazy(() => import('./pages/GroupsPage'))
 const ApiKeyPage = lazy(() => import('./pages/ApiKeyPage'))
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 
 function PageLoader() {
   return (
@@ -103,10 +105,12 @@ function AppContent() {
     { path: '/tempo', element: <TempoPage />, permissions: ['read:traces'] },
     { path: '/loki', element: <LokiPage />, permissions: ['read:logs'] },
     { path: '/alertmanager', element: <AlertManagerPage />, permissions: ['read:alerts'] },
+    { path: '/incidents', element: <IncidentBoardPage />, permissions: ['read:alerts'] },
     { path: '/grafana', element: <GrafanaPage />, permissions: ['read:dashboards'] },
     { path: '/users', element: <UsersPage /> },
     { path: '/groups', element: <GroupsPage /> },
-    { path: '/apikey', element: <ApiKeyPage /> }
+    { path: '/apikey', element: <ApiKeyPage /> },
+    { path: '/integrations', element: <IntegrationsPage />, permissions: ['read:channels'] }
   ]
 
   return (

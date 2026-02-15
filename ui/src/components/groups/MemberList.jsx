@@ -20,6 +20,12 @@ export default function MemberList({ users, selectedMembers, toggleMember }) {
   const displayedUsers = filteredUsers.slice(0, 5)
   const hasMore = filteredUsers.length > 5
 
+  const getUserLabel = (user) => {
+    const name = user.full_name || user.username || user.id
+    const email = user.email ? ` <${user.email}>` : ''
+    return `${name}${email}`
+  }
+
   return (
     <div className="space-y-3">
       <Input
@@ -36,21 +42,22 @@ export default function MemberList({ users, selectedMembers, toggleMember }) {
           </div>
         ) : (
           <>
-            {displayedUsers.map((user) => (
-              <label
-                key={user.id}
-                className="flex items-center gap-3 p-2 border border-sre-border rounded hover:bg-sre-surface/50 cursor-pointer"
-              >
-                <Checkbox
-                  checked={selectedMembers.includes(user.id)}
-                  onChange={() => toggleMember(user.id)}
-                />
-                <div className="text-sm text-sre-text">
-                  {user.full_name || user.username}
-                  <span className="text-xs text-sre-text-muted ml-2">{user.email}</span>
-                </div>
-              </label>
-            ))}
+            {displayedUsers.map((user) => {
+              const selected = selectedMembers.includes(user.id)
+              return (
+                <label
+                  key={user.id}
+                  className={`w-full text-left flex items-center gap-3 min-w-0 px-3 py-2 text-sm hover:bg-sre-surface transition-colors cursor-pointer ${selected ? 'text-sre-primary bg-sre-surface' : 'text-sre-text'}`}
+                >
+                  <Checkbox
+                    checked={selected}
+                    onChange={() => toggleMember(user.id)}
+                  />
+                  <span className="material-icons text-sm flex-shrink-0" aria-hidden>person</span>
+                  <div className="truncate min-w-0">{getUserLabel(user)}</div>
+                </label>
+              )
+            })}
             {hasMore && (
               <div className="text-xs text-sre-text-muted text-center py-2">
                 Showing first 5 of {filteredUsers.length} users. Use search to find specific users.

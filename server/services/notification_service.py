@@ -1,6 +1,7 @@
 """Notification service for sending alerts through various channels."""
 import httpx
 import logging
+import os
 from typing import Optional
 from datetime import datetime
 
@@ -117,6 +118,134 @@ class NotificationService:
             return await sender(channel, alert, action)
         except Exception as e:
             logger.exception("Error sending notification via %s: %s", channel.name, e)
+            return False
+
+    async def send_incident_assignment_email(
+        self,
+        recipient_email: str,
+        incident_title: str,
+        incident_status: str,
+        incident_severity: str,
+        actor: str,
+    ) -> bool:
+        """Best-effort assignment email using optional INCIDENT_ASSIGNMENT_SMTP_* env vars."""
+        enabled = str(os.getenv("INCIDENT_ASSIGNMENT_EMAIL_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return False
+
+        smtp_host = os.getenv("INCIDENT_ASSIGNMENT_SMTP_HOST", "").strip()
+        if not smtp_host:
+            logger.info("Incident assignment email skipped: INCIDENT_ASSIGNMENT_SMTP_HOST not set")
+            return False
+
+        smtp_port_raw = os.getenv("INCIDENT_ASSIGNMENT_SMTP_PORT", "587")
+        try:
+            smtp_port = int(smtp_port_raw)
+        except ValueError:
+            smtp_port = 587
+
+        smtp_user = os.getenv("INCIDENT_ASSIGNMENT_SMTP_USERNAME")
+        smtp_pass = os.getenv("INCIDENT_ASSIGNMENT_SMTP_PASSWORD")
+        smtp_from = os.getenv("INCIDENT_ASSIGNMENT_FROM", config.DEFAULT_ADMIN_EMAIL)
+        use_starttls = self._as_bool(os.getenv("INCIDENT_ASSIGNMENT_SMTP_STARTTLS", "true"))
+        use_ssl = self._as_bool(os.getenv("INCIDENT_ASSIGNMENT_SMTP_USE_SSL", "false"))
+
+        subject = f"[Incident Assigned] {incident_title}"
+        body = (
+            f"You have been assigned an incident in Be Observant.\n\n"
+            f"Title: {incident_title}\n"
+            f"Status: {incident_status}\n"
+            f"Severity: {incident_severity}\n"
+            f"Updated by: {actor}\n"
+            f"Timestamp: {datetime.utcnow().isoformat()}Z\n"
+        )
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = smtp_from
+        msg["To"] = recipient_email
+        msg.set_content(body)
+
+        try:
+            await self._send_smtp_with_retry(
+                message=msg,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_user,
+                password=smtp_pass,
+                start_tls=use_starttls,
+                use_tls=use_ssl,
+            )
+            logger.info("Incident assignment email sent to %s", recipient_email)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to send incident assignment email to %s: %s", recipient_email, exc)
+            return False
+
+    async def send_user_welcome_email(
+        self,
+        recipient_email: str,
+        username: str,
+        full_name: Optional[str] = None,
+        login_url: Optional[str] = None,
+    ) -> bool:
+        """Best-effort new-user welcome email.
+
+        Sends only when USER_WELCOME_EMAIL_ENABLED and USER_WELCOME_SMTP_HOST are configured.
+        """
+        enabled = str(os.getenv("USER_WELCOME_EMAIL_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return False
+
+        smtp_host = os.getenv("USER_WELCOME_SMTP_HOST", "").strip()
+        if not smtp_host:
+            logger.info("User welcome email skipped: USER_WELCOME_SMTP_HOST not set")
+            return False
+
+        smtp_port_raw = os.getenv("USER_WELCOME_SMTP_PORT", "587")
+        try:
+            smtp_port = int(smtp_port_raw)
+        except ValueError:
+            smtp_port = 587
+
+        smtp_user = os.getenv("USER_WELCOME_SMTP_USERNAME")
+        smtp_pass = os.getenv("USER_WELCOME_SMTP_PASSWORD")
+        smtp_from = os.getenv("USER_WELCOME_FROM", config.DEFAULT_ADMIN_EMAIL)
+        use_starttls = self._as_bool(os.getenv("USER_WELCOME_SMTP_STARTTLS", "true"))
+        use_ssl = self._as_bool(os.getenv("USER_WELCOME_SMTP_USE_SSL", "false"))
+
+        user_label = full_name or username
+        app_login_url = (login_url or os.getenv("APP_LOGIN_URL") or "").strip()
+        login_line = f"Login URL: {app_login_url}\n" if app_login_url else ""
+        subject = "Welcome to Be Observant"
+        body = (
+            f"Hello {user_label},\n\n"
+            f"Your account was created in Be Observant.\n"
+            f"Username: {username}\n"
+            f"{login_line}"
+            "If this is your first login, follow your administrator's instructions for credentials and MFA setup.\n"
+        )
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = smtp_from
+        msg["To"] = recipient_email
+        msg.set_content(body)
+
+        try:
+            await self._send_smtp_with_retry(
+                message=msg,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_user,
+                password=smtp_pass,
+                start_tls=use_starttls,
+                use_tls=use_ssl,
+            )
+            logger.info("User welcome email sent to %s", recipient_email)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to send user welcome email to %s: %s", recipient_email, exc)
             return False
     
     async def _send_email(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:

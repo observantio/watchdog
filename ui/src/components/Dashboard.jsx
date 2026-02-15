@@ -212,7 +212,8 @@ export default function Dashboard({ info }) {
         try {
           total = computeLogTotal(vol)
         } catch {
-          total = null
+          // If computing the total fails, default to 0 so the metric displays "0"
+          total = 0
         }
         setLogVolume(total)
         // store series for LogVolume sparkline
@@ -223,7 +224,8 @@ export default function Dashboard({ info }) {
           setLogVolumeSeries([])
         }
       } catch {
-        setLogVolume(null)
+        // On error fetching logs, show 0 instead of leaving the metric as N/A
+        setLogVolume(0)
         setLogVolumeSeries([])
       } finally {
         setLoadingLogs(false)
@@ -574,7 +576,7 @@ const layoutComponents = [
     {
       id: 'active-otel-agents',
       title: "Active OTEL Agents",
-      subtitle: "Metrics activity by API key (last 1 hour)",
+      subtitle: "Agents Activity",
       className: "lg:col-span-2",
       content: (
         <AgentActivityContent loading={loadingAgents} agents={agentActivity} />

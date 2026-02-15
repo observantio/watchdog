@@ -106,7 +106,7 @@ class GrafanaProxyService:
     def _extract_proxy_token(self, request, token: Optional[str] = None) -> Optional[str]:
         return extract_proxy_token(self, request, token)
 
-    def authorize_proxy_request(
+    async def authorize_proxy_request(
         self,
         request,
         db: Session,
@@ -114,7 +114,7 @@ class GrafanaProxyService:
         token: Optional[str] = None,
         orig: Optional[str] = None,
     ) -> Dict[str, str]:
-        return authorize_proxy_request(self, request, db, auth_service, token, orig)
+        return await authorize_proxy_request(self, request, db, auth_service, token, orig)
 
     # ------------------------------------------------------------------
     # Access check helpers
@@ -153,7 +153,7 @@ class GrafanaProxyService:
     ):
         return check_datasource_access_by_id(self, db, datasource_id, user_id, tenant_id, group_ids, require_write)
 
-    def enforce_datasource_query_access(
+    async def enforce_datasource_query_access(
         self,
         db: Session,
         payload: Dict[str, Any],
@@ -164,7 +164,7 @@ class GrafanaProxyService:
     ) -> None:
         if is_admin:
             return
-        enforce_datasource_query_access(self, db, user_id, tenant_id, group_ids, "/api/ds/query", "POST", payload)
+        await enforce_datasource_query_access(self, db, user_id, tenant_id, group_ids, "/api/ds/query", "POST", payload)
 
     def _get_accessible_dashboard_uids(
         self,
