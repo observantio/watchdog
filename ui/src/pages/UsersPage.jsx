@@ -235,8 +235,10 @@ export default function UsersPage() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <Badge variant={roleVariant} className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.role}</Badge>
+                        {/* show counts for groups & permissions */}
                         {!u.is_active && <Badge variant="warning" className="whitespace-nowrap text-xs px-3 py-1 font-medium">Inactive</Badge>}
-                        {u.group_ids?.length > 0 && <Badge variant="success" className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.group_ids.length} group{u.group_ids.length > 1 ? 's' : ''}</Badge>}
+                        <Badge variant="success" className="whitespace-nowrap text-xs px-3 py-1 font-medium">{(u.group_ids?.length || 0)} group{(u.group_ids?.length || 0) !== 1 ? 's' : ''}</Badge>
+                        <Badge variant="info" className="whitespace-nowrap text-xs px-3 py-1 font-medium">{(u.permissions?.length || 0)} permission{(u.permissions?.length || 0) !== 1 ? 's' : ''}</Badge>
                         {u.must_setup_mfa && <Badge variant="danger" className="whitespace-nowrap text-xs px-3 py-1 font-medium">MFA required</Badge>}
                       </div>
                     </div>

@@ -387,8 +387,7 @@ class GrafanaService:
             data.setdefault("name", existing.name)
             data.setdefault("url", existing.url)
             data.setdefault("access", existing.access)
-            if existing.isDefault is not None:
-                data.setdefault("isDefault", existing.isDefault)
+            data.setdefault("isDefault", getattr(existing, "is_default", None))
 
             response = await self._request("PUT", f"/api/datasources/uid/{uid}", json=data)
             response.raise_for_status()

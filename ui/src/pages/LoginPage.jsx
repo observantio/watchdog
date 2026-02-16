@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
@@ -24,9 +24,16 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [oidcLoading, setOidcLoading] = useState(false)
-  const { login, startOIDCLogin, authMode, authModeLoading } = useAuth()
+  const { login, startOIDCLogin, authMode, authModeLoading, isAuthenticated, loading: authLoading } = useAuth()
   const totalSetupSteps = 3
   const navigate = useNavigate()
+
+  // If user is already authenticated, redirect away from the login page
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate('/', { replace: true })
+    }
+  }, [authLoading, isAuthenticated, navigate])
 
   const hasOIDC = Boolean(authMode?.oidc_enabled)
   const hasPassword = Boolean(authMode?.password_enabled)

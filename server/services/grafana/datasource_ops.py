@@ -238,14 +238,23 @@ async def get_datasources(
     all_datasources = await service.grafana_service.get_datasources()
 
     if is_admin:
-        # Ensure visibility and shared-group metadata exist for admin responses
+        # For admin responses merge Grafana fields with local DB metadata when present
+        db_entries = {
+            d.grafana_uid: d
+            for d in db.query(GrafanaDatasource).filter(GrafanaDatasource.tenant_id == tenant_id).all()
+        }
         processed = []
         for d in all_datasources:
-          payload = d.model_dump()
-          payload["visibility"] = payload.get("visibility") or 'private'
-          payload["shared_group_ids"] = payload.get("shared_group_ids") or []
-          payload["sharedGroupIds"] = payload["shared_group_ids"]
-          processed.append(Datasource(**payload))
+            payload = d.model_dump()
+            db_ds = db_entries.get(d.uid)
+            payload = _sanitize_datasource_payload(payload, is_owner=bool(db_ds and db_ds.created_by == user_id))
+            payload["created_by"] = db_ds.created_by if db_ds else None
+            payload["is_hidden"] = bool(db_ds and user_id in (db_ds.hidden_by or []))
+            payload["is_owned"] = bool(db_ds and db_ds.created_by == user_id)
+            payload["visibility"] = db_ds.visibility if db_ds else (payload.get("visibility") or 'private')
+            payload["shared_group_ids"] = [g.id for g in db_ds.shared_groups] if db_ds else (payload.get("shared_group_ids") or [])
+            payload["sharedGroupIds"] = payload["shared_group_ids"]
+            processed.append(Datasource(**payload))
         return processed
 
     accessible_uids, allow_system = get_accessible_datasource_uids(service, db, user_id, tenant_id, group_ids)
@@ -334,7 +343,10 @@ async def create_datasource(
             is_admin=is_admin,
         )
 
-    result = await service.grafana_service.create_datasource(datasource_create)
+    try:
+        result = await service.grafana_service.create_datasource(datasource_create)
+    except Exception as gae:
+        service._raise_http_from_grafana_error(gae)
     if not result:
         return None
 
@@ -352,7 +364,18 @@ async def create_datasource(
 
     db.add(db_datasource)
     db.commit()
-    return result
+
+    # Merge Grafana datasource result with local DB metadata so caller gets visibility/shared groups
+    payload = result.model_dump()
+    payload = _sanitize_datasource_payload(payload, is_owner=True)
+    payload["created_by"] = db_datasource.created_by
+    payload["is_hidden"] = bool(db_datasource and False)
+    payload["is_owned"] = True
+    payload["visibility"] = db_datasource.visibility or 'private'
+    payload["shared_group_ids"] = [g.id for g in db_datasource.shared_groups] if db_datasource else []
+    payload["sharedGroupIds"] = payload["shared_group_ids"]
+
+    return Datasource(**payload)
 
 
 async def update_datasource(
@@ -384,7 +407,10 @@ async def update_datasource(
             secure_json_data["httpHeaderValue1"] = org_id
             datasource_update = datasource_update.model_copy(update={"json_data": json_data, "secure_json_data": secure_json_data})
 
-    result = await service.grafana_service.update_datasource(uid, datasource_update)
+    try:
+        result = await service.grafana_service.update_datasource(uid, datasource_update)
+    except Exception as gae:
+        service._raise_http_from_grafana_error(gae)
     if not result:
         return None
 
@@ -407,7 +433,18 @@ async def update_datasource(
             db_datasource.shared_groups.clear()
 
     db.commit()
-    return result
+
+    # Return merged datasource (Grafana fields + DB visibility/shared groups)
+    payload = result.model_dump()
+    payload = _sanitize_datasource_payload(payload, is_owner=bool(db_datasource and db_datasource.created_by == user_id))
+    payload["created_by"] = db_datasource.created_by
+    payload["is_hidden"] = bool(db_datasource and user_id in (db_datasource.hidden_by or []))
+    payload["is_owned"] = bool(db_datasource and db_datasource.created_by == user_id)
+    payload["visibility"] = db_datasource.visibility or 'private'
+    payload["shared_group_ids"] = [g.id for g in db_datasource.shared_groups] if db_datasource else []
+    payload["sharedGroupIds"] = payload["shared_group_ids"]
+
+    return Datasource(**payload)
 
 
 async def delete_datasource(service, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str]) -> bool:

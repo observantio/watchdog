@@ -18,7 +18,7 @@ COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/* && \
     rm -rf /wheels
 
-COPY main.py ./
+COPY . ./
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

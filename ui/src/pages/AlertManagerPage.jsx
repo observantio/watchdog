@@ -877,7 +877,7 @@ export default function AlertManagerPage() {
                                     <span className="material-icons text-xl text-orange-600 dark:text-orange-400">volume_off</span>
                                   </div>
                                   <div>
-                                    <h3 className="font-semibold text-sre-text text-lg">Silence Active</h3>
+                                    <h3 className="font-semibold text-sre-text text-lg">{s.comment || 'Unnamed Silence'}</h3>
                                     <div className="flex items-center gap-2 mt-1">
                                       <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200">
                                         Silenced
@@ -894,11 +894,6 @@ export default function AlertManagerPage() {
                                     </div>
                                   </div>
                                 </div>
-
-                                {s.comment && (
-                                  <p className="text-sm text-sre-text-muted mb-3">{s.comment}</p>
-                                )}
-
                                 <div className="space-y-2 text-sm text-sre-text-muted">
                                   <div className="flex items-center gap-2">
                                     <span className="material-icons text-sm">fingerprint</span>

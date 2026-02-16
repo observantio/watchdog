@@ -3,6 +3,7 @@
 from typing import Dict, List, Optional
 
 import httpx
+import asyncio
 
 from models.access.auth_models import TokenData
 from models.alerting.silences import Silence, SilenceCreate, Visibility
@@ -40,7 +41,26 @@ async def get_silences(service, filter_labels: Optional[Dict[str, str]] = None) 
             params=params,
         )
         response.raise_for_status()
-        return [Silence(**silence) for silence in response.json()]
+        raw = [Silence(**silence) for silence in response.json()]
+
+        # exclude any silences that have been "purged" by the application
+        try:
+            from database import get_db_session
+            from db_models import PurgedSilence
+
+            with get_db_session() as db:
+                purged_ids = {p.id for p in db.query(PurgedSilence).all()}
+        except Exception:
+            purged_ids = set()
+
+        filtered = [s for s in raw if not (s.id and s.id in purged_ids)]
+        if purged_ids:
+            # log removal at debug level so operators can trace why a silence
+            # no longer appears in the app despite existing in AlertManager.
+            ids_removed = [s.id for s in raw if s.id and s.id in purged_ids]
+            if ids_removed:
+                service.logger.debug("Excluding purged silences from results: %s", ids_removed)
+        return filtered
     except httpx.HTTPError as exc:
         service.logger.error("Error fetching silences: %s", exc)
         return []
@@ -78,7 +98,26 @@ async def delete_silence(service, silence_id: str) -> bool:
             f"{service.alertmanager_url}/api/v2/silence/{silence_id}",
         )
         response.raise_for_status()
-        return True
+
+        # verify deletion by attempting to fetch the silence; Alertmanager
+        # may be eventually consistent so retry a few times before giving up.
+        for attempt in range(3):
+            await asyncio.sleep(0.3 * (attempt + 1))
+            remaining = await get_silence(service, silence_id)
+            # Alertmanager may mark a silence as expired rather than removing
+            # it immediately. Consider delete successful when the silence is
+            # absent or has an expired status.
+            if remaining is None:
+                return True
+            try:
+                state = (remaining.status or {}).get("state")
+            except Exception:
+                state = None
+            if state and str(state).lower() == "expired":
+                return True
+
+        service.logger.error("Silence %s still present after delete call", silence_id)
+        return False
     except httpx.HTTPError as exc:
         service.logger.error("Error deleting silence %s: %s", silence_id, exc)
         return False

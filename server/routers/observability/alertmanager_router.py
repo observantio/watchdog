@@ -887,18 +887,25 @@ async def delete_alerts(
 @handle_route_errors(bad_request_detail=INVALID_FILTER_LABELS_JSON)
 async def get_silences(
     filter_labels: Optional[str] = Query(None, description='Label filters as JSON string'),
+    include_expired: bool = Query(False, description="Include expired silences in the result"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_SILENCES, "alertmanager"))
 ):
-    """Get all silences.
-    
-    Returns all active and expired silences, optionally filtered by labels.
+    """Get silences.
+
+    By default this endpoint returns *active* silences only. Set
+    `include_expired=true` to include expired silences in the response.
+    Optionally filter by label selectors.
     """
     labels = alertmanager_service.parse_filter_labels_or_none(filter_labels)
-    
+
     silences = await alertmanager_service.get_silences(filter_labels=labels)
     visible_silences = []
     for silence in silences:
         silence = alertmanager_service.apply_silence_metadata(silence)
+        # hide expired silences by default (router-level policy)
+        state = (silence.status or {}).get("state") if silence.status else None
+        if not include_expired and state and str(state).lower() == "expired":
+            continue
         if alertmanager_service.silence_accessible(silence, current_user):
             visible_silences.append(silence)
     return visible_silences
@@ -1011,7 +1018,9 @@ async def delete_silence(
     success = await alertmanager_service.delete_silence(silence_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Silence {silence_id} not found or already deleted")
-    return {"status": "success", "message": f"Silence {silence_id} deleted"}
+    # service.delete_silence persists a purge marker so the silence will be
+    # omitted from subsequent API/UI responses — surface that fact to clients.
+    return {"status": "success", "message": f"Silence {silence_id} deleted", "purged": True}
 
 
 @router.get("/status", response_model=AlertManagerStatus)

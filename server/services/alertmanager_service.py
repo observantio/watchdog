@@ -187,7 +187,35 @@ class AlertManagerService:
         return await create_silence(self, silence)
     
     async def delete_silence(self, silence_id: str) -> bool:
-        return await delete_silence(self, silence_id)
+        """Delete (expire) a silence in AlertManager and persist a purge record.
+
+        AlertManager's DELETE will expire the silence but keep it in storage.
+        To make a deleted silence disappear from the application APIs and UI
+        we record it in `purged_silences` so subsequent `get_silences`
+        calls omit it.
+        """
+        success = await delete_silence(self, silence_id)
+        if not success:
+            return False
+
+        # persist purge marker so the app will hide this silence permanently
+        try:
+            from database import get_db_session
+            from db_models import PurgedSilence
+
+            with get_db_session() as db:
+                existing = db.query(PurgedSilence).filter_by(id=silence_id).first()
+                if not existing:
+                    db.add(PurgedSilence(id=silence_id, tenant_id=None))
+                    db.commit()
+                    self.logger.info("Purged silence %s persisted to DB (hidden from app)", silence_id)
+                else:
+                    self.logger.info("Purged silence %s already recorded", silence_id)
+        except Exception as exc:
+            # non-fatal — deletion already performed at AlertManager level
+            self.logger.warning("Failed to persist purged silence %s: %s", silence_id, exc)
+
+        return True
     
     async def get_status(self) -> Optional[AlertManagerStatus]:
         return await get_status(self)

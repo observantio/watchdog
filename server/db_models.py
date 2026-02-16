@@ -182,6 +182,24 @@ class UserApiKey(Base):
     )
 
 
+class PurgedSilence(Base):
+    """Records silences that were purged (hidden) by the application.
+
+    AlertManager persists expired silences; to provide a UX where a
+    deleted silence is no longer visible, we store purged IDs here and
+    exclude them from API results.
+    """
+    __tablename__ = 'purged_silences'
+
+    id = Column(String, primary_key=True)
+    tenant_id = Column(String, ForeignKey(TENANTS_ID, ondelete='CASCADE'), nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_purged_silences_tenant', 'tenant_id'),
+    )
+
+
 class Permission(Base):
     """Permission model for fine-grained access control."""
     __tablename__ = 'permissions'

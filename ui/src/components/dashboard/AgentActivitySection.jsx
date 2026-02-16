@@ -3,15 +3,12 @@ import { Badge, Spinner } from '../ui'
 
 const AgentStatusBadges = ({ agent }) => (
   <div className="flex flex-wrap items-center justify-end gap-2">
-    {!agent.is_enabled && <Badge variant="warning">Disabled</Badge>}
+    {agent.is_enabled && <Badge variant="warning">Focused</Badge>}
     <Badge
       variant={agent.active ? "success" : "default"}
       className={agent.active ? "animate-pulse" : ""}
     >
       {agent.active ? "Active" : "Idle"}
-    </Badge>
-    <Badge variant={agent.clean ? "success" : "warning"}>
-      {agent.clean ? "Clean" : "Check"}
     </Badge>
   </div>
 )
