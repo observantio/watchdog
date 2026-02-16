@@ -1,4 +1,7 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useAutoRefresh } from '../hooks'
+import PageHeader from '../components/ui/PageHeader'
+import AutoRefreshControl from '../components/ui/AutoRefreshControl'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { fetchTempoServices, searchTraces, getTrace } from '../api'
@@ -7,7 +10,7 @@ import ServiceGraph from '../components/tempo/ServiceGraph'
 import TraceTimeline from '../components/tempo/TraceTimeline'
 import { formatDuration } from '../utils/formatters'
 import { getServiceName, hasSpanError } from '../utils/helpers'
-import { TIME_RANGES, DEFAULT_DURATION_RANGE, TRACE_STATUS_OPTIONS } from '../utils/constants'
+import { TIME_RANGES, DEFAULT_DURATION_RANGE, TRACE_STATUS_OPTIONS, REFRESH_INTERVALS } from '../utils/constants'
 import HelpTooltip from '../components/HelpTooltip'
 import { discoverServices, computeTraceStats } from '../utils/tempoTraceUtils'
 
@@ -29,7 +32,6 @@ export default function TempoPage() {
 
   const { isAuthenticated, loading: authLoading } = useAuth()
   const toast = useToast()
-  const autoRefreshRef = useRef(null)
 
   const loadServices = useCallback(async () => {
     try {
@@ -47,20 +49,8 @@ export default function TempoPage() {
     }
   }, [isAuthenticated, authLoading, loadServices])
 
-  useEffect(() => {
-    if (autoRefresh) {
-      autoRefreshRef.current = setInterval(() => {
-        onSearch()
-      }, refreshInterval * 1000)
-    } else if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current)
-      autoRefreshRef.current = null
-    }
-    return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshInterval, service, operation, traceIdSearch, durationRange, statusFilter, timeRange])
+  // centralized auto-refresh hook (keeps previous behavior)
+  useAutoRefresh(() => onSearch(), refreshInterval * 1000, autoRefresh)
 
   // If backend doesn't return services, derive them from loaded traces
   useEffect(() => {
@@ -155,37 +145,39 @@ export default function TempoPage() {
 
   return (
     <div className="animate-fade-in">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
-              <span className="material-icons text-sre-primary text-3xl">timeline</span>
-               Tracing
-          </h1>
-          <p className="text-sre-text-muted">Search and analyze distributed traces across your services</p>
+      <PageHeader icon="timeline" title="Tracing" subtitle="Search and analyze distributed traces across your services">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {[
+              { key: 'list', icon: 'list', label: 'List View' },
+              { key: 'graph', icon: 'hub', label: 'Dependency Map' },
+            ].map(v => (
+              <button
+                key={v.key}
+                onClick={() => setViewMode(v.key)}
+                title={v.label}
+                className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 text-sm ${
+                  viewMode === v.key
+                    ? 'bg-sre-primary text-white shadow-sm'
+                    : 'text-sre-text-muted hover:text-sre-text hover:bg-sre-surface'
+                }`}
+              >
+                <span className="material-icons text-sm">{v.icon}</span>
+                <span className="hidden sm:inline">{v.label}</span>
+              </button>
+            ))}
+            <HelpTooltip text="Switch between list view (detailed trace information) and dependency map (service relationships)." />
+          </div>
+
+          <AutoRefreshControl
+            enabled={autoRefresh}
+            onToggle={setAutoRefresh}
+            interval={refreshInterval}
+            onIntervalChange={setRefreshInterval}
+            intervalOptions={REFRESH_INTERVALS.slice(0,4)}
+          />
         </div>
-        <div className="flex items-center gap-2">
-          {[
-            { key: 'list', icon: 'list', label: 'List View' },
-            { key: 'graph', icon: 'hub', label: 'Dependency Map' },
-          ].map(v => (
-            <button
-              key={v.key}
-              onClick={() => setViewMode(v.key)}
-              title={v.label}
-              className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 text-sm ${
-                viewMode === v.key
-                  ? 'bg-sre-primary text-white shadow-sm'
-                  : 'text-sre-text-muted hover:text-sre-text hover:bg-sre-surface'
-              }`}
-            >
-              <span className="material-icons text-sm">{v.icon}</span>
-              <span className="hidden sm:inline">{v.label}</span>
-            </button>
-          ))}
-          <HelpTooltip text="Switch between list view (detailed trace information) and dependency map (service relationships)." />
-        </div>
-      </div>
+      </PageHeader>
 
       {error && (
         <Alert variant="error" className="mb-6" onClose={() => setError(null)}>
@@ -391,31 +383,7 @@ export default function TempoPage() {
           title="Trace Results"
           subtitle={filteredTraces.length ? `Found ${filteredTraces.length} trace${filteredTraces.length === 1 ? '' : 's'}` : 'Run a search to see results'}
         >
-          <div className="mb-4 flex items-center justify-between pb-4 border-b border-sre-border">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-sre-text">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="rounded border-sre-border bg-sre-surface"
-                />
-                <span>Auto-refresh</span>
-                <HelpTooltip text="Automatically refresh the query results at the selected interval. Useful for monitoring live traces." />
-              </label>
-              {autoRefresh && (
-                <div className="flex items-center gap-2">
-                  <select value={refreshInterval} onChange={(e) => setRefreshInterval(Number(e.target.value))} className="px-2 pr-10 py-1 bg-sre-surface border border-sre-border rounded text-sm">
-                    <option value={10}>10s</option>
-                    <option value={30}>30s</option>
-                    <option value={60}>60s</option>
-                    <option value={300}>5m</option>
-                  </select>
-                  <HelpTooltip text="How often to automatically refresh the trace query. Shorter intervals provide more real-time data but increase server load." />
-                </div>
-              )}
-            </div>
-          </div>
+          <div className="mb-4 flex items-center justify-between pb-4 border-b border-sre-border" />
           {loading ? (
             <div className="py-12 flex flex-col items-center">
               <Spinner size="lg" />

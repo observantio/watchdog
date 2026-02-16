@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import PropTypes from 'prop-types'
 import { MetricCard } from '../ui'
 
 export function MetricsGrid({ metrics, metricOrder, onMetricOrderChange }) {
@@ -23,8 +24,8 @@ export function MetricsGrid({ metrics, metricOrder, onMetricOrderChange }) {
     newOrder.splice(draggedIndex, 1)
     newOrder.splice(dropIndex, 0, draggedItem)
 
+    // MetricsGrid is a presentational component; persist changes in the parent
     onMetricOrderChange(newOrder)
-    localStorage.setItem('dashboard-metric-order', JSON.stringify(newOrder))
     setDraggedIndex(null)
   }
 
@@ -65,4 +66,10 @@ export function MetricsGrid({ metrics, metricOrder, onMetricOrderChange }) {
       })}
     </div>
   )
+}
+
+MetricsGrid.propTypes = {
+  metrics: PropTypes.array.isRequired,
+  metricOrder: PropTypes.array.isRequired,
+  onMetricOrderChange: PropTypes.func.isRequired,
 }

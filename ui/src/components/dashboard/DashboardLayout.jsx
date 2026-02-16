@@ -1,17 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import PropTypes from 'prop-types'
 import { Card } from '../ui'
 import { ConnectedServices } from './ConnectedServices'
 import { AgentActivitySection } from './AgentActivitySection'
 import { DataVolume } from './DataVolume'
 import { SystemMetricsCard } from './SystemMetricsCard'
+import { usePersistentOrder } from '../../hooks'
 
 export function DashboardLayout({ dashboardData, agentData }) {
   const [draggedIndex, setDraggedIndex] = useState(null)
-  const [layoutOrder, setLayoutOrder] = useState(() => {
-    const saved = localStorage.getItem('dashboard-layout-order')
-    return saved ? JSON.parse(saved) : [0, 1, 2, 3]
-  })
 
   const layoutComponents = [
     {
@@ -59,6 +56,9 @@ export function DashboardLayout({ dashboardData, agentData }) {
     }
   ]
 
+  // Persisted, sanitized layout order (hook handles localStorage and re-sanitization)
+  const [layoutOrder, setLayoutOrder] = usePersistentOrder('dashboard-layout-order', layoutComponents.length)
+
   const sanitizedLayoutOrder = (() => {
     const max = layoutComponents.length
     const seen = new Set()
@@ -77,18 +77,6 @@ export function DashboardLayout({ dashboardData, agentData }) {
     return result
   })()
 
-  // Persist cleaned order if it differs from current state (run after first render)
-  useEffect(() => {
-    try {
-      const curr = Array.isArray(layoutOrder) ? layoutOrder : []
-      if (JSON.stringify(curr) !== JSON.stringify(sanitizedLayoutOrder)) {
-        setLayoutOrder(sanitizedLayoutOrder)
-        localStorage.setItem('dashboard-layout-order', JSON.stringify(sanitizedLayoutOrder))
-      }
-    } catch (e) {
-      // Silently handle localStorage failure
-    }
-  }, [layoutComponents.length])
 
   const handleLayoutDragStart = (e, index) => {
     setDraggedIndex(index)
@@ -105,7 +93,6 @@ export function DashboardLayout({ dashboardData, agentData }) {
     newOrder.splice(dropIndex, 0, draggedItem)
 
     setLayoutOrder(newOrder)
-    localStorage.setItem('dashboard-layout-order', JSON.stringify(newOrder))
     setDraggedIndex(null)
   }
 

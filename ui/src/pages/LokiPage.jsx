@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useAutoRefresh } from '../hooks'
+import PageHeader from '../components/ui/PageHeader'
+import AutoRefreshControl from '../components/ui/AutoRefreshControl'
 import { queryLogs, getLabels, getLabelValues, getLogVolume } from '../api'
 import { Card, Button, Alert } from '../components/ui'
 import LogQueryForm from '../components/loki/LogQueryForm'
@@ -7,6 +10,7 @@ import LogVolume from '../components/loki/LogVolume'
 import LogQuickFilters from '../components/loki/LogQuickFilters'
 import LogLabels from '../components/loki/LogLabels'
 import { formatNsToIso } from '../utils/formatters'
+import { LOKI_REFRESH_INTERVALS } from '../utils/constants'
 import { useToast } from '../contexts/ToastContext'
 import HelpTooltip from '../components/HelpTooltip'
 import {
@@ -41,29 +45,13 @@ export default function LokiPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [topTerms, setTopTerms] = useState([])
-  const autoRefreshRef = useRef(null)
 
   const toast = useToast()
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadInitialData() }, [])
+  // use shared hook for auto-refresh (keeps behavior identical but removes manual timers)
+  useAutoRefresh(() => executeQuery(), refreshInterval * 1000, autoRefresh)
 
-  useEffect(() => {
-    if (autoRefresh) {
-      autoRefreshRef.current = setInterval(() => {
-        executeQuery()
-      }, refreshInterval * 1000)
-    } else if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current)
-      autoRefreshRef.current = null
-    }
-    return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshInterval, selectedFilters, pattern, rangeMinutes])
-
-  async function loadInitialData() {
+  const loadInitialData = useCallback(async () => {
     try {
       const lbls = await getLabels()
       const labelsArray = (lbls?.data || []).filter((label) => typeof label === 'string' && label.trim() !== '')
@@ -83,7 +71,9 @@ export default function LokiPage() {
     } catch {
       setLabels([])
     }
-  }
+  }, [])
+
+  useEffect(() => { loadInitialData() }, [loadInitialData])
 
   async function loadLabelValues(label) {
     if (!label || labelValuesCache[label]) return
@@ -268,39 +258,15 @@ export default function LokiPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div>
-            <h1 className="text-3xl font-bold text-sre-text mb-2">
-              <span className="material-icons text-sre-primary text-3xl align-middle">view_stream</span>{' '}Logs
-            </h1>
-            <p className="text-sre-text-muted">Query and analyze logs using LogQL</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-sre-text">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded border-sre-border bg-sre-surface"
-            />
-            <span>Auto-refresh</span>
-            <HelpTooltip text="Automatically refresh the query results at the selected interval. Useful for monitoring live logs." />
-          </label>
-          {autoRefresh && (
-            <div className="flex items-center gap-2">
-              <select value={refreshInterval} onChange={(e) => setRefreshInterval(Number(e.target.value))} className="px-2 pr-10 py-1 bg-sre-surface border border-sre-border rounded text-sm">
-                <option value={10}>10s</option>
-                <option value={30}>30s</option>
-                <option value={60}>60s</option>
-                <option value={300}>5m</option>
-              </select>
-              <HelpTooltip text="How often to automatically refresh the log query. Shorter intervals provide more real-time data but increase server load." />
-            </div>
-          )}
-        </div>
-      </div>
+      <PageHeader icon="view_stream" title="Logs" subtitle="Query and analyze logs using LogQL">
+        <AutoRefreshControl
+          enabled={autoRefresh}
+          onToggle={setAutoRefresh}
+          interval={refreshInterval}
+          onIntervalChange={setRefreshInterval}
+          intervalOptions={LOKI_REFRESH_INTERVALS}
+        />
+      </PageHeader>
 
       {error && (
         <Alert variant="error" className="mb-6" onClose={() => setError(null)}>
