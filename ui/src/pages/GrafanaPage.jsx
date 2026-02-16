@@ -6,13 +6,17 @@ import {
   toggleDashboardHidden, toggleDatasourceHidden,
   getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard
 } from '../api'
-import {  Button, Input, Modal, ConfirmDialog, Select, Checkbox } from '../components/ui'
+import { Button, Input, ConfirmDialog, Select, Checkbox } from '../components/ui'
+import PageHeader from '../components/ui/PageHeader'
+import DashboardEditorModal from '../components/grafana/DashboardEditorModal'
+import DatasourceEditorModal from '../components/grafana/DatasourceEditorModal'
+import FolderCreatorModal from '../components/grafana/FolderCreatorModal'
 import { useToast } from '../contexts/ToastContext'
 import HelpTooltip from '../components/HelpTooltip'
 import GrafanaTabs from '../components/grafana/GrafanaTabs'
 import GrafanaContent from '../components/grafana/GrafanaContent'
 import { useAuth } from '../contexts/AuthContext'
-import { API_BASE, GRAFANA_URL, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS } from '../utils/constants'
+import { API_BASE, GRAFANA_URL, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS, REFRESH_INTERVALS } from '../utils/constants'
 import { GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES } from '../utils/grafanaUtils'
 import { buildGrafanaLaunchUrl } from '../utils/grafanaLaunchUtils'
 // handlers moved into the component so they can access component state
@@ -494,26 +498,7 @@ export default function GrafanaPage() { // NOSONAR
     setShowDatasourceEditor(true)
   }
 
-  useEffect(() => {
-    if (editingDatasource) return
-    const urlMapping = {
-      prometheus: MIMIR_PROMETHEUS_URL,
-      loki: LOKI_BASE,
-      tempo: TEMPO_URL,
-    }
-    const nameMapping = {
-      prometheus: 'Mimir',
-      loki: 'Loki',
-      tempo: 'Tempo',
-    }
-    const defaultUrl = urlMapping[datasourceForm.type]
-    const defaultName = nameMapping[datasourceForm.type]
-    setDatasourceForm(prev => ({
-      ...prev,
-      url: defaultUrl || prev.url,
-      name: defaultName || prev.name
-    }))
-  }, [datasourceForm.type, editingDatasource])
+
 
   async function saveDatasource() {
     const isMultiTenantType = ['prometheus', 'loki', 'tempo'].includes(datasourceForm.type)
@@ -610,14 +595,7 @@ export default function GrafanaPage() { // NOSONAR
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
-            <span className="material-icons text-sre-primary text-3xl">dashboard</span>{' '}
-            Grafana
-          </h1>
-          <p className="text-sre-text-muted">Create and manage dashboards, datasources, and folders</p>
-        </div>
+      <PageHeader icon="dashboard" title="Grafana" subtitle="Create and manage dashboards, datasources, and folders">
         <Button
           onClick={() => openInGrafana('/')}
           size="sm"
@@ -627,7 +605,7 @@ export default function GrafanaPage() { // NOSONAR
           <span className="material-icons text-sm">open_in_new</span>
           Open Grafana
         </Button>
-      </div>
+      </PageHeader>
 
       <GrafanaTabs activeTab={activeTab} onChange={setActiveTab} />
 
@@ -659,281 +637,44 @@ export default function GrafanaPage() { // NOSONAR
         onDeleteFolder={handleDeleteFolder}
       />
 
-      {/* Dashboard Editor Modal */}
-      <Modal
+      <DashboardEditorModal
         isOpen={showDashboardEditor}
         onClose={() => setShowDashboardEditor(false)}
-        closeOnOverlayClick={false}
-        title={editingDashboard ? 'Edit Dashboard' : 'Create New Dashboard'}
-        size="md"
-        footer={
-          <div className="flex gap-3 justify-end">
-            <Button variant="ghost" onClick={() => setShowDashboardEditor(false)}>Cancel</Button>
-            <Button variant="primary" onClick={saveDashboard} disabled={editorTab === 'form' ? !dashboardForm.title.trim() : !jsonContent.trim() || !!jsonError}>
-              {editingDashboard ? 'Update Dashboard' : 'Create Dashboard'}
-            </Button>
-          </div>
-        }
-      >
-        <div>
-          <div className="flex gap-2 mb-4 justify-center">
-            <button type="button" className={`px-3 py-1 rounded ${editorTab === 'form' ? 'text-sre-text border-b-2 border-sre-primary' : 'bg-transparent text-sre-text-muted'}`} onClick={() => setEditorTab('form')}>Form</button>
-            <button type="button" className={`px-3 py-1 rounded ${editorTab === 'json' ? 'text-sre-text border-b-2 border-sre-primary' : 'bg-transparent text-sre-text-muted'}`} onClick={() => setEditorTab('json')}>JSON</button>
-          </div>
+        editingDashboard={editingDashboard}
+        dashboardForm={dashboardForm}
+        setDashboardForm={setDashboardForm}
+        editorTab={editorTab}
+        setEditorTab={setEditorTab}
+        jsonContent={jsonContent}
+        setJsonContent={setJsonContent}
+        jsonError={jsonError}
+        setJsonError={setJsonError}
+        fileUploaded={fileUploaded}
+        setFileUploaded={setFileUploaded}
+        folders={folders}
+        datasources={datasources}
+        groups={groups}
+        onSave={saveDashboard}
+      />
 
-          {editorTab === 'form' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  Dashboard Title <span className="text-red-500">*</span> <HelpTooltip text="Enter a descriptive title for your dashboard." />
-                </label>
-                <Input value={dashboardForm.title} onChange={(e) => setDashboardForm({ ...dashboardForm, title: e.target.value })} placeholder="My Awesome Dashboard" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Tags (comma-separated)</label>
-                <Input value={dashboardForm.tags} onChange={(e) => setDashboardForm({ ...dashboardForm, tags: e.target.value })} placeholder="production, metrics, monitoring" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Folder</label>
-                <Select value={dashboardForm.folderId} onChange={(e) => setDashboardForm({ ...dashboardForm, folderId: e.target.value })}>
-                  <option value="0">General</option>
-                  {folders.map((folder) => (<option key={folder.id} value={folder.id}>{folder.title}</option>))}
-                </Select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Default Datasource</label>
-                <Select value={dashboardForm.datasourceUid} onChange={(e) => setDashboardForm({ ...dashboardForm, datasourceUid: e.target.value })}>
-                  <option value="">-- None --</option>
-                  {datasources.map((ds) => (<option key={ds.uid} value={ds.uid}>{ds.name} ({ds.type})</option>))}
-                </Select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Auto-refresh</label>
-                <Select value={dashboardForm.refresh} onChange={(e) => setDashboardForm({ ...dashboardForm, refresh: e.target.value })}>
-                  {GRAFANA_REFRESH_INTERVALS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </Select>
-              </div>
-              <div className="border-t border-sre-border pt-4">
-                <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
-                <Select value={dashboardForm.visibility} onChange={(e) => setDashboardForm({ ...dashboardForm, visibility: e.target.value, sharedGroupIds: [] })}>
-                  {VISIBILITY_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </Select>
-                {dashboardForm.visibility === 'group' && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-sre-text mb-2">Shared Groups</label>
-                    <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
-                      {groups.map(group => (
-                        <Checkbox key={group.id} label={group.name} checked={dashboardForm.sharedGroupIds.includes(group.id)} onChange={(e) => {
-                          if (e.target.checked) setDashboardForm({ ...dashboardForm, sharedGroupIds: [...dashboardForm.sharedGroupIds, group.id] })
-                          else setDashboardForm({ ...dashboardForm, sharedGroupIds: dashboardForm.sharedGroupIds.filter(id => id !== group.id) })
-                        }} />
-                      ))}
-                      {groups.length === 0 && <p className="text-sm text-sre-text-muted">No groups available</p>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {editorTab === 'json' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-3">Upload JSON file</label>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      accept="application/json,.json"
-                      onChange={async (e) => {
-                        const f = e.target.files && e.target.files[0]
-                        if (!f) return
-                        try {
-                          const txt = await f.text()
-                          setJsonContent(txt)
-                          setJsonError('')
-                          setFileUploaded(true)
-                        } catch (err) {
-                          setJsonError('Failed to read file')
-                          setFileUploaded(false)
-                        }
-                      }}
-                      className="hidden"
-                      id="json-file-upload"
-                    />
-                    <label
-                      htmlFor="json-file-upload"
-                      className="inline-flex items-center gap-2 px-4 py-2 border border-sre-border rounded-lg bg-sre-surface hover:bg-sre-surface-light text-sre-text cursor-pointer transition-colors"
-                    >
-                      <span className="material-icons text-sm">upload_file</span>
-                      Choose File
-                    </label>
-                    <span className="text-sm text-sre-text-muted">
-                      {fileUploaded ? 'File loaded' : 'No file chosen'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-sre-text-muted">You can upload a Grafana-exported JSON or paste a dashboard object in the editor below.</p>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Dashboard JSON</label>
-                <textarea className="w-full min-h-[220px] p-3 border rounded bg-sre-bg" value={jsonContent} onChange={(e) => setJsonContent(e.target.value)} placeholder="Paste dashboard JSON here (export from Grafana or raw dashboard object)" />
-                {jsonError && <p className="text-sm text-red-500 mt-2">JSON error: {jsonError}</p>}
-              </div>
-              <div className="border-t border-sre-border pt-4">
-                <label className="block text-sm font-medium text-sre-text mb-2">Folder</label>
-                <Select value={dashboardForm.folderId} onChange={(e) => setDashboardForm({ ...dashboardForm, folderId: e.target.value })}>
-                  <option value="0">General</option>
-                  {folders.map((folder) => (<option key={folder.id} value={folder.id}>{folder.title}</option>))}
-                </Select>
-
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-sre-text mb-2">Tags (comma-separated)</label>
-                  <Input value={dashboardForm.tags} onChange={(e) => setDashboardForm({ ...dashboardForm, tags: e.target.value })} placeholder="production, metrics, monitoring" />
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
-                  <Select value={dashboardForm.visibility} onChange={(e) => setDashboardForm({ ...dashboardForm, visibility: e.target.value, sharedGroupIds: [] })}>
-                    {VISIBILITY_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                  </Select>
-                  {dashboardForm.visibility === 'group' && (
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-sre-text mb-2">Shared Groups</label>
-                      <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
-                        {groups.map(group => (
-                          <Checkbox key={group.id} label={group.name} checked={dashboardForm.sharedGroupIds.includes(group.id)} onChange={(e) => {
-                            if (e.target.checked) setDashboardForm({ ...dashboardForm, sharedGroupIds: [...dashboardForm.sharedGroupIds, group.id] })
-                            else setDashboardForm({ ...dashboardForm, sharedGroupIds: dashboardForm.sharedGroupIds.filter(id => id !== group.id) })
-                          }} />
-                        ))}
-                        {groups.length === 0 && <p className="text-sm text-sre-text-muted">No groups available</p>}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </Modal>
-
-      {/* Datasource Editor Modal */}
-      <Modal
+      <DatasourceEditorModal
         isOpen={showDatasourceEditor}
         onClose={() => setShowDatasourceEditor(false)}
-        closeOnOverlayClick={false}
-        title={editingDatasource ? 'Edit Datasource' : 'Create New Datasource'}
-        size="md"
-        footer={
-          <div className="flex gap-3 justify-end">
-            <Button variant="ghost" onClick={() => setShowDatasourceEditor(false)}>Cancel</Button>
-            <Button variant="primary" onClick={saveDatasource} disabled={!datasourceForm.name.trim() || !datasourceForm.url.trim()}>
-              {editingDatasource ? 'Update Datasource' : 'Create Datasource'}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-6">
-          <div className="space-y-4">
-            <div className="pb-2 border-b border-sre-border">
-              <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Basic Information</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Name <span className="text-red-500">*</span></label>
-                <Input value={datasourceForm.name} onChange={(e) => setDatasourceForm({ ...datasourceForm, name: e.target.value })} placeholder={datasourceForm.type === 'prometheus' ? 'Mimir' : datasourceForm.type === 'loki' ? 'My Loki' : 'My Tempo'} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Type <span className="text-red-500">*</span></label>
-                <Select value={datasourceForm.type} onChange={(e) => setDatasourceForm({ ...datasourceForm, type: e.target.value })} disabled={!!editingDatasource}>
-                  {DATASOURCE_TYPES.map((type) => (<option key={type.value} value={type.value}>{type.label}</option>))}
-                </Select>
-              </div>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="pb-2 border-b border-sre-border">
-              <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Connection</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-sre-text mb-2">URL <span className="text-red-500">*</span></label>
-                <Input value={datasourceForm.url} onChange={(e) => setDatasourceForm({ ...datasourceForm, url: e.target.value })} placeholder={datasourceForm.type === 'prometheus' ? MIMIR_PROMETHEUS_URL : datasourceForm.type === 'loki' ? LOKI_BASE : TEMPO_URL} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Access Mode</label>
-                <Select value={datasourceForm.access} onChange={(e) => setDatasourceForm({ ...datasourceForm, access: e.target.value })}>
-                  <option value="proxy">Server (Proxy)</option>
-                  <option value="direct">Browser (Direct)</option>
-                </Select>
-              </div>
-            </div>
-          </div>
-          {!editingDatasource && ['prometheus', 'loki', 'tempo'].includes(datasourceForm.type) && (
-            <div className="space-y-4">
-              <div className="pb-2 border-b border-sre-border">
-                <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Multi-tenant Configuration</h3>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">API Key <span className="text-red-500">*</span></label>
-                <Select value={datasourceForm.apiKeyId} onChange={(e) => setDatasourceForm({ ...datasourceForm, apiKeyId: e.target.value })} required>
-                  {defaultKey && <option key={defaultKey.id} value={defaultKey.id}>Default — {defaultKey.name}</option>}
-                  {(user?.api_keys || []).filter(k => !k.is_default).map((key) => (<option key={key.id} value={key.id}>{key.name}</option>))}
-                </Select>
-              </div>
-            </div>
-          )}
-          <div className="space-y-4">
-            <div className="pb-2 border-b border-sre-border">
-              <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">Settings</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="is-default" checked={datasourceForm.isDefault} onChange={(e) => setDatasourceForm({ ...datasourceForm, isDefault: e.target.checked })} className="w-4 h-4" />
-              <label htmlFor="is-default" className="text-sm text-sre-text">Set as default datasource</label>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
-              <Select value={datasourceForm.visibility} onChange={(e) => setDatasourceForm({ ...datasourceForm, visibility: e.target.value, sharedGroupIds: [] })}>
-                {VISIBILITY_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-              </Select>
-            </div>
-            {datasourceForm.visibility === 'group' && (
-              <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">Shared Groups</label>
-                <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
-                  {groups.map(group => (
-                    <Checkbox key={group.id} label={group.name} checked={datasourceForm.sharedGroupIds.includes(group.id)} onChange={(e) => {
-                      if (e.target.checked) setDatasourceForm({ ...datasourceForm, sharedGroupIds: [...datasourceForm.sharedGroupIds, group.id] })
-                      else setDatasourceForm({ ...datasourceForm, sharedGroupIds: datasourceForm.sharedGroupIds.filter(id => id !== group.id) })
-                    }} />
-                  ))}
-                  {groups.length === 0 && <p className="text-sm text-sre-text-muted">No groups available</p>}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </Modal>
+        editingDatasource={editingDatasource}
+        datasourceForm={datasourceForm}
+        setDatasourceForm={setDatasourceForm}
+        user={user}
+        groups={groups}
+        onSave={saveDatasource}
+      />
 
-      {/* Folder Creator Modal */}
-      <Modal
+      <FolderCreatorModal
         isOpen={showFolderCreator}
         onClose={() => { setShowFolderCreator(false); setFolderName('') }}
-        title="Create New Folder"
-        size="sm"
-        footer={
-          <div className="flex gap-3 justify-end">
-            <Button variant="ghost" onClick={() => { setShowFolderCreator(false); setFolderName('') }}>Cancel</Button>
-            <Button variant="primary" onClick={handleCreateFolder} disabled={!folderName.trim()}>Create Folder</Button>
-          </div>
-        }
-      >
-        <div>
-          <label className="block text-sm font-medium text-sre-text mb-2">Folder Name <span className="text-red-500">*</span></label>
-          <Input value={folderName} onChange={(e) => setFolderName(e.target.value)} placeholder="Production Dashboards" required autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && folderName.trim()) handleCreateFolder() }} />
-        </div>
-      </Modal>
+        folderName={folderName}
+        setFolderName={setFolderName}
+        onCreate={handleCreateFolder}
+      />
 
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}

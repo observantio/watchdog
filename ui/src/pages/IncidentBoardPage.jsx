@@ -7,6 +7,7 @@ import {
   listJiraIntegrations, getAlertsByFilter,
 } from '../api'
 import { Card, Button, Select, Badge, Spinner, Modal, Input } from '../components/ui'
+import PageHeader from '../components/ui/PageHeader'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import HelpTooltip from '../components/HelpTooltip'
@@ -197,32 +198,32 @@ export default function IncidentBoardPage() {
 
   const openIncidentModal = (incident) => {
     const defaultIntegrationId = incident.jiraIntegrationId || jiraIntegrations[0]?.id || ''
+    const draftDefaults = {
+      assignee: incident.assignee ?? '',
+      status: incident.status,
+      note: '',
+      jiraTicketKey: incident.jiraTicketKey ?? '',
+      jiraTicketUrl: incident.jiraTicketUrl ?? '',
+      jiraIntegrationId: defaultIntegrationId,
+      hideWhenResolved: incident.hideWhenResolved ?? false,
+      // Jira create form defaults (prefer any existing draft value)
+      projectKey: (incidentDrafts?.[incident.id]?.projectKey) || (jiraProjects[0]?.key || 'SRE'),
+      issueType: (incidentDrafts?.[incident.id]?.issueType) || 'Task',
+      jiraComment: '',
+    }
+
     setIncidentModal({ isOpen: true, incident })
     setAssigneeSearch('')
     setExpandedNotes(new Set())
     setIncidentModalTab('details')
-    setIncidentDrafts((prev) => ({
-      ...prev,
-      [incident.id]: {
-        assignee: incident.assignee ?? '',
-        status: incident.status,
-        note: '',
-        jiraTicketKey: incident.jiraTicketKey ?? '',
-        jiraTicketUrl: incident.jiraTicketUrl ?? '',
-        jiraIntegrationId: defaultIntegrationId,
-        hideWhenResolved: incident.hideWhenResolved ?? false,
-        // Jira create form defaults
-        projectKey: prev?.[incident.id]?.projectKey || (jiraProjects[0]?.key || 'SRE'),
-        issueType: prev?.[incident.id]?.issueType || 'Task',
-        jiraComment: '',
-      },
-    }))
+    setIncidentDrafts((prev) => ({ ...prev, [incident.id]: { ...(prev[incident.id] || {}), ...draftDefaults } }))
+
     if (defaultIntegrationId) {
       listJiraProjectsByIntegration(defaultIntegrationId)
         .then((data) => {
           const projects = Array.isArray(data?.projects) ? data.projects : []
           setJiraProjects(projects)
-          const selectedProject = incidentDrafts?.[incident.id]?.projectKey || projects[0]?.key || 'SRE'
+          const selectedProject = draftDefaults.projectKey || projects[0]?.key || 'SRE'
           loadJiraIssueTypes(selectedProject, defaultIntegrationId)
         })
         .catch(() => {
@@ -233,10 +234,11 @@ export default function IncidentBoardPage() {
       setJiraProjects([])
       setJiraIssueTypes([])
     }
+
     loadJiraComments(incident.id)
   }
 
-  const renderIncidentCard = (incident) => {
+  const IncidentCard = ({ incident }) => {
     const assigneeUser = incident.assignee ? userById[incident.assignee] : null
     const assigneeLabel = assigneeUser ? (assigneeUser.username || assigneeUser.id) : (incident.assignee || 'Unassigned')
 
@@ -252,7 +254,6 @@ export default function IncidentBoardPage() {
         onDragEnd={(e) => { e.currentTarget.classList.remove('opacity-50', 'scale-95', 'rotate-2') }}
         className="group bg-gradient-to-br from-sre-bg to-sre-surface border border-sre-border/50 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-move relative overflow-hidden backdrop-blur-sm"
       >
-        {/* Priority indicator */}
         <div className={`h-2 w-full ${
           incident.severity === 'critical' ? 'bg-gradient-to-r from-red-500 to-red-600' :
           incident.severity === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
@@ -260,7 +261,6 @@ export default function IncidentBoardPage() {
         }`}></div>
 
         <div className="p-5">
-          {/* Header */}
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
@@ -268,21 +268,14 @@ export default function IncidentBoardPage() {
                 incident.severity === 'warning' ? 'bg-yellow-500 shadow-yellow-500/50 shadow-lg' :
                 'bg-blue-500 shadow-blue-500/50 shadow-lg'
               }`}></div>
-              <h3 className="font-semibold text-sre-text text-base leading-tight flex-1 min-w-0 truncate">
-                {incident.alertName}
-              </h3>
+              <h3 className="font-semibold text-sre-text text-base leading-tight flex-1 min-w-0 truncate">{incident.alertName}</h3>
             </div>
+
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Badge
-                variant={incident.status === 'resolved' ? 'success' : 'warning'}
-                className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm"
-              >
-                {incident.status}
-              </Badge>
+              <Badge variant={incident.status === 'resolved' ? 'success' : 'warning'} className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm">{incident.status}</Badge>
             </div>
           </div>
 
-          {/* Metadata */}
           <div className="space-y-3 mb-4">
             <div className="flex items-center gap-3 text-sm text-sre-text-muted">
               <div className="flex items-center gap-2">
@@ -308,16 +301,10 @@ export default function IncidentBoardPage() {
             )}
           </div>
 
-          {/* Tags */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge
-                variant={incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warning' : 'info'}
-                className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm"
-              >
-                <span className="material-icons text-sm mr-1">
-                  {incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warning' : 'info'}
-                </span>
+              <Badge variant={incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warning' : 'info'} className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm">
+                <span className="material-icons text-sm mr-1">{incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warning' : 'info'}</span>
                 {incident.severity}
               </Badge>
 
@@ -331,63 +318,40 @@ export default function IncidentBoardPage() {
 
             <div className="flex items-center gap-1">
               {incident.status === 'resolved' && incident.hideWhenResolved && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleUnhideIncident(incident.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
-                  title="Unhide incident"
-                >
+                <Button size="sm" variant="ghost" onClick={() => handleUnhideIncident(incident.id)} className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50" title="Unhide incident">
                   <span className="material-icons text-sm">visibility</span>
                 </Button>
               )}
 
-              {/* Notes quick-open (shows notes count) */}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => { openIncidentModal(incident); setIncidentModalTab('notes') }}
-                className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50 relative"
-                title="View notes"
-              >
+              <Button size="sm" variant="ghost" onClick={() => { openIncidentModal(incident); setIncidentModalTab('notes') }} className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50 relative" title="View notes">
                 <span className="material-icons text-sm">notes</span>
                 {Array.isArray(incident.notes) && incident.notes.length > 0 && (
                   <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs rounded-full bg-sre-primary text-white">{incident.notes.length}</span>
                 )}
               </Button>
 
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => openIncidentModal(incident)}
-                className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
-              >
+              <Button size="sm" variant="ghost" onClick={() => openIncidentModal(incident)} className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50">
                 <span className="material-icons text-sm">edit</span>
               </Button>
             </div>
           </div>
 
-          {/* Shared groups */}
           {Array.isArray(incident.sharedGroupIds) && incident.sharedGroupIds.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {incident.sharedGroupIds.slice(0, 3).map((g) => (
                 <span key={g} className="text-xs px-3 py-1.5 bg-sre-surface/70 border border-sre-border/30 rounded-full text-sre-text-muted font-medium truncate max-w-32"> {g} </span>
               ))}
               {incident.sharedGroupIds.length > 3 && (
-                <span className="text-xs px-3 py-1.5 bg-sre-surface/70 border border-sre-border/30 rounded-full text-sre-text-muted font-medium">
-                  +{incident.sharedGroupIds.length - 3}
-                </span>
+                <span className="text-xs px-3 py-1.5 bg-sre-surface/70 border border-sre-border/30 rounded-full text-sre-text-muted font-medium">+{incident.sharedGroupIds.length - 3}</span>
               )}
             </div>
           )}
         </div>
 
-        {/* Drag indicator */}
         <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <span className="material-icons text-sre-text-muted/70 text-sm">drag_indicator</span>
         </div>
 
-        {/* Loading overlay */}
         {dropping[incident.id] && (
           <div className="absolute inset-0 bg-sre-bg-card/90 backdrop-blur-md flex items-center justify-center rounded-xl border-2 border-sre-primary/30">
             <div className="flex items-center gap-3 text-sre-primary">
@@ -695,113 +659,78 @@ export default function IncidentBoardPage() {
         {/* Board */}
         {incidents.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[600px]">
-            {/* Unassigned Column */}
-            <div className="flex flex-col">
-              <div className="mb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <h3 className="text-lg font-semibold text-sre-text">Unassigned</h3>
-                    <HelpTooltip text="Incidents that haven't been assigned to anyone yet. These need immediate attention." />
-                    <span className="px-2 py-1 bg-sre-surface text-sre-text-muted text-xs font-medium rounded-full border border-sre-border">
-                      {incidentsByState.unassigned.length}
-                    </span>
+            {/** Board column - extracted to remove duplication and improve readability */}
+            {/** Reusable column component */}
+            {(() => {
+              const Column = ({ title, count, colorDot, icon, help, items, empty }) => (
+                <div className="flex flex-col">
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 ${colorDot} rounded-full`}></div>
+                        <h3 className="text-lg font-semibold text-sre-text">{title}</h3>
+                        <HelpTooltip text={help} />
+                        <span className="px-2 py-1 bg-sre-surface text-sre-text-muted text-xs font-medium rounded-full border border-sre-border">{count}</span>
+                      </div>
+                    </div>
+                    <div className={`mt-2 h-1 ${colorDot.replace('bg-', 'bg-gradient-to-r from-') || 'bg-gradient-to-r from-blue-500 to-blue-400'} rounded-full`} />
+                  </div>
+                  <div
+                    className={`flex-1 min-h-[500px] p-4 rounded-xl border-2 border-dashed border-sre-border/50 bg-sre-surface/30 transition-all duration-200 ${
+                      canUpdateIncidents ? 'hover:border-sre-primary/30 hover:bg-sre-surface/50 cursor-move' : ''
+                    }`}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+                    onDrop={(e) => { handleDropOnColumn(icon, e) }}
+                  >
+                    <div className="space-y-3">
+                      {items.length > 0 ? (
+                        items.map((it) => <IncidentCard key={it.id} incident={it} />)
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">{empty.icon}</span>
+                          <p className="text-sre-text-muted text-sm">{empty.title}</p>
+                          <p className="text-sre-text-muted/70 text-xs mt-1">{empty.subtitle}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="mt-2 h-1 bg-gradient-to-r from-blue-500 to-blue-400 rounded-full"></div>
-              </div>
-              <div
-                className={`flex-1 min-h-[500px] p-4 rounded-xl border-2 border-dashed border-sre-border/50 bg-sre-surface/30 transition-all duration-200 ${
-                  canUpdateIncidents ? 'hover:border-sre-primary/30 hover:bg-sre-surface/50 cursor-move' : ''
-                }`}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
-                onDrop={(e) => { handleDropOnColumn('unassigned', e) }}
-              >
-                <div className="space-y-3">
-                  {incidentsByState.unassigned.length > 0 ? (
-                    incidentsByState.unassigned.map(renderIncidentCard)
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">person_off</span>
-                      <p className="text-sre-text-muted text-sm">No unassigned incidents</p>
-                      <p className="text-sre-text-muted/70 text-xs mt-1">Drag incidents here to unassign</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+              )
 
-            {/* Assigned Active Column */}
-            <div className="flex flex-col">
-              <div className="mb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <h3 className="text-lg font-semibold text-sre-text">Assigned Active</h3>
-                    <HelpTooltip text="Incidents that have been assigned to someone and are currently being worked on." />
-                    <span className="px-2 py-1 bg-sre-surface text-sre-text-muted text-xs font-medium rounded-full border border-sre-border">
-                      {incidentsByState.assigned.length}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-2 h-1 bg-gradient-to-r from-green-500 to-green-400 rounded-full"></div>
-              </div>
-              <div
-                className={`flex-1 min-h-[500px] p-4 rounded-xl border-2 border-dashed border-sre-border/50 bg-sre-surface/30 transition-all duration-200 ${
-                  canUpdateIncidents ? 'hover:border-sre-primary/30 hover:bg-sre-surface/50 cursor-move' : ''
-                }`}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
-                onDrop={(e) => { handleDropOnColumn('assigned', e) }}
-              >
-                <div className="space-y-3">
-                  {incidentsByState.assigned.length > 0 ? (
-                    incidentsByState.assigned.map(renderIncidentCard)
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">engineering</span>
-                      <p className="text-sre-text-muted text-sm">No active incidents</p>
-                      <p className="text-sre-text-muted/70 text-xs mt-1">Assigned incidents in progress</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+              return (
+                <>
+                  <Column
+                    title="Unassigned"
+                    count={incidentsByState.unassigned.length}
+                    colorDot="bg-blue-500"
+                    icon="unassigned"
+                    help="Incidents that haven't been assigned to anyone yet. These need immediate attention."
+                    items={incidentsByState.unassigned}
+                    empty={{ icon: 'person_off', title: 'No unassigned incidents', subtitle: 'Drag incidents here to unassign' }}
+                  />
 
-            {/* Resolved Column */}
-            <div className="flex flex-col">
-              <div className="mb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                    <h3 className="text-lg font-semibold text-sre-text">Resolved</h3>
-                    <HelpTooltip text="Incidents that have been resolved and closed. These may be hidden by default." />
-                    <span className="px-2 py-1 bg-sre-surface text-sre-text-muted text-xs font-medium rounded-full border border-sre-border">
-                      {incidentsByState.resolved.length}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-2 h-1 bg-gradient-to-r from-purple-500 to-purple-400 rounded-full"></div>
-              </div>
-              <div
-                className={`flex-1 min-h-[500px] p-4 rounded-xl border-2 border-dashed border-sre-border/50 bg-sre-surface/30 transition-all duration-200 ${
-                  canUpdateIncidents ? 'hover:border-sre-primary/30 hover:bg-sre-surface/50 cursor-move' : ''
-                }`}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
-                onDrop={(e) => { handleDropOnColumn('resolved', e) }}
-              >
-                <div className="space-y-3">
-                  {incidentsByState.resolved.length > 0 ? (
-                    incidentsByState.resolved.map(renderIncidentCard)
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">check_circle</span>
-                      <p className="text-sre-text-muted text-sm">No resolved incidents</p>
-                      <p className="text-sre-text-muted/70 text-xs mt-1">Completed incident responses</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                  <Column
+                    title="Assigned Active"
+                    count={incidentsByState.assigned.length}
+                    colorDot="bg-green-500"
+                    icon="assigned"
+                    help="Incidents that have been assigned to someone and are currently being worked on."
+                    items={incidentsByState.assigned}
+                    empty={{ icon: 'engineering', title: 'No active incidents', subtitle: 'Assigned incidents in progress' }}
+                  />
+
+                  <Column
+                    title="Resolved"
+                    count={incidentsByState.resolved.length}
+                    colorDot="bg-purple-500"
+                    icon="resolved"
+                    help="Incidents that have been resolved and closed. These may be hidden by default."
+                    items={incidentsByState.resolved}
+                    empty={{ icon: 'check_circle', title: 'No resolved incidents', subtitle: 'Completed incident responses' }}
+                  />
+                </>
+              )
+            })()}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 px-6">

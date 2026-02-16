@@ -3,24 +3,18 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   getAlerts, getSilences, createSilence, deleteSilence,
   getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule,
-  getNotificationChannels, createNotificationChannel, updateNotificationChannel,
-  deleteNotificationChannel, testNotificationChannel, testAlertRule, importAlertRules,
+  getNotificationChannels, testAlertRule, importAlertRules,
 } from '../api'
-import { Card, Button, Select, Alert, Badge, Spinner, Modal, Input } from '../components/ui'
+import { Card, Button, Select, Alert, Spinner, Modal } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
 import ConfirmModal from '../components/ConfirmModal'
 import HelpTooltip from '../components/HelpTooltip'
 import RuleEditor from '../components/alertmanager/RuleEditor'
-import ChannelEditor from '../components/alertmanager/ChannelEditor'
 import SilenceForm from '../components/alertmanager/SilenceForm'
 import { ALERT_SEVERITY_OPTIONS } from '../utils/constants'
 import { useAuth } from '../contexts/AuthContext'
-import {
-  normalizeChannelPayload,
-  EMPTY_CONFIRM_DIALOG,
-  readMetricOrderFromStorage,
-  writeMetricOrderToStorage,
-} from '../utils/alertmanagerChannelUtils'
+import { useLocalStorage } from '../hooks'
+import { EMPTY_CONFIRM_DIALOG, DEFAULT_ALERTMANAGER_METRIC_KEYS } from '../utils/alertmanagerChannelUtils'
 import {
   shouldIgnoreAlertManagerError,
   normalizeRuleForUI,
@@ -38,16 +32,14 @@ export default function AlertManagerPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showRuleEditor, setShowRuleEditor] = useState(false)
-  const [showChannelEditor, setShowChannelEditor] = useState(false)
   const [showSilenceForm, setShowSilenceForm] = useState(false)
   const [editingRule, setEditingRule] = useState(null)
-  const [editingChannel, setEditingChannel] = useState(null)
   const [filterSeverity, setFilterSeverity] = useState('all')
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_CONFIRM_DIALOG)
 
   const [testDialog, setTestDialog] = useState({ isOpen: false, title: '', message: '' })
 
-  const [metricOrder, setMetricOrder] = useState(() => readMetricOrderFromStorage())
+  const [metricOrder, setMetricOrder] = useLocalStorage('alertmanager-metric-order', DEFAULT_ALERTMANAGER_METRIC_KEYS)
   const [showImportRulesModal, setShowImportRulesModal] = useState(false)
   const [importYamlContent, setImportYamlContent] = useState('')
   const [importRunning, setImportRunning] = useState(false)
@@ -55,9 +47,18 @@ export default function AlertManagerPage() {
   const [importFileName, setImportFileName] = useState('')
   const { toast } = useToast()
 
+  // Ensure metricOrder contains the expected keys (append missing keys)
   useEffect(() => {
-    writeMetricOrderToStorage(metricOrder)
-  }, [metricOrder])
+    const defaults = DEFAULT_ALERTMANAGER_METRIC_KEYS
+    if (!Array.isArray(metricOrder)) {
+      setMetricOrder(defaults)
+      return
+    }
+    const missing = defaults.filter(k => !metricOrder.includes(k))
+    if (missing.length > 0) {
+      setMetricOrder([...metricOrder, ...missing])
+    }
+  }, [metricOrder, setMetricOrder])
 
   function handleApiError(e) {
     if (shouldIgnoreAlertManagerError(e)) return
@@ -127,58 +128,6 @@ export default function AlertManagerPage() {
     })
   }
 
-  async function handleSaveChannel(data) {
-    setError(null)
-    const saveFn = editingChannel ? updateNotificationChannel : createNotificationChannel
-    return saveFn(data)
-      .then(res => {
-        if (res && res.errors && Array.isArray(res.errors)) {
-          setError(res.errors.join('\n'))
-          return false
-        }
-        loadData()
-        return true
-      })
-      .catch(e => {
-        if (e && e.errors && Array.isArray(e.errors)) {
-          setError(e.errors.join('\n'))
-        } else if (e && e.message) {
-          setError(e.message)
-        } else {
-          setError('Failed to save channel')
-        }
-        return false
-      })
-  }
-
-  async function handleDeleteChannel(channelId) {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Notification Channel',
-      message: 'Are you sure you want to delete this channel? This action cannot be undone.',
-      confirmText: 'Delete',
-      variant: 'danger',
-      onConfirm: async () => {
-        try {
-          await deleteNotificationChannel(channelId)
-          await loadData()
-          setConfirmDialog(EMPTY_CONFIRM_DIALOG)
-        } catch (e) {
-          handleApiError(e)
-          setConfirmDialog(EMPTY_CONFIRM_DIALOG)
-        }
-      }
-    })
-  }
-
-  async function handleTestChannel(channelId) {
-    try {
-      const result = await testNotificationChannel(channelId)
-      setTestDialog({ isOpen: true, title: 'Test Notification', message: result.message || 'Test notification sent' })
-    } catch (e) {
-      handleApiError(e)
-    }
-  }
 
   async function handleTestRule(ruleId) {
     try {
@@ -262,6 +211,25 @@ export default function AlertManagerPage() {
     totalChannels: channels.length,
   }), [alerts, silences, rules, channels])
 
+  function getMetricData(key) {
+    switch (key) {
+      case 'activeAlerts':
+        return {
+          label: 'Active Alerts',
+          value: stats.totalAlerts,
+          detail: <><span className="text-red-500 dark:text-red-400">{stats.critical} critical</span> · <span className="text-yellow-500 dark:text-yellow-400">{stats.warning} warning</span></>
+        }
+      case 'alertRules':
+        return { label: 'Alert Rules', value: `${stats.enabledRules}/${stats.totalRules}`, detail: 'enabled' }
+      case 'channels':
+        return { label: 'Notification Channels', value: `${stats.enabledChannels}/${stats.totalChannels}`, detail: 'active' }
+      case 'silences':
+        return { label: 'Active Silences', value: stats.activeSilences, detail: 'muting alerts' }
+      default:
+        return { label: key, value: '-', detail: '' }
+    }
+  }
+
   return (
     <div className="animate-fade-in">
       <div className="mb-6">
@@ -283,12 +251,7 @@ export default function AlertManagerPage() {
       {/* Draggable Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {metricOrder.map((key) => {
-          const metricData = {
-            activeAlerts: { label: 'Active Alerts', value: stats.totalAlerts, detail: <><span className="text-red-500 dark:text-red-400">{stats.critical} critical</span> · <span className="text-yellow-500 dark:text-yellow-400">{stats.warning} warning</span></> },
-            alertRules: { label: 'Alert Rules', value: `${stats.enabledRules}/${stats.totalRules}`, detail: 'enabled' },
-            channels: { label: 'Notification Channels', value: `${stats.enabledChannels}/${stats.totalChannels}`, detail: 'active' },
-            silences: { label: 'Active Silences', value: stats.activeSilences, detail: 'muting alerts' },
-          }[key]
+          const metricData = getMetricData(key)
 
           return (
             <div
@@ -650,197 +613,7 @@ export default function AlertManagerPage() {
             </>
           )}
 
-          {activeTab === 'channels' && (
-            <>
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="material-icons text-2xl text-sre-primary">notifications</span>
-                      <div>
-                        <h2 className="text-xl font-semibold text-sre-text">Notification Channels</h2>
-                        <p className="text-sm text-sre-text-muted">
-                          {channels.length > 0
-                            ? `${channels.length} channel${channels.length !== 1 ? 's' : ''} configured`
-                            : 'No channels configured'
-                          }
-                        </p>
-                      </div>
-                    </div>
-                    {channels.length > 0 && (
-                      <Button onClick={() => { setEditingChannel(null); setShowChannelEditor(true); }}>
-                        <span className="material-icons text-sm mr-2">add</span>
-                        Create Channel
-                      </Button>
-                    )}
-                  </div>
 
-                  {channels.length > 0 ? (
-                    <div className="space-y-4">
-                      {channels.map((channel) => {
-                        let iconName;
-                        if (channel.type === 'email') {
-                          iconName = 'email'
-                        } else if (channel.type === 'slack') {
-                          iconName = 'chat'
-                        } else if (channel.type === 'teams') {
-                          iconName = 'groups'
-                        } else {
-                          iconName = 'webhook'
-                        }
-                        return (
-                          <div
-                            key={channel.id}
-                            className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-3 mb-3">
-                                  <div className={`p-2 rounded-lg ${
-                                    channel.type === 'slack'
-                                      ? 'bg-purple-100 dark:bg-purple-900/30'
-                                      : channel.type === 'email'
-                                      ? 'bg-blue-100 dark:bg-blue-900/30'
-                                      : channel.type === 'webhook'
-                                      ? 'bg-green-100 dark:bg-green-900/30'
-                                      : channel.type === 'teams'
-                                      ? 'bg-blue-100 dark:bg-blue-900/30'
-                                      : 'bg-gray-100 dark:bg-gray-700'
-                                  }`}>
-                                    <span className={`material-icons text-xl ${
-                                      channel.type === 'slack'
-                                        ? 'text-purple-600 dark:text-purple-400'
-                                        : channel.type === 'email'
-                                        ? 'text-blue-600 dark:text-blue-400'
-                                        : channel.type === 'webhook'
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : channel.type === 'teams'
-                                        ? 'text-blue-600 dark:text-blue-400'
-                                        : 'text-gray-600 dark:text-gray-400'
-                                    }`}>{iconName}</span>
-                                  </div>
-                                  <div>
-                                    <h3 className="font-semibold text-sre-text text-lg">{channel.name}</h3>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                        channel.type === 'slack'
-                                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200'
-                                          : channel.type === 'email'
-                                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200'
-                                          : channel.type === 'webhook'
-                                          ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200'
-                                          : channel.type === 'teams'
-                                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200'
-                                          : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                                      }`}>
-                                        {channel.type}
-                                      </span>
-                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                        channel.enabled
-                                          ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200'
-                                          : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
-                                      }`}>
-                                        {channel.enabled ? 'Enabled' : 'Disabled'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-2 text-sm text-sre-text-muted">
-                                  {channel.type === 'email' && channel.config?.to && (
-                                    <>
-                                      <div className="flex items-center gap-2">
-                                        <span className="material-icons text-sm">email</span>
-                                        <span>To: {channel.config.to}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="material-icons text-sm">outgoing_mail</span>
-                                        <span>
-                                          Provider: {String(channel.config.email_provider || channel.config.emailProvider || 'smtp').toUpperCase()}
-                                        </span>
-                                      </div>
-                                    </>
-                                  )}
-                                  {channel.type === 'slack' && channel.config?.channel && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="material-icons text-sm">tag</span>
-                                      <span>Channel: {channel.config.channel}</span>
-                                    </div>
-                                  )}
-                                  {channel.type === 'webhook' && channel.config?.url && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="material-icons text-sm">link</span>
-                                      <span className="truncate">URL: {channel.config.url}</span>
-                                    </div>
-                                  )}
-                                  {channel.type === 'teams' && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="material-icons text-sm">groups</span>
-                                      <span>Microsoft Teams</span>
-                                    </div>
-                                  )}
-                                  {channel.type === 'pagerduty' && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="material-icons text-sm">notification_important</span>
-                                      <span>PagerDuty Integration</span>
-                                    </div>
-                                  )}
-
-                                </div>
-                              </div>
-
-                              <div className="flex gap-1 ml-4">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleTestChannel(channel.id)}
-                                  className="p-2"
-                                  title="Test Channel"
-                                >
-                                  <span className="material-icons text-base">send</span>
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditingChannel(channel)
-                                    setShowChannelEditor(true)
-                                  }}
-                                  className="p-2"
-                                  title="Edit Channel"
-                                >
-                                  <span className="material-icons text-base">edit</span>
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteChannel(channel.id)}
-                                  className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
-                                  title="Delete Channel"
-                                >
-                                  <span className="material-icons text-base">delete</span>
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
-                      <span className="material-icons text-5xl text-sre-text-muted mb-4 block">notifications_off</span>
-                      <h3 className="text-xl font-semibold text-sre-text mb-2">No Channels Configured</h3>
-                      <p className="text-sre-text-muted mb-6 max-w-md mx-auto">
-                        Create notification channels to receive alerts via email, Slack, Teams, webhooks, and more.
-                      </p>
-                      <Button onClick={() => { setEditingChannel(null); setShowChannelEditor(true); }}>
-                        <span className="material-icons text-sm mr-2">add</span>
-                        Create Your First Channel
-                      </Button>
-                    </div>
-                  )}
-                </div>
-            </>
-          )}
 
           {activeTab === 'silences' && (
             <>
@@ -1134,20 +907,6 @@ export default function AlertManagerPage() {
         />
       </Modal>
 
-      {/* Channel Editor Modal */}
-      <Modal
-        isOpen={showChannelEditor}
-        onClose={() => { setShowChannelEditor(false); setEditingChannel(null); }}
-        title={editingChannel ? 'Edit Notification Channel' : 'Create Notification Channel'}
-        size="lg"
-        closeOnOverlayClick={false}
-      >
-        <ChannelEditor
-          channel={editingChannel}
-          onSave={(data) => { handleSaveChannel(data); setShowChannelEditor(false); setEditingChannel(null); }}
-          onCancel={() => { setShowChannelEditor(false); setEditingChannel(null); }}
-        />
-      </Modal>
 
       {/* Silence Form Modal */}
       <Modal

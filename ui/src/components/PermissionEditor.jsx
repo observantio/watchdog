@@ -4,6 +4,7 @@ import { Button, Card, Badge, Spinner, Modal } from './ui'
 import { useToast } from '../contexts/ToastContext'
 import HelpTooltip from './HelpTooltip'
 import * as api from '../api'
+import { getCategoryDescription } from '../utils/groupManagementUtils'
 
 export default function PermissionEditor({ user, groups, onClose, onSave }) {
   const toast = useToast();
@@ -24,20 +25,6 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     return 'default'
   }, [role])
 
-  const getCategoryDescription = (category) => {
-    const descriptions = {
-      agents: 'Control access to OTEL agents and system metrics monitoring',
-      alerts: 'Manage alert rules, active alerts, and notification channels',
-      channels: 'Configure notification channels for alert delivery',
-      dashboards: 'Access and manage Grafana dashboards',
-      groups: 'Control user group creation, modification, and membership',
-      logs: 'Query and view application logs from Loki',
-      tenants: 'Manage multi-tenant settings and configurations',
-      traces: 'Query and view distributed traces from Tempo',
-      users: 'Control user account creation, modification, and access'
-    }
-    return descriptions[category] || `Manage ${category} permissions and access`
-  }
 
   const getPermissionDescription = (permissionName) => {
     const descriptions = {
