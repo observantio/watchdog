@@ -86,9 +86,6 @@ class NotificationService:
 
         return errors
 
-    # ----------------------------
-    # Retry helpers
-    # ----------------------------
     def _is_transient_http_exception(self, exc) -> bool:
         """Return True for exceptions that should be retried for HTTP calls."""
         # network / transport errors

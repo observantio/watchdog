@@ -161,6 +161,56 @@ export default function IntegrationsPage() {
   const { user } = useAuth()
   const { toast } = useToast()
 
+  const formatApiError = (err) => {
+    if (!err) return 'API error'
+
+    // Prefer explicit error body from our API client (err.body), otherwise
+    // fall back to the error object/string/message.
+    let body = err && err.body ? err.body : err
+
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body)
+      } catch (_) {
+        // leave as string and fall through to message handling below
+      }
+    }
+
+    if (body) {
+      if (typeof body === 'string') return body
+      if (typeof body.errors === 'string') return body.errors
+      if (Array.isArray(body.errors)) return body.errors.join('; ')
+      if (body.errors && typeof body.errors === 'object') {
+        const flat = []
+        Object.values(body.errors).forEach(v => {
+          if (Array.isArray(v)) flat.push(...v)
+          else if (v) flat.push(String(v))
+        })
+        if (flat.length) return flat.join('; ')
+      }
+      if (typeof body.detail === 'string') return body.detail
+      if (typeof body.message === 'string') return body.message
+      try { return JSON.stringify(body) } catch (_) { /* fallthrough */ }
+    }
+
+    const m = err && err.message
+    if (m && typeof m === 'string') {
+      // message may itself be a JSON-encoded string
+      try {
+        const parsed = JSON.parse(m)
+        if (parsed) {
+          if (Array.isArray(parsed.errors)) return parsed.errors.join('; ')
+          if (parsed.detail) return parsed.detail
+          if (parsed.message) return parsed.message
+          return String(parsed)
+        }
+      } catch (_) {}
+      return m
+    }
+
+    return String(err)
+  }
+
   const [activeTab, setActiveTab] = useState('private')
   const [channels, setChannels] = useState([])
   const [allowedChannelTypes, setAllowedChannelTypes] = useState([])
@@ -286,7 +336,7 @@ export default function IntegrationsPage() {
       await loadAll()
       toast.success('Channel saved')
     } catch (e) {
-      toast.error(e?.body?.detail || e?.message || 'Failed to save channel')
+      toast.error(formatApiError(e) || 'Failed to save channel')
     }
   }
 
@@ -296,7 +346,7 @@ export default function IntegrationsPage() {
       await loadAll()
       toast.success('Channel deleted')
     } catch (e) {
-      toast.error(e?.body?.detail || e?.message || 'Failed to delete channel')
+      toast.error(formatApiError(e) || 'Failed to delete channel')
     }
   }
 
@@ -306,7 +356,7 @@ export default function IntegrationsPage() {
       setTestResult(result)
       setShowTestModal(true)
     } catch (e) {
-      toast.error(e?.body?.detail || e?.message || 'Failed to test channel')
+      toast.error(formatApiError(e) || 'Failed to test channel')
     }
   }
 
@@ -348,7 +398,7 @@ export default function IntegrationsPage() {
       await loadAll()
       toast.success('Jira integration saved')
     } catch (e) {
-      toast.error(e?.body?.detail || e?.message || 'Failed to save Jira integration')
+      toast.error(formatApiError(e) || 'Failed to save Jira integration')
     }
   }
 
@@ -358,7 +408,7 @@ export default function IntegrationsPage() {
       await loadAll()
       toast.success('Jira integration deleted')
     } catch (e) {
-      toast.error(e?.body?.detail || e?.message || 'Failed to delete Jira integration')
+      toast.error(formatApiError(e) || 'Failed to delete Jira integration')
     }
   }
 

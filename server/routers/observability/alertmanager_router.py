@@ -1331,7 +1331,7 @@ async def create_notification_channel(
         )
     validation_errors = notification_service.validate_channel_config(requested_type, channel.config)
     if validation_errors:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"errors": validation_errors})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"errors": validation_errors, "status": "error"})
     created_channel = storage_service.create_notification_channel(channel, tenant_id, user_id, group_ids)
     return created_channel
 
@@ -1359,7 +1359,7 @@ async def update_notification_channel(
         )
     validation_errors = notification_service.validate_channel_config(requested_type, channel.config)
     if validation_errors:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"errors": validation_errors})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"errors": validation_errors, "status": "error"})
     updated_channel = storage_service.update_notification_channel(channel_id, channel, tenant_id, user_id, group_ids)
     if not updated_channel:
         raise HTTPException(status_code=404, detail=f"Notification channel {channel_id} not found or access denied")

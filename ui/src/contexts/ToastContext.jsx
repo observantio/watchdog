@@ -46,6 +46,18 @@ export function ToastProvider({ children }) {
       // Simple server error shape: { detail: "Invalid TOTP code" }
       if (typeof m.detail === 'string') return m.detail
 
+      // New: handle backend error array format { errors: [...] }
+      if (Array.isArray(m.errors) && m.errors.length) return m.errors.join('; ')
+      if (typeof m.errors === 'string') return m.errors
+      if (m.errors && typeof m.errors === 'object') {
+        const flat = []
+        Object.values(m.errors).forEach(v => {
+          if (Array.isArray(v)) flat.push(...v)
+          else if (v) flat.push(String(v))
+        })
+        if (flat.length) return flat.join('; ')
+      }
+
       if (m.message) return String(m.message)
       if (m.msg) return String(m.msg)
       if (m.error) return String(m.error)

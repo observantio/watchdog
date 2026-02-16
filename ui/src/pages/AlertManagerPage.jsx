@@ -127,20 +127,28 @@ export default function AlertManagerPage() {
     })
   }
 
-  async function handleSaveChannel(channelData) {
-    try {
-      const normalizedChannel = normalizeChannelPayload(channelData)
-      if (editingChannel) {
-        await updateNotificationChannel(editingChannel.id, normalizedChannel)
-      } else {
-        await createNotificationChannel(normalizedChannel)
-      }
-      await loadData()
-      setShowChannelEditor(false)
-      setEditingChannel(null)
-    } catch (e) {
-      handleApiError(e)
-    }
+  async function handleSaveChannel(data) {
+    setError(null)
+    const saveFn = editingChannel ? updateNotificationChannel : createNotificationChannel
+    return saveFn(data)
+      .then(res => {
+        if (res && res.errors && Array.isArray(res.errors)) {
+          setError(res.errors.join('\n'))
+          return false
+        }
+        loadData()
+        return true
+      })
+      .catch(e => {
+        if (e && e.errors && Array.isArray(e.errors)) {
+          setError(e.errors.join('\n'))
+        } else if (e && e.message) {
+          setError(e.message)
+        } else {
+          setError('Failed to save channel')
+        }
+        return false
+      })
   }
 
   async function handleDeleteChannel(channelId) {
@@ -265,8 +273,10 @@ export default function AlertManagerPage() {
       </div>
 
       {error && (
-        <Alert variant="error" className="mb-6" onClose={() => setError(null)}>
-          <strong>Error:</strong> {error}
+        <Alert variant="danger" className="mb-4">
+          {error.split('\n').map((msg, idx) => (
+            <div key={idx}>{msg}</div>
+          ))}
         </Alert>
       )}
 
