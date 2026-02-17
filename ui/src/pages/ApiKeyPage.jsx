@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useState, useEffect, useMemo } from 'react'
 import PageHeader from '../components/ui/PageHeader'
 import { Card, Input, Button, Select, Modal } from '../components/ui'
@@ -50,7 +58,6 @@ export default function ApiKeyPage() {
         setLoading(false)
         return
       }
-      // Set the selected API key as the default key
       await api.updateApiKey(orgId, { is_default: true })
       await refreshUser()
       toast.success('Default API key updated successfully.')
@@ -313,8 +320,6 @@ export default function ApiKeyPage() {
             </div>
           </form>
         </Modal>
-
-        {/* Add key modal */}
         <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add API Key" size="md" closeOnOverlayClick={false}>
           <form onSubmit={handleCreateKey} className="space-y-4" onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

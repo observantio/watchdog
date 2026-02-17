@@ -14,7 +14,7 @@ import time
 import threading
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 
 from fastapi import HTTPException, status, Request
 from config import config
@@ -165,6 +165,30 @@ rate_limiter = _build_rate_limiter()
 
 
 def client_ip(request: Request) -> str:
+    def _trusted_proxy_peer() -> bool:
+        if not config.TRUST_PROXY_HEADERS:
+            return False
+        trusted_cidrs = getattr(config, "TRUSTED_PROXY_CIDRS", []) or []
+        if not trusted_cidrs:
+            return True
+
+        direct = (request.client.host if request.client else "").strip()
+        valid_direct = _valid_ip(direct)
+        if not valid_direct:
+            return False
+
+        try:
+            peer_ip = ip_address(valid_direct)
+            for cidr in trusted_cidrs:
+                try:
+                    if peer_ip in ip_network(cidr, strict=False):
+                        return True
+                except ValueError:
+                    continue
+        except ValueError:
+            return False
+        return False
+
     def _valid_ip(value: str) -> Optional[str]:
         candidate = (value or "").strip()
         if not candidate:
@@ -175,7 +199,7 @@ def client_ip(request: Request) -> str:
         except ValueError:
             return None
 
-    if config.TRUST_PROXY_HEADERS:
+    if _trusted_proxy_peer():
         forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
         if forwarded_for:
             first = forwarded_for.split(",", 1)[0].strip()
@@ -216,5 +240,7 @@ def enforce_ip_rate_limit(
     window_seconds: int,
 ) -> None:
     ip = client_ip(request)
+    if ip == "unknown":
+        logger.warning("Client IP could not be resolved for scope=%s; applying strict unknown-IP bucket", scope)
     enforce_rate_limit(key=f"ip:{ip}:{scope}", limit=limit, window_seconds=window_seconds)
 

@@ -4,15 +4,26 @@ from __future__ import annotations
 
 import logging
 import time
+import json
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 import httpx
-from jose import JWTError, jwt
+import jwt
+from jwt.algorithms import RSAAlgorithm, ECAlgorithm
 
 from config import config
 
 logger = logging.getLogger(__name__)
+
+
+def _jwk_to_verification_key(jwk_key: Dict[str, Any], alg: str):
+    jwk_json = json.dumps(jwk_key)
+    if alg.startswith("RS"):
+        return RSAAlgorithm.from_jwk(jwk_json)
+    if alg.startswith("ES"):
+        return ECAlgorithm.from_jwk(jwk_json)
+    raise ValueError(f"Unsupported OIDC token algorithm: {alg}")
 
 
 class OIDCService:
@@ -104,9 +115,10 @@ class OIDCService:
             if audience:
                 decode_kwargs["audience"] = audience
 
-            claims = jwt.decode(token, key, **decode_kwargs)
+            verification_key = _jwk_to_verification_key(key, alg)
+            claims = jwt.decode(token, verification_key, **decode_kwargs)
             return claims if isinstance(claims, dict) else None
-        except JWTError as exc:
+        except jwt.PyJWTError as exc:
             logger.error("OIDC token validation failed: %s", exc)
             return None
         except Exception as exc:

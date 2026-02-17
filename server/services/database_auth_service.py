@@ -108,8 +108,16 @@ class DatabaseAuthService:
         """Ensure default tenant, permissions, and admin user exist."""
         try:
             with get_db_session() as db:
-                
                 default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+                self._ensure_permissions(db)
+
+                if not config.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
+                    if not default_tenant:
+                        logger.warning(
+                            "DEFAULT_ADMIN_BOOTSTRAP_ENABLED is false and default tenant is missing. Run explicit bootstrap before serving production traffic."
+                        )
+                    return
+
                 if not default_tenant:
                     default_tenant = Tenant(
                         name=config.DEFAULT_ADMIN_TENANT,
@@ -119,11 +127,7 @@ class DatabaseAuthService:
                     db.add(default_tenant)
                     db.flush()
                     logger.info("Created default tenant")
-                
-                
-                self._ensure_permissions(db)
-                
-                
+
                 admin_username = (config.DEFAULT_ADMIN_USERNAME or '').strip().lower()
                 admin_user = db.query(User).filter_by(
                     tenant_id=default_tenant.id,
@@ -245,12 +249,13 @@ class DatabaseAuthService:
     # ------------------------- TOTP / MFA helpers -------------------------
     def _get_fernet(self) -> Optional[Fernet]:
         if not config.DATA_ENCRYPTION_KEY:
+            if config.REQUIRE_TOTP_ENCRYPTION_KEY:
+                raise ValueError("DATA_ENCRYPTION_KEY must be configured for MFA/TOTP operations")
             return None
         try:
             return Fernet(config.DATA_ENCRYPTION_KEY)
         except Exception:
-            logger.error("Invalid DATA_ENCRYPTION_KEY – TOTP secrets will be stored unencrypted")
-            return None
+            raise ValueError("Invalid DATA_ENCRYPTION_KEY format")
 
     def _encrypt_mfa_secret(self, secret: str) -> str:
         f = self._get_fernet()

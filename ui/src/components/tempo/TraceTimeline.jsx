@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 /**
  * TraceTimeline component for visualizing trace spans
  * @module components/tempo/TraceTimeline
@@ -9,9 +17,6 @@ import { Badge, Button } from '../ui'
 import { formatDuration } from '../../utils/formatters'
 import { getServiceName, hasSpanError, getSpanColorClass } from '../../utils/helpers'
 
-/**
- * Build a depth map for spans based on parent relationships
- */
 function buildDepthMap(spans) {
   const idToSpan = new Map()
   spans.forEach(s => {
@@ -39,9 +44,6 @@ function buildDepthMap(spans) {
   return depthCache
 }
 
-/**
- * TraceTimeline component
- */
 export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
   const [showAllTags, setShowAllTags] = useState({})
 
@@ -49,7 +51,6 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
 
   const traceId = trace.traceId || trace.traceID || trace.id || ''
 
-  // Handler to copy the full trace ID
   const handleCopyTraceId = () => {
     if (onCopyTraceId) {
       onCopyTraceId(traceId)

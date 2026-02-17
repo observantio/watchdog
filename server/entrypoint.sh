@@ -1,3 +1,8 @@
 #!/bin/sh
 set -e
-exec gosu appuser "$@"
+
+if [ "$(id -u)" = "0" ]; then
+	exec gosu appuser "$@"
+fi
+
+exec "$@"

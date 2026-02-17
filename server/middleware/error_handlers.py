@@ -22,7 +22,7 @@ def handle_route_errors(
     bad_request_detail: str | None = None,
     bad_gateway_exceptions: tuple[type[Exception], ...] = (httpx.HTTPError,),
     bad_gateway_detail: str = "Upstream request failed",
-    internal_detail: str | None = None,
+    internal_detail: str | None = "Internal server error",
 ) -> Callable[[F], F]:
     """Decorate async route handlers to map expected exceptions to HTTP errors.
 

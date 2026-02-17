@@ -63,6 +63,37 @@ class ConfigSecurityTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _reload_config_module()
 
+    def test_generates_es256_keypair_when_enabled(self):
+        with patch.dict(os.environ, {
+            "DATABASE_URL": "postgresql://safeuser:safePass_123@db:5432/beobservant",
+            "CORS_ORIGINS": "http://localhost:5173",
+            "CORS_ALLOW_CREDENTIALS": "true",
+            "JWT_ALGORITHM": "ES256",
+            "JWT_PRIVATE_KEY": "",
+            "JWT_PUBLIC_KEY": "",
+            "JWT_AUTO_GENERATE_KEYS": "true",
+            "APP_ENV": "development",
+        }, clear=False):
+            module = _reload_config_module()
+            self.assertTrue(module.config.JWT_PRIVATE_KEY)
+            self.assertTrue(module.config.JWT_PUBLIC_KEY)
+            self.assertIn("BEGIN PRIVATE KEY", module.config.JWT_PRIVATE_KEY)
+            self.assertIn("BEGIN PUBLIC KEY", module.config.JWT_PUBLIC_KEY)
+
+    def test_rejects_bootstrap_and_auto_keys_in_production(self):
+        with patch.dict(os.environ, {
+            "DATABASE_URL": "postgresql://safeuser:safePass_123@db:5432/beobservant",
+            "CORS_ORIGINS": "https://app.example.com",
+            "CORS_ALLOW_CREDENTIALS": "true",
+            "JWT_ALGORITHM": "RS256",
+            "APP_ENV": "production",
+            "DEFAULT_ADMIN_BOOTSTRAP_ENABLED": "true",
+            "JWT_AUTO_GENERATE_KEYS": "true",
+            "DEFAULT_ADMIN_PASSWORD": "strongProdPassword_123!",
+        }, clear=False):
+            with self.assertRaises(ValueError):
+                _reload_config_module()
+
 
 if __name__ == "__main__":
     unittest.main()

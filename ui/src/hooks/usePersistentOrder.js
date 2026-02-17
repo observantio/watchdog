@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useState, useEffect, useCallback } from 'react'
 
 /**
@@ -47,10 +55,8 @@ export function usePersistentOrder(key, length) {
 
   const [order, setOrderState] = useState(readInitial)
 
-  // Keep persisted value in sync when `length` changes or on mount
   useEffect(() => {
     const cleaned = sanitize(order, length)
-    // Persist cleaned order if it differs
     try {
       const asString = JSON.stringify(cleaned)
       const existing = globalThis.window?.localStorage?.getItem(key)
@@ -64,7 +70,6 @@ export function usePersistentOrder(key, length) {
     if (JSON.stringify(cleaned) !== JSON.stringify(order)) {
       setOrderState(cleaned)
     }
-    // intentionally depend on `length` so hook re-sanitizes when items change
   }, [key, length, order, sanitize])
 
   const setOrder = useCallback((next) => {

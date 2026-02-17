@@ -39,7 +39,7 @@ RUN chmod +x /entrypoint.sh && \
     useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
-USER root
+USER appuser
 
 EXPOSE 4319
 

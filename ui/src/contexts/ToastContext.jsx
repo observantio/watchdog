@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { setSetupToken } from '../api'
@@ -14,7 +22,6 @@ export function useToast() {
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
-  // Keep a short-lived map of recent error keys to avoid spamming identical toasts
   const recentErrorsRef = useRef(new Map());
 
   const removeToast = useCallback((id) => {
@@ -25,11 +32,8 @@ export function ToastProvider({ children }) {
     if (m == null) return ''
     if (typeof m === 'string') return m
     if (typeof m === 'number' || typeof m === 'boolean') return String(m)
-    // Error object
     if (m instanceof Error) return m.message || String(m)
-    // Common server error shapes
     if (typeof m === 'object') {
-      // Pydantic / validation error shape: { detail: [ { msg, loc, ... } ], body: {...} }
       if (Array.isArray(m.detail) && m.detail.length > 0) {
         try {
           const parts = m.detail.map(d => {
@@ -42,11 +46,7 @@ export function ToastProvider({ children }) {
           // fallthrough to JSON stringify
         }
       }
-
-      // Simple server error shape: { detail: "Invalid TOTP code" }
       if (typeof m.detail === 'string') return m.detail
-
-      // New: handle backend error array format { errors: [...] }
       if (Array.isArray(m.errors) && m.errors.length) return m.errors.join('; ')
       if (typeof m.errors === 'string') return m.errors
       if (m.errors && typeof m.errors === 'object') {
@@ -61,7 +61,6 @@ export function ToastProvider({ children }) {
       if (m.message) return String(m.message)
       if (m.msg) return String(m.msg)
       if (m.error) return String(m.error)
-      // Try to JSON serialize, but guard against circular refs
       try {
         return JSON.stringify(m)
       } catch (ex) {
@@ -92,12 +91,6 @@ export function ToastProvider({ children }) {
   useEffect(() => {
     const handler = (e) => {
       const { status, body } = e.detail || {}
-
-      // Special-case: MFA setup challenge (sent as a 401 with
-      // { mfa_setup_required: true, setup_token: '...' }). The
-      // global API error handler used to stringify that object and
-      // show a cryptic toast. Instead, show a clear message and
-      // stash the setup token so the Login flow / MFA UI can use it.
       const challenge = (body && (body.detail || body)) || null
       const mfaRequired = Boolean(challenge && (challenge.mfa_setup_required === true || (challenge.detail && challenge.detail.mfa_setup_required === true)))
       if (status === 401 && mfaRequired) {
@@ -113,10 +106,8 @@ export function ToastProvider({ children }) {
       if (status >= 400) {
         try {
           const key = `${status}:${msg}`
-          // If we've shown this key recently, skip to avoid spam
           if (recentErrorsRef.current.has(key)) return
           recentErrorsRef.current.set(key, Date.now())
-          // remove key after 5 seconds so repeated attempts shortly after will still show once
           setTimeout(() => recentErrorsRef.current.delete(key), 5000)
           error(msg)
         } catch (ex) {

@@ -1,3 +1,12 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
+import React, { useState } from 'react'
 import { Button, Input, Modal, Select } from '../../components/ui'
 import HelpTooltip from '../../components/HelpTooltip'
 import VisibilitySelector from './VisibilitySelector'
@@ -42,6 +51,24 @@ const SAMPLE_MIMIR_DASHBOARD = {
   ],
 }
 
+const DASHBOARD_TEMPLATES = [
+  {
+    id: 'mimir-system-process',
+    name: 'System & Process (Mimir)',
+    icon: 'monitor_heart',
+    summary: 'CPU, memory, disk and network overview for Mimir/Prometheus',
+    datasourceUid: 'mimir-prometheus',
+    dashboard: SAMPLE_MIMIR_DASHBOARD,
+  },
+  {
+    id: 'empty',
+    name: 'Empty Dashboard',
+    icon: 'dashboard_customize',
+    summary: 'Start from a blank dashboard',
+    datasourceUid: '',
+    dashboard: { schemaVersion: 38, title: 'Empty Dashboard', uid: 'empty-dashboard', version: 1, time: { from: 'now-1h', to: 'now' }, panels: [] },
+  },
+]
 
 export default function DashboardEditorModal({
   isOpen,
@@ -62,6 +89,18 @@ export default function DashboardEditorModal({
   groups,
   onSave
 }) {
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+
+  const applyTemplate = (template) => {
+    setSelectedTemplate(template.id)
+    setJsonContent(JSON.stringify(template.dashboard, null, 2))
+    setJsonError('')
+    setFileUploaded(false)
+    if (template.datasourceUid) {
+      setDashboardForm({ ...dashboardForm, datasourceUid: template.datasourceUid, useTemplating: true })
+    }
+  }
+
   const handleSave = () => {
     onSave()
   }
@@ -135,6 +174,44 @@ export default function DashboardEditorModal({
 
         {editorTab === 'json' && (
           <div className="space-y-4">
+            {/* Templates picker */}
+            <div className="bg-gradient-to-r from-sre-primary/5 to-sre-primary/10 rounded-xl p-4 border border-sre-primary/20">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="material-icons text-2xl text-sre-primary">view_quilt</span>
+                <div>
+                  <h4 className="text-base font-semibold text-sre-text">Templates</h4>
+                  <p className="text-sm text-sre-text-muted">Choose a starting dashboard template — click a card to load it into the editor.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {DASHBOARD_TEMPLATES.map((t) => {
+                  const isSelected = selectedTemplate === t.id
+                  const panelTitles = (t.dashboard.panels || []).map(p => p.title).slice(0, 3).join('\n') || 'No panels'
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => applyTemplate(t)}
+                      className={`text-left p-3 rounded-lg border-2 transition-all duration-200 group shadow-sm hover:shadow-md ${
+                        isSelected
+                          ? 'border-sre-primary bg-sre-primary/10 shadow-md'
+                          : 'border-sre-border bg-sre-surface hover:border-sre-primary hover:bg-sre-primary/5'
+                      }`}
+                      data-testid={t.id === 'mimir-system-process' ? 'load-mimir-sample' : undefined}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className={`text-base font-semibold ${isSelected ? 'text-sre-primary' : 'text-sre-text'}`}>{t.name}</div>
+                        <span className="material-icons text-sre-text-muted">{t.icon}</span>
+                      </div>
+                      <div className="text-sm text-sre-text-muted mb-3 line-clamp-3">{t.summary}</div>
+                      <div className="text-xs font-mono text-sre-text-muted bg-sre-bg-alt p-2 rounded border whitespace-pre-wrap leading-relaxed min-h-[48px] overflow-hidden">{panelTitles}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-sre-text mb-3">Upload JSON file</label>
               <div className="space-y-2">
@@ -166,23 +243,7 @@ export default function DashboardEditorModal({
                     Choose File
                   </label>
 
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setJsonContent(JSON.stringify(SAMPLE_MIMIR_DASHBOARD, null, 2))
-                      setJsonError('')
-                      setFileUploaded(false)
-                      setDashboardForm({ ...dashboardForm, datasourceUid: 'mimir-prometheus', useTemplating: true })
-                    }}
-                    data-testid="load-mimir-sample"
-                  >
-                    Load sample: System &amp; Process (Mimir)
-                  </Button>
-
-                  <span className="text-sm text-sre-text-muted">
-                    {fileUploaded ? 'File loaded' : 'No file chosen'}
-                  </span>
+                  <span className="text-sm text-sre-text-muted">{fileUploaded ? 'File loaded' : 'No file chosen'}</span>
                 </div>
                 <p className="text-sm text-sre-text-muted">You can upload a Grafana-exported JSON or paste a dashboard object in the editor below.</p>
               </div>

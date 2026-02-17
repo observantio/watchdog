@@ -1,10 +1,15 @@
-import React from 'react'
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles.css'
 
 createRoot(document.getElementById('root')).render(
-  // StrictMode double-invokes lifecycle effects in development (React 18).
-  // We disable it here to prevent duplicate API calls from mounting twice.
   <App />
 )

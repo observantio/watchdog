@@ -61,7 +61,9 @@ def with_retry(
                             f"{func.__name__}: {e}"
                         )
 
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            raise RuntimeError(f"Retry wrapper exited without result or captured exception for {func.__name__}")
         
         return wrapper
     return decorator

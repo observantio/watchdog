@@ -1,7 +1,11 @@
-/**
- * Permission enforcement hook
- * Checks user permissions for secure UI rendering
- */
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useAuth } from '../contexts/AuthContext';
 
 export function usePermissions() {
@@ -10,10 +14,7 @@ export function usePermissions() {
   const permissions = user?.permissions || [];
   
   const hasPermission = (permission) => {
-    // Superusers have all permissions
     if (user?.is_superuser) return true;
-    
-    // Check if user has the specific permission
     return permissions.includes(permission);
   };
   

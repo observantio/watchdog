@@ -12,10 +12,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+import httpx
 
 from config import config, constants
 from routers import tempo_router, loki_router, alertmanager_router, grafana_router, auth_router, agents_router, system_router, gateway_router
-from database import init_database, init_db
+from database import init_database, init_db, connection_test
 from middleware.limits import RequestSizeLimitMiddleware, ConcurrencyLimitMiddleware
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -79,6 +80,17 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Content-Security-Policy", "default-src 'self'")
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 app.add_middleware(RequestSizeLimitMiddleware, max_bytes=config.MAX_REQUEST_BYTES)
 app.add_middleware(
@@ -162,6 +174,43 @@ async def health() -> dict:
         "service": constants.APP_NAME,
         "version": constants.APP_VERSION
     }
+
+
+async def _upstream_reachable(base_url: str) -> bool:
+    timeout = httpx.Timeout(2.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            response = await client.get(base_url)
+            return 200 <= response.status_code < 500
+    except Exception:
+        return False
+
+
+@app.get("/ready", tags=["health"])
+async def ready(request: Request):
+    checks = {
+        "database": connection_test(),
+    }
+
+    upstream_targets = {
+        "tempo": config.TEMPO_URL,
+        "loki": config.LOKI_URL,
+        "alertmanager": config.ALERTMANAGER_URL,
+        "grafana": config.GRAFANA_URL,
+        "mimir": config.MIMIR_URL,
+    }
+
+    results = await asyncio.gather(*(_upstream_reachable(url) for url in upstream_targets.values()))
+    checks.update({name: ok for name, ok in zip(upstream_targets.keys(), results)})
+
+    is_ready = all(checks.values())
+    payload = {
+        "status": "ready" if is_ready else "not_ready",
+        "checks": checks,
+    }
+    if not is_ready:
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
+    return payload
 
 if __name__ == "__main__":
     import uvicorn

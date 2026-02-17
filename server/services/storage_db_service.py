@@ -299,7 +299,7 @@ class DatabaseStorageService:
                         sort_keys=True,
                         default=str,
                     )
-                    fingerprint = f"derived-{hashlib.sha1(stable_blob.encode()).hexdigest()}"
+                    fingerprint = f"derived-{hashlib.sha256(stable_blob.encode()).hexdigest()}"
                 active_fingerprints.add(fingerprint)
 
                 incident = (

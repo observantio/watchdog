@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { Button } from '../ui'
 
 const SilenceItem = ({ silence, onDelete }) => {
@@ -8,9 +16,6 @@ const SilenceItem = ({ silence, onDelete }) => {
       ? 'Group'
       : 'Private'
 
-  // Prefer a human-friendly title: use the first non-empty line of the
-  // silence comment (if present), otherwise fall back to the first
-  // matcher's name and value, then 'Silence'.
   let heading = 'Silence'
   if (silence.comment && typeof silence.comment === 'string') {
     const firstLine = silence.comment.split('\n')[0].trim()

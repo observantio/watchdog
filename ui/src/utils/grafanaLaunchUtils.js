@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 export function normalizeGrafanaPath(path) {
   let rawPath = '/dashboards'
 
@@ -43,10 +51,6 @@ export function buildGrafanaBootstrapUrl({ path, protocol, hostname, token }) {
   if (!token) {
     return buildGrafanaLaunchUrl({ path, protocol, hostname })
   }
-  // Use the grafana proxy bootstrap endpoint which sets the auth cookie.
-  // Keep literal slashes in the `next` param so NGINX's `if ($next_path !~ "^/")`
-  // check receives a leading `/` (avoids falling back to `/`). Encode other
-  // characters but preserve `/`.
   const encoded = encodeURIComponent(normalizedPath).replace(/%2F/g, '/')
   const tokenParam = encodeURIComponent(token)
   return `${proxyOrigin}/grafana/bootstrap?token=${tokenParam}&next=${encoded}`

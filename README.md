@@ -25,10 +25,13 @@ This platform provides:
    Edit `.env` to set secure values. Key variables to configure:
 
    - `POSTGRES_PASSWORD`: Database password
-   - `JWT_SECRET_KEY`: Strong JWT signing key (generate securely)
+   - `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`: Asymmetric JWT signing keys (RS256 or ES256)
+   - `JWT_ALGORITHM`: `RS256` or `ES256`
    - `DEFAULT_ADMIN_PASSWORD`: Initial admin credentials (change immediately)
    - `DATA_ENCRYPTION_KEY`: Fernet key for data encryption (generate with Python)
    - `DEFAULT_OTLP_TOKEN`, `INBOUND_WEBHOOK_TOKEN`: Secure tokens for ingestion
+   - `DEFAULT_ADMIN_BOOTSTRAP_ENABLED`: set to `false` in production and run explicit bootstrap
+   - `JWT_AUTO_GENERATE_KEYS`: set to `false` in production
 
    Generate a Fernet key:
 
@@ -43,11 +46,16 @@ This platform provides:
    Ensure these are configured in `.env`:
 
    - `POSTGRES_PASSWORD`
-   - `JWT_SECRET_KEY`
+   - `JWT_PRIVATE_KEY`
+   - `JWT_PUBLIC_KEY`
+   - `JWT_ALGORITHM`
    - `DEFAULT_ADMIN_PASSWORD`
    - `DEFAULT_OTLP_TOKEN`
    - `INBOUND_WEBHOOK_TOKEN`
    - `DATA_ENCRYPTION_KEY`
+   - `DEFAULT_ADMIN_BOOTSTRAP_ENABLED=false`
+   - `JWT_AUTO_GENERATE_KEYS=false`
+   - `REQUIRE_TOTP_ENCRYPTION_KEY=true`
 
 3. **Launch the Stack**:
 
@@ -104,16 +112,25 @@ npm run start
 ## Production Deployment Considerations
 
 - **Proxy Configuration**: Set `TRUST_PROXY_HEADERS=false` unless behind a verified reverse proxy
+- **Trusted Proxies**: If `TRUST_PROXY_HEADERS=true`, set `TRUSTED_PROXY_CIDRS` to your ingress/load-balancer subnets
 - **Security**: Configure IP allowlists for public endpoints:
   - `WEBHOOK_IP_ALLOWLIST`
   - `GATEWAY_IP_ALLOWLIST`
   - `AUTH_PUBLIC_IP_ALLOWLIST`
    - `GRAFANA_PROXY_IP_ALLOWLIST`
+- **Public Endpoint IP Resolution**: Keep `REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS=true` in production
 - **Rate limits**: tune public endpoint protection as needed:
    - `RATE_LIMIT_GRAFANA_PROXY_PER_MINUTE`
    - `GATEWAY_RATE_LIMIT_PER_MINUTE`
 - **Secrets Management**: Use strong, unique secrets for all tokens and passwords; avoid default values
+- **Secret Storage**: Use a secure secret manager (Vault/K8s Secrets/cloud secret manager); do not print or store secrets in logs
 - **TLS Termination**: Handle SSL/TLS at your load balancer or edge proxy
+
+### Bootstrap in production
+
+- Disable runtime bootstrap by setting `DEFAULT_ADMIN_BOOTSTRAP_ENABLED=false`.
+- Create tenant/admin explicitly via an initialization workflow before exposing the API publicly.
+- Rotate initial admin credentials immediately and store all long-lived secrets outside repository files.
 
 ## Keycloak / OIDC auth mode
 

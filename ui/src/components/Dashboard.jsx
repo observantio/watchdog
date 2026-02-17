@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { useDashboardData, useAgentActivity, usePersistentOrder } from '../hooks'
@@ -8,12 +16,8 @@ import PageHeader from './ui/PageHeader'
 export default function Dashboard({ info }) {
   const dashboardData = useDashboardData()
   const agentData = useAgentActivity()
-
-  // Persisted, sanitized metric order (ensures all tiles are visible)
   const [metricOrder, setMetricOrder] = usePersistentOrder('dashboard-metric-order', 8)
-
   const metrics = useMemo(() => getMetricsConfig(dashboardData), [dashboardData])
-
   const handleMetricOrderChange = (newOrder) => {
     setMetricOrder(newOrder)
   }

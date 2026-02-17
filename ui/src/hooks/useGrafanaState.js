@@ -1,10 +1,16 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useState, useEffect, useCallback } from 'react'
 import {
-  searchDashboards, createDashboard, updateDashboard, deleteDashboard,
-  getDatasources, createDatasource, updateDatasource, deleteDatasource,
-  getFolders, createFolder, deleteFolder, getGroups,
+  searchDashboards,getDatasources, getFolders, getGroups,
   toggleDashboardHidden, toggleDatasourceHidden,
-  getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard
+  getDashboardFilterMeta, getDatasourceFilterMeta
 } from '../api'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'

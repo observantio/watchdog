@@ -2,8 +2,11 @@
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
+from functools import lru_cache
 
-from jose import JWTError, jwt
+import jwt
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
 
@@ -16,11 +19,41 @@ from models.access.auth_models import Role, Token, TokenData
 create_mfa_setup_token_op = create_mfa_setup_token if 'create_mfa_setup_token' in globals() else None
 
 
+def _load_private_key(pem: str):
+    return serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+
+
+def _load_public_key(pem: str):
+    return serialization.load_pem_public_key(pem.encode("utf-8"))
+
+
+@lru_cache(maxsize=1)
+def _validate_jwt_key_material() -> None:
+    algorithm = config.JWT_ALGORITHM
+    try:
+        private_key = _load_private_key(config.JWT_PRIVATE_KEY or "")
+        public_key = _load_public_key(config.JWT_PUBLIC_KEY or "")
+    except Exception as exc:
+        raise ValueError("Invalid JWT_PRIVATE_KEY/JWT_PUBLIC_KEY format") from exc
+
+    if algorithm == "RS256":
+        if not isinstance(private_key, rsa.RSAPrivateKey) or not isinstance(public_key, rsa.RSAPublicKey):
+            raise ValueError("JWT key type mismatch: RS256 requires RSA private/public PEM keys")
+    elif algorithm == "ES256":
+        if not isinstance(private_key, ec.EllipticCurvePrivateKey) or not isinstance(public_key, ec.EllipticCurvePublicKey):
+            raise ValueError("JWT key type mismatch: ES256 requires EC private/public PEM keys")
+        if getattr(private_key.curve, "name", "") != "secp256r1" or getattr(public_key.curve, "name", "") != "secp256r1":
+            raise ValueError("ES256 requires P-256 (secp256r1) key material")
+    else:
+        raise ValueError(f"Unsupported JWT algorithm: {algorithm}")
+
+
 def _jwt_signing_key() -> str:
     if config.JWT_ALGORITHM not in {"RS256", "ES256"}:
         raise ValueError(f"Unsupported JWT algorithm: {config.JWT_ALGORITHM}")
     if not config.JWT_PRIVATE_KEY:
         raise ValueError("JWT_PRIVATE_KEY is required for asymmetric JWT signing")
+    _validate_jwt_key_material()
     return config.JWT_PRIVATE_KEY
 
 
@@ -29,6 +62,7 @@ def _jwt_verification_key() -> str:
         raise ValueError(f"Unsupported JWT algorithm: {config.JWT_ALGORITHM}")
     if not config.JWT_PUBLIC_KEY:
         raise ValueError("JWT_PUBLIC_KEY is required for asymmetric JWT verification")
+    _validate_jwt_key_material()
     return config.JWT_PUBLIC_KEY
 
 
@@ -121,8 +155,8 @@ def decode_token(service, token: str) -> Optional[TokenData]:
         # treat it specially (limited setup token).
         setattr(td, 'is_mfa_setup', is_mfa_setup)
         return td
-    except JWTError as e:
-        service.logger.error(f"JWT decode error: {e}")
+    except jwt.PyJWTError:
+        service.logger.warning("JWT decode failed")
         return None
 
 

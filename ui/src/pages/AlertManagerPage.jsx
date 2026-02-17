@@ -1,5 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+`
+Copyright (c) 2026 Stefan Kumarasinghe
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
+import { useState, useEffect, useMemo } from 'react'
 import {
   getAlerts, getSilences, createSilence, deleteSilence,
   getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule,
@@ -47,7 +54,6 @@ export default function AlertManagerPage() {
   const [importFileName, setImportFileName] = useState('')
   const { toast } = useToast()
 
-  // Ensure metricOrder contains the expected keys (append missing keys)
   useEffect(() => {
     const defaults = DEFAULT_ALERTMANAGER_METRIC_KEYS
     if (!Array.isArray(metricOrder)) {
@@ -907,8 +913,6 @@ export default function AlertManagerPage() {
         />
       </Modal>
 
-
-      {/* Silence Form Modal */}
       <Modal
         isOpen={showSilenceForm}
         onClose={() => setShowSilenceForm(false)}

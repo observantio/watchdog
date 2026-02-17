@@ -6,6 +6,7 @@ from typing import Optional, List
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,28 @@ def _generate_rsa_keypair() -> tuple[str, str]:
     ).decode("utf-8")
     return private_pem, public_pem
 
+
+def _generate_ec_keypair() -> tuple[str, str]:
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+    return private_pem, public_pem
+
+
+def _env_name() -> str:
+    return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+
+
+def _is_production_env() -> bool:
+    return _env_name() in {"prod", "production"}
+
 class Config:
     """Application configuration from environment variables."""
 
@@ -51,8 +74,11 @@ class Config:
     EXAMPLE_DATABASE_URL = "postgresql://beobservant:changeme123@localhost:5432/beobservant"
 
     def __init__(self) -> None:
+        self.APP_ENV: str = _env_name()
+        self.IS_PRODUCTION: bool = _is_production_env()
+
         # Server configuration
-        self.HOST: str = os.getenv("HOST", "0.0.0.0")
+        self.HOST: str = os.getenv("HOST", "127.0.0.1")
         self.PORT: int = int(os.getenv("PORT", "4319"))
         self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
 
@@ -118,6 +144,10 @@ class Config:
         self.JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
         self.JWT_PRIVATE_KEY: Optional[str] = os.getenv("JWT_PRIVATE_KEY")
         self.JWT_PUBLIC_KEY: Optional[str] = os.getenv("JWT_PUBLIC_KEY")
+        self.JWT_AUTO_GENERATE_KEYS: bool = _to_bool(
+            os.getenv("JWT_AUTO_GENERATE_KEYS"),
+            default=not self.IS_PRODUCTION,
+        )
 
         # Identity provider / OIDC (Keycloak recommended)
         self.AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "local").strip().lower()
@@ -138,6 +168,21 @@ class Config:
         self.KEYCLOAK_USER_PROVISIONING_ENABLED: bool = _to_bool(
             os.getenv("KEYCLOAK_USER_PROVISIONING_ENABLED"),
             default=False,
+        )
+
+        # Production hardening controls
+        self.DEFAULT_ADMIN_BOOTSTRAP_ENABLED: bool = _to_bool(
+            os.getenv("DEFAULT_ADMIN_BOOTSTRAP_ENABLED"),
+            default=not self.IS_PRODUCTION,
+        )
+        self.REQUIRE_TOTP_ENCRYPTION_KEY: bool = _to_bool(
+            os.getenv("REQUIRE_TOTP_ENCRYPTION_KEY"),
+            default=self.IS_PRODUCTION,
+        )
+        self.TRUSTED_PROXY_CIDRS: List[str] = _to_list(os.getenv("TRUSTED_PROXY_CIDRS"), default=[])
+        self.REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS: bool = _to_bool(
+            os.getenv("REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS"),
+            default=self.IS_PRODUCTION,
         )
 
         # Default admin bootstrap (can be overridden via environment)
@@ -171,32 +216,37 @@ class Config:
             self.DEFAULT_ADMIN_PASSWORD,
             placeholders=["admin123", "admin", "password", "changeme"],
         ):
-            self.DEFAULT_ADMIN_PASSWORD = secrets.token_urlsafe(18)
-            logger.warning(
-                "Generated runtime DEFAULT_ADMIN_PASSWORD. Persist this value via env var: %s",
-                self.DEFAULT_ADMIN_PASSWORD,
-            )
+            if not self.IS_PRODUCTION and self.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
+                self.DEFAULT_ADMIN_PASSWORD = secrets.token_urlsafe(18)
+                logger.warning(
+                    "Generated runtime DEFAULT_ADMIN_PASSWORD for non-production startup. Persist via secret manager before deployment.",
+                )
 
         if _is_placeholder(
             self.JWT_SECRET_KEY,
             placeholders=["change-this-secret-key-in-production", "changeme", "secret", ""],
         ):
-            self.JWT_SECRET_KEY = secrets.token_urlsafe(32)
-            logger.warning(
-                "Generated runtime JWT_SECRET_KEY. Persist this value via env var: %s",
-                self.JWT_SECRET_KEY,
-            )
+            if not self.IS_PRODUCTION:
+                self.JWT_SECRET_KEY = secrets.token_urlsafe(32)
+                logger.info("Generated runtime JWT_SECRET_KEY for local compatibility.")
 
         if self.JWT_ALGORITHM in self.ALLOWED_JWT_ALGORITHMS and (
             not self.JWT_PRIVATE_KEY or not self.JWT_PUBLIC_KEY
         ):
-            private_key, public_key = _generate_rsa_keypair()
-            self.JWT_PRIVATE_KEY = private_key
-            self.JWT_PUBLIC_KEY = public_key
-            logger.warning(
-                "Generated ephemeral JWT keypair for %s. Persist JWT_PRIVATE_KEY and JWT_PUBLIC_KEY to avoid token invalidation on restart.",
-                self.JWT_ALGORITHM,
-            )
+            if self.JWT_AUTO_GENERATE_KEYS and not self.IS_PRODUCTION:
+                if self.JWT_ALGORITHM == "RS256":
+                    private_key, public_key = _generate_rsa_keypair()
+                elif self.JWT_ALGORITHM == "ES256":
+                    private_key, public_key = _generate_ec_keypair()
+                else:
+                    raise ValueError("Unsupported JWT_ALGORITHM for auto key generation")
+
+                self.JWT_PRIVATE_KEY = private_key
+                self.JWT_PUBLIC_KEY = public_key
+                logger.warning(
+                    "Generated ephemeral JWT keypair for %s. Persist JWT_PRIVATE_KEY and JWT_PUBLIC_KEY in a secret manager to avoid token invalidation on restart.",
+                    self.JWT_ALGORITHM,
+                )
 
     def validate(self) -> None:
         if self.DATABASE_URL == self.EXAMPLE_DATABASE_URL or "changeme123" in self.DATABASE_URL:
@@ -209,10 +259,28 @@ class Config:
                 f"Unsupported JWT_ALGORITHM '{self.JWT_ALGORITHM}'. Allowed values: {sorted(self.ALLOWED_JWT_ALGORITHMS)}"
             )
 
+        if self.JWT_SECRET_KEY:
+            logger.warning(
+                "JWT_SECRET_KEY is currently unused for JWT_ALGORITHM=%s. Configure JWT_PRIVATE_KEY/JWT_PUBLIC_KEY instead.",
+                self.JWT_ALGORITHM,
+            )
+
         if self.JWT_ALGORITHM in self.ALLOWED_JWT_ALGORITHMS and (
             not self.JWT_PRIVATE_KEY or not self.JWT_PUBLIC_KEY
         ):
             raise ValueError("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY must be configured for RS256/ES256 tokens")
+
+        if self.IS_PRODUCTION and self.JWT_AUTO_GENERATE_KEYS:
+            raise ValueError("JWT_AUTO_GENERATE_KEYS must be disabled in production")
+
+        if self.IS_PRODUCTION and _is_placeholder(
+            self.DEFAULT_ADMIN_PASSWORD,
+            placeholders=["admin123", "admin", "password", "changeme", ""],
+        ):
+            raise ValueError("DEFAULT_ADMIN_PASSWORD must be set to a strong value in production")
+
+        if self.REQUIRE_TOTP_ENCRYPTION_KEY and not self.DATA_ENCRYPTION_KEY:
+            raise ValueError("DATA_ENCRYPTION_KEY is required when REQUIRE_TOTP_ENCRYPTION_KEY is enabled")
 
         wildcard_enabled = any(origin.strip() == "*" for origin in self.CORS_ORIGINS)
         if wildcard_enabled and self.CORS_ALLOW_CREDENTIALS:

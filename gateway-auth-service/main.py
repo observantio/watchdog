@@ -1,4 +1,4 @@
-"""Standalone OTLP gateway auth service (refactored).
+"""Standalone OTLP gateway auth servic.
 
 This file now only wires the FastAPI application and the startup
 (lifespan) checks.  Business logic, DB models and HTTP routes were moved

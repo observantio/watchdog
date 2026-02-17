@@ -139,6 +139,13 @@ def enforce_public_endpoint_security(
     window_seconds: int,
     allowlist: str | None = None,
 ) -> None:
+    resolved_ip = client_ip(request)
+    if config.REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS and resolved_ip == "unknown":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied for {scope}: client IP resolution failed",
+        )
+
     enforce_ip_rate_limit(
         request,
         scope=scope,
