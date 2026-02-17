@@ -242,11 +242,11 @@ async def authorize_proxy_request(
 ) -> Dict[str, str]:
     token_to_verify = extract_proxy_token(service, request, token)
     if not token_to_verify:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=401, detail="You need to log in to access this resource.")
 
     token_data = auth_service.decode_token(token_to_verify)
     if not token_data:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
+        raise HTTPException(status_code=401, detail="Your session has expired or your token is invalid. Let's get you a new one.")
 
     if isinstance(token_data, dict):
         token_data = TokenData(**token_data)

@@ -300,7 +300,7 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
                     </div>
                     <p className="text-sm text-sre-text-muted">Start from a known-good template, then tune the expression and thresholds for your environment.</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-80 overflow-y-auto pr-2">
                     {RULE_TEMPLATES.map((template) => {
                       const isSelected = selectedTemplate === template.id
                       return (

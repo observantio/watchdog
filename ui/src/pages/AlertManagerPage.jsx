@@ -326,11 +326,11 @@ export default function AlertManagerPage() {
             <>
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="material-icons text-2xl text-sre-primary">warning</span>
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons text-xl text-sre-primary">warning</span>
                       <div>
-                        <h2 className="text-xl font-semibold text-sre-text">Active Alerts</h2>
-                        <p className="text-sm text-sre-text-muted">
+                        <h2 className="text-lg font-semibold text-sre-text">Active Alerts</h2>
+                        <p className="text-xs text-sre-text-muted">
                           {filteredAlerts.length > 0
                             ? `You've got ${filteredAlerts.length} alert${filteredAlerts.length !== 1 ? 's' : ''} firing`
                             : 'No active alerts'
@@ -339,7 +339,7 @@ export default function AlertManagerPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Select value={filterSeverity} onChange={(e) => setFilterSeverity(e.target.value)}>
+                      <Select className="text-xs px-3 py-1" value={filterSeverity} onChange={(e) => setFilterSeverity(e.target.value)}>
                         {ALERT_SEVERITY_OPTIONS.map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}

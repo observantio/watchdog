@@ -187,7 +187,7 @@ def get_current_user(
     if token_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail="Your session has expired or your token is invalid. Let's get you a new one.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -197,7 +197,7 @@ def get_current_user(
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication token payload",
+                detail="Your session has expired or your token is invalid. Let's get you a new one.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -233,7 +233,7 @@ def get_current_user_or_mfa_setup(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+            detail="You need to log in to access this resource",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -242,7 +242,7 @@ def get_current_user_or_mfa_setup(
     if token_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail="Your session has expired or your token is invalid. Let's get you a new one.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

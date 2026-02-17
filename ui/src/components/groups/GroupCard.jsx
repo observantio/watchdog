@@ -11,7 +11,7 @@ export default function GroupCard({ group, usersCount, permsCount, onOpenPermiss
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-xl font-bold text-sre-text truncate mb-1" title={group.name}>{group.name}</h3>
-            <p className="text-sm text-sre-text-muted line-clamp-2" title={group.description || 'No description'}>
+            <p className="text-sm text-sre-text-muted truncate" title={group.description || 'No description'}>
               {group.description || 'No description provided'}
             </p>
           </div>

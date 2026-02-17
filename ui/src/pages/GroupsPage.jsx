@@ -1,7 +1,11 @@
-/**
- * Groups Management Page
- * Manage groups and assign permissions with least privilege enforcement
-*/
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 
 import { useState, useEffect } from 'react';
 import { Card, Button, Input, Textarea, Modal, ConfirmDialog, Badge, Alert, Checkbox } from '../components/ui';
@@ -245,8 +249,6 @@ export default function GroupsPage() {
           <p className="text-sre-text-muted mt-2">Manage groups and assign permissions that members will inherit</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Only show the header Create button when there are existing groups or when a search is active.
-              When there are no groups and no search query, the centered Empty State CTA will be shown instead. */}
           {!(groups.length === 0 && !searchQuery) && (
             <Button onClick={() => setShowCreateModal(true)} size="sm">
               <span className="material-icons mr-2">add</span>

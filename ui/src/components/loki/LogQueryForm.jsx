@@ -122,7 +122,7 @@ export default function LogQueryForm({
           </>
         )}
         <div className="flex-1" />
-        <Button type="submit" loading={!!loading} className="px-8">Run Query</Button>
+        <Button type="submit" size="sm" loading={!!loading}>Run Query</Button>
       </div>
 
       {selectedFilters?.length > 0 && (

@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import  { useState, useEffect, useCallback } from 'react'
 import {
   searchDashboards, createDashboard, updateDashboard, deleteDashboard,
@@ -6,24 +14,20 @@ import {
   toggleDashboardHidden, toggleDatasourceHidden,
   getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard
 } from '../api'
-import { Button, Input, ConfirmDialog, Select } from '../components/ui'
+import { Button, ConfirmDialog } from '../components/ui'
 import PageHeader from '../components/ui/PageHeader'
 import DashboardEditorModal from '../components/grafana/DashboardEditorModal'
 import DatasourceEditorModal from '../components/grafana/DatasourceEditorModal'
 import FolderCreatorModal from '../components/grafana/FolderCreatorModal'
 import { useToast } from '../contexts/ToastContext'
-import HelpTooltip from '../components/HelpTooltip'
 import GrafanaTabs from '../components/grafana/GrafanaTabs'
 import GrafanaContent from '../components/grafana/GrafanaContent'
 import { useAuth } from '../contexts/AuthContext'
-import { API_BASE, GRAFANA_URL, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS, REFRESH_INTERVALS } from '../utils/constants'
+import {  MIMIR_PROMETHEUS_URL } from '../utils/constants'
 import { GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES, overrideDashboardDatasource, inferDashboardDatasource } from '../utils/grafanaUtils'
 import { buildGrafanaLaunchUrl, buildGrafanaBootstrapUrl } from '../utils/grafanaLaunchUtils'
-// handlers moved into the component so they can access component state
 
-
-
-export default function GrafanaPage() { // NOSONAR
+export default function GrafanaPage() { 
   const { user, token } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboards')
   const [dashboards, setDashboards] = useState([])
@@ -35,7 +39,6 @@ export default function GrafanaPage() { // NOSONAR
   const [dashboardMeta, setDashboardMeta] = useState({})
   const [datasourceMeta, setDatasourceMeta] = useState({})
 
-  // Filter state
   const [filters, setFilters] = useState({
     teamId: '',
     showHidden: false,
@@ -46,24 +49,19 @@ export default function GrafanaPage() { // NOSONAR
   function handleApiError(e) {
     if (!e) return
 
-    // If this is an HTTP error thrown by `api.request`, let the global `api-error`
-    // event (and `ToastContext`) handle showing deduplicated messages.
     if (e && typeof e.status === 'number') {
-      // keep silent for auth/403 (handled elsewhere) and let global handler run
       return
     }
 
-    // Non-HTTP/local errors: show a helpful toast
     const msg = e.message || String(e || '')
     const lower = msg.toLowerCase()
     if (lower.includes('not found') && (lower.includes('access denied') || lower.includes('update failed'))) return
     toast.error(msg)
   }
 
-  // Dashboard editor state
   const [showDashboardEditor, setShowDashboardEditor] = useState(false)
   const [editingDashboard, setEditingDashboard] = useState(null)
-  const [editorTab, setEditorTab] = useState('form') // 'form' | 'json'
+  const [editorTab, setEditorTab] = useState('form')
   const [jsonContent, setJsonContent] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [fileUploaded, setFileUploaded] = useState(false)
@@ -78,7 +76,6 @@ export default function GrafanaPage() { // NOSONAR
     sharedGroupIds: [],
   })
 
-  // Datasource editor state
   const [showDatasourceEditor, setShowDatasourceEditor] = useState(false)
   const [editingDatasource, setEditingDatasource] = useState(null)
   const [datasourceForm, setDatasourceForm] = useState({
@@ -92,11 +89,9 @@ export default function GrafanaPage() { // NOSONAR
     apiKeyId: '',
   })
 
-  // Folder creator state
   const [showFolderCreator, setShowFolderCreator] = useState(false)
   const [folderName, setFolderName] = useState('')
 
-  // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
     title: '',
@@ -105,13 +100,11 @@ export default function GrafanaPage() { // NOSONAR
     variant: 'danger'
   })
 
-  // Grafana access confirmation state
   const [grafanaConfirmDialog, setGrafanaConfirmDialog] = useState({
     isOpen: false,
     path: null
   })
 
-  // Open-in Grafana: set confirmation dialog
   function openInGrafana(path) {
     setGrafanaConfirmDialog({
       isOpen: true,
@@ -121,9 +114,6 @@ export default function GrafanaPage() { // NOSONAR
 
   function confirmOpenInGrafana() {
     const { path } = grafanaConfirmDialog || {}
-
-    // Prefer proxy bootstrap when we have an auth token so the grafana-proxy
-    // sets the httpOnly cookie and the new tab is authenticated immediately.
     const launchUrl = token
       ? buildGrafanaBootstrapUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname, token })
       : buildGrafanaLaunchUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname })
@@ -234,7 +224,6 @@ export default function GrafanaPage() { // NOSONAR
     })
   }
 
-  // ---- Dashboard CRUD ----
   function openDashboardEditor(dashboard = null) {
     setEditorTab('form')
     setJsonContent('')
@@ -244,7 +233,6 @@ export default function GrafanaPage() { // NOSONAR
     if (dashboard) {
       setEditingDashboard(dashboard)
 
-      // Infer datasource + whether it uses templating from the dashboard
       const inferred = inferDashboardDatasource(dashboard, datasources)
 
       setDashboardForm({
@@ -275,7 +263,6 @@ export default function GrafanaPage() { // NOSONAR
               setDashboardForm(prev => ({ ...prev, datasourceUid: inferred.uid, useTemplating: inferred.useTemplating }))
             }
 
-            // Always replace the JSON editor with the full dashboard when available
             if (full?.dashboard) {
               try {
                 setJsonContent(JSON.stringify(full.dashboard, null, 2))
@@ -301,7 +288,6 @@ export default function GrafanaPage() { // NOSONAR
         visibility: 'private',
         sharedGroupIds: [],
       })
-      // default JSON template
       setJsonContent(JSON.stringify({ title: '', panels: [] }, null, 2))
     }
     setShowDashboardEditor(true)
@@ -309,7 +295,6 @@ export default function GrafanaPage() { // NOSONAR
 
   async function saveDashboard() {
     try {
-      // If JSON editor is active, prefer JSON content (supports exported Grafana JSON or raw dashboard object)
       let payload = null
       if (editorTab === 'json') {
         if (!jsonContent || !jsonContent.trim()) {
@@ -326,9 +311,7 @@ export default function GrafanaPage() { // NOSONAR
           return
         }
 
-        // If user pasted an outer wrapper (e.g. { dashboard: { ... }, overwrite: true }), normalize
         if (parsed.dashboard || parsed?.meta || parsed?.orgId) {
-          // If it's already the Grafana export format (has dashboard at top), use as-is
           if (parsed.dashboard) {
             payload = {
               dashboard: parsed.dashboard,
@@ -336,17 +319,14 @@ export default function GrafanaPage() { // NOSONAR
               overwrite: parsed.overwrite !== undefined ? !!parsed.overwrite : !!editingDashboard,
             }
           } else if (parsed?.meta && parsed.dashboard === undefined) {
-            // Grafana search result shape — try to use parsed.dashboard if present; otherwise fall back to wrapped object
             payload = { dashboard: parsed, folderId: Number.parseInt(dashboardForm.folderId, 10) || 0, overwrite: !!editingDashboard }
           } else {
             payload = { dashboard: parsed, folderId: Number.parseInt(dashboardForm.folderId, 10) || 0, overwrite: !!editingDashboard }
           }
         } else {
-          // Raw dashboard object provided — wrap it
           payload = { dashboard: parsed, folderId: Number.parseInt(dashboardForm.folderId, 10) || 0, overwrite: !!editingDashboard }
         }
       } else {
-        // Form-based payload (existing behaviour)
         const tags = dashboardForm.tags
           .split(',')
           .map(t => t.trim())
@@ -385,12 +365,10 @@ export default function GrafanaPage() { // NOSONAR
         }
       }
 
-      // If a default datasource was chosen in the form, apply it to the dashboard JSON
       if (payload && payload.dashboard && dashboardForm.datasourceUid) {
         payload.dashboard = overrideDashboardDatasource(payload.dashboard, dashboardForm.datasourceUid, datasources, Boolean(dashboardForm.useTemplating))
       }
 
-      // If JSON editor was used, allow the form-level tags/visibility to override or supplement
       if (payload && payload.dashboard) {
         const tagsFromForm = dashboardForm.tags
           .split(',')
@@ -405,7 +383,6 @@ export default function GrafanaPage() { // NOSONAR
       }
 
       if (editingDashboard) {
-        // Ensure UID is set on update payload and id is null
         if (payload.dashboard) {
           payload.dashboard.uid = editingDashboard.uid
           payload.dashboard.id = null
@@ -413,18 +390,13 @@ export default function GrafanaPage() { // NOSONAR
         await updateDashboard(editingDashboard.uid, payload, params.toString())
         toast.success('Dashboard updated successfully')
       } else {
-        // For creation: respect a uid provided inside the JSON by appending a short random suffix
-        // This avoids collisions while preserving the author's base uid.
         if (payload.dashboard) {
-          // always remove numeric id
           delete payload.dashboard.id
 
           if (payload.dashboard.uid) {
-            // append a short alphanumeric suffix to keep the original hint but ensure uniqueness
             const suffix = Math.random().toString(36).slice(2, 8)
             payload.dashboard.uid = `${String(payload.dashboard.uid)}-${suffix}`
           } else {
-            // let Grafana generate a UID if none provided
             delete payload.dashboard.uid
           }
         }

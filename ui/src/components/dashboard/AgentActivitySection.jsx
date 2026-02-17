@@ -35,11 +35,16 @@ const AgentCard = ({ agent }) => {
     : null
   const activityLabel = formatActivityLabel(agent)
 
+  // Truncate agent name if longer than 5 characters
+  const displayName = agent?.name && agent.name.length > 5
+    ? agent.name.slice(0, 5) + '...'
+    : agent?.name
+
   return (
     <div className="rounded-lg border border-sre-border bg-sre-bg-alt px-4 py-3">
       <div className="flex items-center gap-4">
         <div className="flex-1">
-          <div className="font-semibold text-sre-text text-left">{agent?.name}</div>
+          <div className="font-semibold text-sre-text text-left">{displayName}</div>
           <div className="text-xs text-sre-text-muted text-left">{activityLabel}</div>
           {hostLabel && (
             <div className="text-xs text-sre-text-muted text-left">Host: {hostLabel}</div>

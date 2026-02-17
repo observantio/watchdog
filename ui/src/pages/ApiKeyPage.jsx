@@ -372,7 +372,7 @@ export default function ApiKeyPage() {
                 <Input
                   value={gatewayHost}
                   onChange={(e) => setGatewayHost(e.target.value)}
-                  placeholder="http://localhost:4320"
+                  placeholder={OTLP_GATEWAY_HOST}
                 />
                 <p className="text-xs text-sre-text-muted mt-1">Gateway host URL for OTLP endpoints.</p>
               </div>

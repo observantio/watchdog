@@ -65,7 +65,7 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
 
       {/* Navigation Buttons */}
       {showButtons && (
-        <div className="flex justify-between items-center pt-4 border-t border-sre-border">
+        <div className="flex justify-between items-center  border-sre-border">
           <Button
             type="button"
             variant="ghost"

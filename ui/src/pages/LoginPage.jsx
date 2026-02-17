@@ -1,3 +1,12 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
+
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -96,7 +105,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     if (!mfaCode) {
-      setError('Authentication code is required')
+      setError('You need to enter the authentication code from your authenticator app to continue')
       return
     }
     setLoading(true)
@@ -104,7 +113,7 @@ export default function LoginPage() {
       await login(username.trim(), password, mfaCode)
       navigate('/')
     } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Invalid authentication code')
+      setError(err?.body?.detail || err?.message || 'You\'re session has expired or your token is invalid. Let\'s get you a new one.')
     } finally {
       setLoading(false)
     }

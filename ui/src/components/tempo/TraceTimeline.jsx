@@ -49,6 +49,15 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
 
   const traceId = trace.traceId || trace.traceID || trace.id || ''
 
+  // Handler to copy the full trace ID
+  const handleCopyTraceId = () => {
+    if (onCopyTraceId) {
+      onCopyTraceId(traceId)
+    } else if (navigator?.clipboard) {
+      navigator.clipboard.writeText(traceId)
+    }
+  }
+
   const spansWithEndTime = useMemo(() => {
     const sorted = [...trace.spans].sort((a, b) => a.startTime - b.startTime)
     return sorted.map(s => ({
@@ -122,15 +131,13 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
                   {traceId.substring(0, 16)}...
                 </code>
               </div>
-              {onCopyTraceId && (
-                <button
-                  onClick={onCopyTraceId}
-                  className="p-1.5 hover:bg-sre-bg-alt rounded-lg transition-colors group"
-                  title="Copy Trace ID"
-                >
-                  <span className="material-icons text-sm text-sre-text-muted group-hover:text-sre-primary">content_copy</span>
-                </button>
-              )}
+              <button
+                onClick={handleCopyTraceId}
+                className="p-1.5 hover:bg-sre-bg-alt rounded-lg transition-colors group"
+                title="Copy Trace ID"
+              >
+                <span className="material-icons text-sm text-sre-text-muted group-hover:text-sre-primary">content_copy</span>
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2">

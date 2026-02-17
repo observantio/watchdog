@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { Alert, Checkbox } from '../ui'
 import HelpTooltip from '../HelpTooltip'
+import { getCategoryDescription } from '../../utils/groupManagementUtils'
 
 export default function GroupPermissions({
   permissionsByResource,
@@ -32,7 +33,7 @@ export default function GroupPermissions({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <h4 className="font-semibold capitalize text-sm text-sre-text">{resource}</h4>
-                <HelpTooltip text={require('../../utils/groupManagementUtils').getCategoryDescription(resource)} />
+                <HelpTooltip text={getCategoryDescription(resource)} />
               </div>
               <div className="flex gap-2 text-xs">
                 <button type="button" onClick={() => addPerms(perms)} className="px-2 py-0.5 text-sre-primary hover:bg-sre-primary/10 rounded">Select All</button>

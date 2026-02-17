@@ -243,7 +243,7 @@ export default function UsersPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-sre-border/30">
+                    <div className="flex flex-wrap gap-2 items-center border-sre-border/30">
                       <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => openEditUser(u)} aria-label={`Edit ${u.username}`}>
                         <span className="material-icons text-sm" aria-hidden>edit</span>
                         <span>Edit</span>
