@@ -12,6 +12,8 @@ Tempo service for trace operations.
 import httpx
 import logging
 import json
+import asyncio
+import time
 from typing import List, Optional, Dict, Any
 from models.observability.tempo_models import Trace, TraceQuery, TraceResponse, Span
 from config import config
@@ -37,6 +39,29 @@ class TempoService:
         self.tempo_url = tempo_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
         self._client = create_async_client(self.timeout)
+        self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
+        self._services_cache: Dict[str, Dict[str, Any]] = {}
+        self._metrics: Dict[str, float] = {
+            "tempo_search_total": 0,
+            "tempo_search_duration_sum_seconds": 0.0,
+            "tempo_search_errors_total": 0,
+            "tempo_full_trace_fetch_total": 0,
+            "tempo_count_traces_calls_total": 0,
+        }
+
+    def _observe(self, metric: str, value: float = 1.0) -> None:
+        self._metrics[metric] = float(self._metrics.get(metric, 0.0) + value)
+
+    async def _timed_get_json(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        started = time.perf_counter()
+        try:
+            response = await self._client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        finally:
+            elapsed = time.perf_counter() - started
+            self._observe("tempo_search_total", 1)
+            self._observe("tempo_search_duration_sum_seconds", elapsed)
     
     def _get_headers(self, tenant_id: str = config.DEFAULT_ORG_ID) -> dict:
         """Get headers including tenant ID for multi-tenancy.
@@ -68,43 +93,44 @@ class TempoService:
         """
         params = self._build_search_params(query)
         headers = self._get_headers(tenant_id)
-        
         try:
-            response = await self._client.get(
+            data = await self._timed_get_json(
                 f"{self.tempo_url}/api/search",
                 params=params,
-                headers=headers
+                headers=headers,
             )
-            response.raise_for_status()
-            data = response.json()
             
             traces = []
             if "traces" in data:
-                for trace_data in data["traces"]:
-                    trace_id = trace_data.get("traceID")
-                    if trace_id:
-                        if fetch_full_traces:
+                trace_ids = [trace_data.get("traceID") for trace_data in data["traces"] if trace_data.get("traceID")]
+
+                if fetch_full_traces and trace_ids:
+                    semaphore = asyncio.Semaphore(max(1, config.TEMPO_TRACE_FETCH_CONCURRENCY))
+
+                    async def _fetch_full(trace_id: str):
+                        async with semaphore:
+                            self._observe("tempo_full_trace_fetch_total", 1)
                             full_trace = await self.get_trace(trace_id, tenant_id=tenant_id)
                             if full_trace:
-                                traces.append(full_trace)
-                            else:
-                                traces.append(
-                                    Trace(
-                                        traceID=trace_id,
-                                        spans=[],
-                                        processes={},
-                                        warnings=["Trace details unavailable"]
-                                    )
-                                )
-                        else:
-                            traces.append(
-                                Trace(
-                                    traceID=trace_id,
-                                    spans=[],
-                                    processes={},
-                                    warnings=["Trace details not fetched"]
-                                )
+                                return full_trace
+                            return Trace(
+                                traceID=trace_id,
+                                spans=[],
+                                processes={},
+                                warnings=["Trace details unavailable"],
                             )
+
+                    traces = await asyncio.gather(*[_fetch_full(trace_id) for trace_id in trace_ids])
+                else:
+                    traces = [
+                        Trace(
+                            traceID=trace_id,
+                            spans=[],
+                            processes={},
+                            warnings=["Trace details not fetched"],
+                        )
+                        for trace_id in trace_ids
+                    ]
             
             return TraceResponse(
                 data=traces,
@@ -114,6 +140,7 @@ class TempoService:
             )
             
         except httpx.HTTPError as e:
+            self._observe("tempo_search_errors_total", 1)
             logger.error("Error searching traces: %s", e)
             return TraceResponse(
                 data=[],
@@ -136,10 +163,7 @@ class TempoService:
         """
         headers = self._get_headers(tenant_id)
         try:
-            response = await self._client.get(
-                f"{self.tempo_url}/api/traces/{trace_id}",
-                headers=headers
-            )
+            response = await self._client.get(f"{self.tempo_url}/api/traces/{trace_id}", headers=headers)
             response.raise_for_status()
             if not response.content:
                 logger.debug("Tempo returned empty response for trace %s", trace_id)
@@ -174,10 +198,13 @@ class TempoService:
             List of service names
         """
         headers = self._get_headers(tenant_id)
+        now = time.monotonic()
+        cached = self._services_cache.get(tenant_id)
+        if isinstance(cached, dict) and float(cached.get("expires", 0.0)) > now:
+            return list(cached.get("data", []))
+
         try:
-            response = await self._client.get(f"{self.tempo_url}/api/search/tags", headers=headers)
-            response.raise_for_status()
-            data = response.json()
+            data = await self._timed_get_json(f"{self.tempo_url}/api/search/tags", headers=headers)
             logger.debug("Tempo /api/search/tags response: %s", data)
 
             services = []
@@ -228,7 +255,12 @@ class TempoService:
                     logger.warning("Failed to infer services from traces: %s", ie)
 
             normalized = [s for s in map(str, services) if s]
-            return sorted(set(normalized))
+            result = sorted(set(normalized))
+            self._services_cache[tenant_id] = {
+                "expires": now + self._cache_ttl_seconds,
+                "data": list(result),
+            }
+            return result
             
         except httpx.HTTPError as e:
             logger.error("Error fetching services: %s", e)
@@ -316,17 +348,21 @@ class TempoService:
         total_seconds = max(0, int((end - start) / 1_000_000))
         num_buckets = int(max(1, min(max_buckets, (total_seconds + step - 1) // step)))
 
-        values = []
-        for i in range(num_buckets):
+        semaphore = asyncio.Semaphore(max(1, config.TEMPO_VOLUME_BUCKET_CONCURRENCY))
+
+        async def _count_bucket(i: int):
             bucket_start = int(start + i * step * 1_000_000)
             bucket_end = int(min(end, bucket_start + step * 1_000_000))
-            try:
-                q = TraceQuery(service=service, start=bucket_start, end=bucket_end, limit=1000)
-                cnt = await self.count_traces(q, tenant_id=tenant_id)
-            except Exception:
-                cnt = 0
+            async with semaphore:
+                try:
+                    q = TraceQuery(service=service, start=bucket_start, end=bucket_end, limit=1000)
+                    cnt = await self.count_traces(q, tenant_id=tenant_id)
+                except Exception:
+                    cnt = 0
             ts_seconds = int(bucket_start / 1_000_000)
-            values.append([ts_seconds, str(cnt)])
+            return [ts_seconds, str(cnt)]
+
+        values = await asyncio.gather(*[_count_bucket(i) for i in range(num_buckets)])
 
         return {"data": {"result": [{"metric": {}, "values": values}]}}
 
@@ -348,6 +384,7 @@ class TempoService:
             limit=safe_limit
         )
         response = await self.search_traces(query, tenant_id=tenant_id, fetch_full_traces=False)
+        self._observe("tempo_count_traces_calls_total", 1)
         return response.total
     
     def _build_search_params(self, query: TraceQuery) -> Dict[str, Any]:

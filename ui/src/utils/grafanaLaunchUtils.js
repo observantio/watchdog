@@ -45,13 +45,9 @@ export function buildGrafanaLaunchUrl({ path, protocol, hostname }) {
   return `${proxyOrigin}${grafanaBase}${normalizedPath}`
 }
 
-export function buildGrafanaBootstrapUrl({ path, protocol, hostname, token }) {
+export function buildGrafanaBootstrapUrl({ path, protocol, hostname }) {
   const normalizedPath = normalizeGrafanaPath(path)
   const proxyOrigin = `${protocol}//${hostname}:8080`
-  if (!token) {
-    return buildGrafanaLaunchUrl({ path, protocol, hostname })
-  }
   const encoded = encodeURIComponent(normalizedPath).replace(/%2F/g, '/')
-  const tokenParam = encodeURIComponent(token)
-  return `${proxyOrigin}/grafana/bootstrap?token=${tokenParam}&next=${encoded}`
+  return `${proxyOrigin}/grafana/bootstrap?next=${encoded}`
 }

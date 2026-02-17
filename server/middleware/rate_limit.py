@@ -43,6 +43,15 @@ class RateLimitState:
     count: int
 
 
+@dataclass(frozen=True)
+class RateLimitHitResult:
+    allowed: bool
+    remaining: int
+    retry_after_seconds: int
+    backend: str
+    fallback_used: bool = False
+
+
 class InMemoryRateLimiter:
     """Fixed-window rate limiter (per process)."""
 
@@ -63,15 +72,15 @@ class InMemoryRateLimiter:
         for key in stale_keys:
             self._states.pop(key, None)
 
-    def hit(self, key: str, *, limit: int, window_seconds: int) -> Tuple[bool, int, int]:
+    def hit(self, key: str, *, limit: int, window_seconds: int) -> RateLimitHitResult:
         """Record a hit and return (allowed, remaining, retry_after_seconds)."""
         if limit <= 0:
-            return True, 0, 0  
+            return RateLimitHitResult(True, 0, 0, "memory")
 
         now = time.time()
         window_seconds = int(window_seconds)
         if window_seconds <= 0:
-            return True, 0, 0
+            return RateLimitHitResult(True, 0, 0, "memory")
 
         with self._lock:
             self._cleanup(now, window_seconds)
@@ -87,7 +96,7 @@ class InMemoryRateLimiter:
             allowed = st.count <= limit
             remaining = max(0, limit - st.count)
             retry_after = max(0, int(window_seconds - (now - st.window_start)))
-            return allowed, remaining, retry_after
+            return RateLimitHitResult(allowed, remaining, retry_after, "memory")
 
 
 class RedisFixedWindowRateLimiter:
@@ -104,13 +113,13 @@ class RedisFixedWindowRateLimiter:
             decode_responses=True,
         )
 
-    def hit(self, key: str, *, limit: int, window_seconds: int) -> Tuple[bool, int, int]:
+    def hit(self, key: str, *, limit: int, window_seconds: int) -> RateLimitHitResult:
         if limit <= 0:
-            return True, 0, 0
+            return RateLimitHitResult(True, 0, 0, "redis")
 
         window_seconds = int(window_seconds)
         if window_seconds <= 0:
-            return True, 0, 0
+            return RateLimitHitResult(True, 0, 0, "redis")
 
         now = int(time.time())
         window_id = now // window_seconds
@@ -125,7 +134,7 @@ class RedisFixedWindowRateLimiter:
         count = int(current)
         allowed = count <= limit
         remaining = max(0, limit - count)
-        return allowed, remaining, retry_after
+        return RateLimitHitResult(allowed, remaining, retry_after, "redis")
 
 
 class HybridRateLimiter:
@@ -140,7 +149,18 @@ class HybridRateLimiter:
         self._fallback_limiter = fallback_limiter
         self._last_warning = 0.0
 
-    def hit(self, key: str, *, limit: int, window_seconds: int) -> Tuple[bool, int, int]:
+    def hit(
+        self,
+        key: str,
+        *,
+        limit: int,
+        window_seconds: int,
+        fallback_mode: str = "memory",
+    ) -> RateLimitHitResult:
+        mode = (fallback_mode or "memory").strip().lower()
+        if mode not in {"memory", "deny", "allow"}:
+            mode = "memory"
+
         if self._redis_limiter is not None:
             try:
                 return self._redis_limiter.hit(key, limit=limit, window_seconds=window_seconds)
@@ -149,7 +169,38 @@ class HybridRateLimiter:
                 if now - self._last_warning > 30:
                     logger.warning("Redis rate limiter unavailable, falling back to in-memory limiter: %s", exc)
                     self._last_warning = now
+                _record_fallback_event(mode, str(exc))
+                if mode == "deny":
+                    return RateLimitHitResult(False, 0, int(window_seconds), "redis-fallback-deny", True)
+                if mode == "allow":
+                    return RateLimitHitResult(True, max(0, int(limit)), 0, "redis-fallback-allow", True)
+
         return self._fallback_limiter.hit(key, limit=limit, window_seconds=window_seconds)
+
+
+_rate_limit_fallback_total = 0
+_rate_limit_fallback_by_mode: Dict[str, int] = {"memory": 0, "deny": 0, "allow": 0}
+
+
+def _record_fallback_event(mode: str, reason: str) -> None:
+    global _rate_limit_fallback_total
+    _rate_limit_fallback_total += 1
+    _rate_limit_fallback_by_mode[mode] = _rate_limit_fallback_by_mode.get(mode, 0) + 1
+    logger.warning(
+        "rate_limit_fallback_event total=%s mode=%s reason=%s",
+        _rate_limit_fallback_total,
+        mode,
+        reason,
+    )
+
+
+def get_rate_limit_observability_snapshot() -> Dict[str, int]:
+    return {
+        "fallback_total": _rate_limit_fallback_total,
+        "fallback_memory": _rate_limit_fallback_by_mode.get("memory", 0),
+        "fallback_deny": _rate_limit_fallback_by_mode.get("deny", 0),
+        "fallback_allow": _rate_limit_fallback_by_mode.get("allow", 0),
+    }
 
 
 def _build_rate_limiter() -> HybridRateLimiter:
@@ -242,14 +293,20 @@ def enforce_rate_limit(
     key: str,
     limit: int,
     window_seconds: int,
+    fallback_mode: Optional[str] = None,
 ) -> None:
-    allowed, _remaining, retry_after = rate_limiter.hit(key, limit=limit, window_seconds=window_seconds)
-    if allowed:
+    result = rate_limiter.hit(
+        key,
+        limit=limit,
+        window_seconds=window_seconds,
+        fallback_mode=fallback_mode or config.RATE_LIMIT_FALLBACK_MODE,
+    )
+    if result.allowed:
         return
     raise HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         detail="Too many requests",
-        headers={"Retry-After": str(retry_after)},
+        headers={"Retry-After": str(result.retry_after_seconds)},
     )
 
 
@@ -259,6 +316,7 @@ def enforce_ip_rate_limit(
     scope: str,
     limit: int,
     window_seconds: int,
+    fallback_mode: Optional[str] = None,
 ) -> None:
     ip = client_ip(request)
     unknown_ip = ip == "unknown"
@@ -276,5 +334,10 @@ def enforce_ip_rate_limit(
         ip = f"unknown-{fingerprint}"
     if unknown_ip:
         logger.warning("Client IP could not be resolved for scope=%s; applying strict unknown-IP bucket", scope)
-    enforce_rate_limit(key=f"ip:{ip}:{scope}", limit=limit, window_seconds=window_seconds)
+    enforce_rate_limit(
+        key=f"ip:{ip}:{scope}",
+        limit=limit,
+        window_seconds=window_seconds,
+        fallback_mode=fallback_mode,
+    )
 

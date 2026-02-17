@@ -9,8 +9,8 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 Grafana API router with multi-tenancy, hide/show, team filtering, and UID search.
 """
-from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request, status
+from fastapi.responses import Response, JSONResponse
 from typing import Optional, List, Dict
 import logging
 
@@ -35,6 +35,7 @@ from middleware.dependencies import (
     require_permission_with_scope,
     require_any_permission_with_scope,
     enforce_public_endpoint_security,
+    require_authenticated_with_scope,
 )
 from middleware.error_handlers import handle_route_errors
 from services.database_auth_service import DatabaseAuthService
@@ -46,6 +47,21 @@ router = APIRouter(prefix="/api/grafana", tags=["grafana"])
 grafana_proxy_service = GrafanaProxyService()
 grafana_service = GrafanaService()
 auth_service = DatabaseAuthService()
+
+
+def _cookie_secure(request: Request) -> bool:
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
+
+
+def _normalize_grafana_next_path(path: Optional[str]) -> str:
+    candidate = (path or "/dashboards").strip() or "/dashboards"
+    if candidate.startswith("http://") or candidate.startswith("https://"):
+        candidate = "/dashboards"
+    if not candidate.startswith("/"):
+        candidate = f"/{candidate}"
+    if candidate.startswith("/grafana"):
+        candidate = candidate[len("/grafana"):] or "/dashboards"
+    return candidate
 
 
 @router.get(
@@ -69,6 +85,7 @@ async def grafana_auth(
         limit=config.RATE_LIMIT_GRAFANA_PROXY_PER_MINUTE,
         window_seconds=60,
         allowlist=config.GRAFANA_PROXY_IP_ALLOWLIST,
+        fallback_mode="deny",
     )
 
     headers = await grafana_proxy_service.authorize_proxy_request(
@@ -80,6 +97,40 @@ async def grafana_auth(
     )
 
     return Response(status_code=204, headers=headers)
+
+
+@router.post(
+    "/bootstrap-session",
+    summary="Create secure Grafana bootstrap session",
+    description="Sets a short-lived HttpOnly auth cookie for Grafana proxy usage and returns a safe launch URL.",
+)
+async def bootstrap_grafana_session(
+    request: Request,
+    payload: Dict = Body(default={}),
+    _current_user: TokenData = Depends(require_authenticated_with_scope("grafana")),
+):
+    next_path = _normalize_grafana_next_path(payload.get("next") if isinstance(payload, dict) else None)
+    auth_header = request.headers.get("Authorization", "")
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = request.cookies.get("beobservant_token")
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication token unavailable")
+
+    response = JSONResponse({"launch_url": f"/grafana{next_path}"})
+    response.set_cookie(
+        key="beobservant_token",
+        value=token,
+        httponly=True,
+        secure=_cookie_secure(request),
+        samesite="lax",
+        max_age=config.JWT_EXPIRATION_MINUTES * 60,
+        path="/",
+    )
+    return response
 
 
 @router.post("/ds/query")

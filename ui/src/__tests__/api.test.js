@@ -60,4 +60,12 @@ describe('api request behavior', () => {
       body: { detail: 'Denied' },
     })
   })
+
+  it('creates server-side grafana bootstrap session without token in URL', async () => {
+    await api.createGrafanaBootstrapSession('/d/abc')
+    const [url, options] = fetch.mock.calls[0]
+    expect(url).toContain('/api/grafana/bootstrap-session')
+    expect(options.method).toBe('POST')
+    expect(options.body).toContain('"next":"/d/abc"')
+  })
 })

@@ -12,6 +12,7 @@ Resilience decorators for service calls.
 
 import asyncio
 import logging
+import random
 from functools import wraps
 from typing import Callable, TypeVar, ParamSpec
 import httpx
@@ -60,7 +61,9 @@ def with_retry(
 
                     last_exception = e
                     if attempt < max_retries:
-                        wait_time = backoff * (2 ** attempt)
+                        wait_time = min(config.RETRY_MAX_BACKOFF, backoff * (2 ** attempt))
+                        jitter = wait_time * max(0.0, config.RETRY_JITTER)
+                        wait_time = max(0.0, wait_time + random.uniform(-jitter, jitter))
                         logger.warning(
                             f"Attempt {attempt + 1}/{max_retries + 1} failed for "
                             f"{func.__name__}: {e}. Retrying in {wait_time}s..."

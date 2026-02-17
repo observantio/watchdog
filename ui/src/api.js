@@ -615,6 +615,11 @@ export async function searchDashboards({ query = '', uid, labelKey, labelValue, 
 export async function getDashboard(uid) {
   return request(`/api/grafana/dashboards/${encodeURIComponent(uid)}`)
 }
+export async function createGrafanaBootstrapSession(nextPath = '/dashboards') {
+  return requestJson('/api/grafana/bootstrap-session', {
+    payload: { next: nextPath }
+  })
+}
 export async function createDashboard(payload, queryParams = '') {
   const url = queryParams ? `/api/grafana/dashboards?${queryParams}` : '/api/grafana/dashboards'
   return requestJson(url, { payload })

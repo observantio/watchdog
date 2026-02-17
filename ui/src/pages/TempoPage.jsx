@@ -23,6 +23,8 @@ import { TIME_RANGES, DEFAULT_DURATION_RANGE, TRACE_STATUS_OPTIONS, REFRESH_INTE
 import HelpTooltip from '../components/HelpTooltip'
 import { discoverServices, computeTraceStats } from '../utils/tempoTraceUtils'
 
+const TRACE_PAGE_SIZE = 50
+
 export default function TempoPage() {
   const [services, setServices] = useState([])
   const [service, setService] = useState('')
@@ -36,6 +38,7 @@ export default function TempoPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [viewMode, setViewMode] = useState('list')
+  const [tracePage, setTracePage] = useState(1)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
 
@@ -115,10 +118,11 @@ export default function TempoPage() {
         maxDuration: `${Math.floor(durationRange[1] / 1000000)}ms`,
         start: Math.floor(start),
         end: Math.floor(end),
-        limit: 100
+        limit: TRACE_PAGE_SIZE
       })
 
       setTraces(res)
+      setTracePage(1)
 
       if (!services.length && res?.data?.length) {
         const discovered = discoverServices(res.data)
@@ -143,6 +147,13 @@ export default function TempoPage() {
   const traceStats = useMemo(() => {
     return computeTraceStats(filteredTraces)
   }, [filteredTraces])
+
+  const pagedTraces = useMemo(() => {
+    const start = (tracePage - 1) * TRACE_PAGE_SIZE
+    return filteredTraces.slice(start, start + TRACE_PAGE_SIZE)
+  }, [filteredTraces, tracePage])
+
+  const totalPages = Math.max(1, Math.ceil(filteredTraces.length / TRACE_PAGE_SIZE))
 
   function clearFilters() {
     setService('')
@@ -394,7 +405,16 @@ export default function TempoPage() {
         >
           <div className="mb-4 flex items-center justify-between pb-4 border-b border-sre-border" />
           <Suspense fallback={<div className="py-12 flex flex-col items-center"><Spinner size="lg" /><p className="text-sre-text-muted mt-4">Searching traces...</p></div>}>
-            <TraceResults traces={filteredTraces} loading={loading} handleTraceClick={handleTraceClick} viewMode={viewMode} />
+            <TraceResults traces={pagedTraces} loading={loading} handleTraceClick={handleTraceClick} viewMode={viewMode} />
+            {filteredTraces.length > TRACE_PAGE_SIZE && (
+              <div className="mt-4 flex items-center justify-between text-xs text-sre-text-muted">
+                <span>Page {tracePage} of {totalPages}</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" disabled={tracePage <= 1} onClick={() => setTracePage((p) => Math.max(1, p - 1))}>Previous</Button>
+                  <Button size="sm" variant="ghost" disabled={tracePage >= totalPages} onClick={() => setTracePage((p) => Math.min(totalPages, p + 1))}>Next</Button>
+                </div>
+              </div>
+            )}
           </Suspense>
         </Card>
       )}

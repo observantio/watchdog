@@ -22,15 +22,14 @@ describe('grafana launch utilities', () => {
     expect(url).toContain('/d/xyz?var-service=api')
   })
 
-  it('builds grafana bootstrap URL with token when provided', () => {
+  it('builds grafana bootstrap URL without exposing token', () => {
     const url = buildGrafanaBootstrapUrl({
       path: '/grafana/d/xyz?var-service=api',
       protocol: 'http:',
       hostname: 'localhost',
-      token: 'tok-123',
     })
     expect(url.startsWith('http://localhost:8080/grafana/bootstrap')).toBe(true)
-    expect(url).toContain('token=tok-123')
+    expect(url).not.toContain('token=')
     // next should include a leading slash (slashes preserved)
     expect(url).toContain('next=/d/xyz%3Fvar-service%3Dapi')
   })

@@ -12,6 +12,8 @@ import { FixedSizeList as List } from 'react-window'
 import { formatNsToIso, formatRelativeTime, parseLogLine } from '../../utils/formatters'
 import { getLogLevel } from '../../utils/helpers'
 
+const MAX_STREAMS_RENDER = 30
+
 function normalizeStreamLabelValue(label, value) {
   if (typeof value !== 'string') return value
   if (!value.includes('="')) return value
@@ -78,9 +80,17 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
     )
   }
 
+  const visibleStreams = filteredStreams.slice(0, MAX_STREAMS_RENDER)
+
   return (
     <div className="space-y-4 overflow-auto scrollbar-thin h-[70rem] pr-4">
-      {filteredStreams.map(({ stream, values: filteredValues }, streamIdx) => {
+      {filteredStreams.length > MAX_STREAMS_RENDER && (
+        <div className="text-xs text-sre-text-muted">
+          Showing first {MAX_STREAMS_RENDER} streams out of {filteredStreams.length}. Refine filters or reduce range for faster rendering.
+        </div>
+      )}
+
+      {visibleStreams.map(({ stream, values: filteredValues }, streamIdx) => {
         const streamKey = stream.stream
           ? Object.entries(stream.stream).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => `${k}=${v}`).join('|')
           : `stream-${streamIdx}`

@@ -146,6 +146,7 @@ def enforce_public_endpoint_security(
     limit: int,
     window_seconds: int,
     allowlist: str | None = None,
+    fallback_mode: str | None = None,
 ) -> None:
     resolved_ip = client_ip(request)
     if config.REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS and resolved_ip == "unknown":
@@ -159,6 +160,7 @@ def enforce_public_endpoint_security(
         scope=scope,
         limit=limit,
         window_seconds=window_seconds,
+        fallback_mode=fallback_mode,
     )
     enforce_ip_allowlist(request, allowlist, scope=scope)
 

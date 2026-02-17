@@ -26,6 +26,21 @@ class _TooLarge(Exception):
 
 logger = logging.getLogger(__name__)
 
+_request_size_rejections_total = 0
+_concurrency_busy_total = 0
+
+
+def _inc_request_size_rejections() -> int:
+    global _request_size_rejections_total
+    _request_size_rejections_total += 1
+    return _request_size_rejections_total
+
+
+def _inc_concurrency_busy() -> int:
+    global _concurrency_busy_total
+    _concurrency_busy_total += 1
+    return _concurrency_busy_total
+
 class RequestSizeLimitMiddleware:
     """Reject requests whose body exceeds *max_bytes*.
 
@@ -48,6 +63,8 @@ class RequestSizeLimitMiddleware:
         if content_length:
             try:
                 if int(content_length) > self.max_bytes:
+                    total = _inc_request_size_rejections()
+                    logger.warning("request_size_rejected total=%s content_length=%s max_bytes=%s", total, content_length, self.max_bytes)
                     resp = PlainTextResponse("Request body too large", status_code=413)
                     await resp(scope, receive, send)
                     return
@@ -69,6 +86,8 @@ class RequestSizeLimitMiddleware:
         try:
             await self.app(scope, limited_receive, send)
         except _TooLarge:
+            total = _inc_request_size_rejections()
+            logger.warning("request_size_rejected total=%s max_bytes=%s", total, self.max_bytes)
             resp = PlainTextResponse("Request body too large", status_code=413)
             await resp(scope, receive, send)
 
@@ -97,6 +116,8 @@ class ConcurrencyLimitMiddleware:
         try:
             await asyncio.wait_for(self._sem.acquire(), timeout=self._timeout)
         except asyncio.TimeoutError:
+            total = _inc_concurrency_busy()
+            logger.warning("concurrency_limit_busy total=%s timeout=%s", total, self._timeout)
             resp = PlainTextResponse("Server busy, please retry", status_code=503)
             await resp(scope, receive, send)
             return

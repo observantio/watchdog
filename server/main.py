@@ -18,6 +18,7 @@ import asyncio
 import uvloop
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import httpx
@@ -110,6 +111,7 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 app.add_middleware(RequestSizeLimitMiddleware, max_bytes=config.MAX_REQUEST_BYTES)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     ConcurrencyLimitMiddleware,
     max_concurrent=config.MAX_CONCURRENT_REQUESTS,

@@ -155,6 +155,14 @@ services:
     command: -config.file=/etc/loki/loki.yaml
     volumes:
       - ./configs/loki.yaml:/etc/loki/loki.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks: [obs]
     restart: unless-stopped
 
@@ -163,6 +171,14 @@ services:
     command: -config.file=/etc/tempo/tempo.yaml
     volumes:
       - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks: [obs]
     restart: unless-stopped
 

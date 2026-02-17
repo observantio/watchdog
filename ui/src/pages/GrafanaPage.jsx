@@ -12,7 +12,7 @@ import {
   getDatasources, createDatasource, updateDatasource, deleteDatasource,
   getFolders, createFolder, deleteFolder, getGroups,
   toggleDashboardHidden, toggleDatasourceHidden,
-  getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard
+  getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard, createGrafanaBootstrapSession
 } from '../api'
 import { Button, ConfirmDialog } from '../components/ui'
 import PageHeader from '../components/ui/PageHeader'
@@ -25,10 +25,10 @@ import GrafanaContent from '../components/grafana/GrafanaContent'
 import { useAuth } from '../contexts/AuthContext'
 import {  MIMIR_PROMETHEUS_URL } from '../utils/constants'
 import { GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES, overrideDashboardDatasource, inferDashboardDatasource } from '../utils/grafanaUtils'
-import { buildGrafanaLaunchUrl, buildGrafanaBootstrapUrl } from '../utils/grafanaLaunchUtils'
+import { buildGrafanaLaunchUrl } from '../utils/grafanaLaunchUtils'
 
 export default function GrafanaPage() { 
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboards')
   const [dashboards, setDashboards] = useState([])
   const [datasources, setDatasources] = useState([])
@@ -112,13 +112,18 @@ export default function GrafanaPage() {
     })
   }
 
-  function confirmOpenInGrafana() {
+  async function confirmOpenInGrafana() {
     const { path } = grafanaConfirmDialog || {}
-    const launchUrl = token
-      ? buildGrafanaBootstrapUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname, token })
-      : buildGrafanaLaunchUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname })
-
-    window.open(launchUrl, '_blank', 'noopener,noreferrer')
+    try {
+      const bootstrap = await createGrafanaBootstrapSession(path || '/dashboards')
+      const launchUrl = bootstrap?.launch_url
+        ? `${window.location.protocol}//${window.location.hostname}:8080${bootstrap.launch_url}`
+        : buildGrafanaLaunchUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname })
+      window.open(launchUrl, '_blank', 'noopener,noreferrer')
+    } catch {
+      const launchUrl = buildGrafanaLaunchUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname })
+      window.open(launchUrl, '_blank', 'noopener,noreferrer')
+    }
     setGrafanaConfirmDialog({ isOpen: false, path: null })
   }
 

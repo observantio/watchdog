@@ -30,6 +30,9 @@ import {
   escapeLogQLValue,
 } from '../utils/lokiQueryUtils'
 
+const LABEL_PREFETCH_LIMIT = 12
+const LABEL_PREFETCH_BATCH = 4
+
 export default function LokiPage() {
   const [labels, setLabels] = useState([])
   const [labelValuesCache, setLabelValuesCache] = useState({})
@@ -39,7 +42,7 @@ export default function LokiPage() {
   const [selectedValue, setSelectedValue] = useState('')
   const [pattern, setPattern] = useState('')
   const [rangeMinutes, setRangeMinutes] = useState(60)
-  const [maxLogs, setMaxLogs] = useState(100)
+  const [maxLogs, setMaxLogs] = useState(50)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
   const [viewMode, setViewMode] = useState('table')
@@ -66,14 +69,25 @@ export default function LokiPage() {
       setLabels(labelsArray)
 
       if (labelsArray?.length > 0) {
-        for (const label of labelsArray) {
-          try {
-            const vals = await getLabelValues(label)
-            const normalizedValues = normalizeLabelValues(label, vals?.data || [])
-            setLabelValuesCache(prev => ({ ...prev, [label]: normalizedValues }))
-          } catch {
-            // Silently skip labels that fail to load values
-          }
+        const prefetchLabels = labelsArray.slice(0, LABEL_PREFETCH_LIMIT)
+        for (let idx = 0; idx < prefetchLabels.length; idx += LABEL_PREFETCH_BATCH) {
+          const batch = prefetchLabels.slice(idx, idx + LABEL_PREFETCH_BATCH)
+          const settled = await Promise.allSettled(
+            batch.map(async (label) => {
+              const vals = await getLabelValues(label)
+              return [label, normalizeLabelValues(label, vals?.data || [])]
+            })
+          )
+          setLabelValuesCache((prev) => {
+            const next = { ...prev }
+            settled.forEach((result) => {
+              if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+                const [label, values] = result.value
+                next[label] = values
+              }
+            })
+            return next
+          })
         }
       }
     } catch {

@@ -12,6 +12,8 @@ Loki service for log operations.
 import httpx
 import logging
 import re
+import asyncio
+import time
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
@@ -39,6 +41,28 @@ class LokiService:
         self.loki_url = loki_url.rstrip('/')
         self.timeout = config.DEFAULT_TIMEOUT
         self._client = create_async_client(self.timeout)
+        self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
+        self._labels_cache: Dict[str, Any] = {"expires": 0.0, "data": []}
+        self._metrics: Dict[str, float] = {
+            "loki_query_total": 0,
+            "loki_query_errors_total": 0,
+            "loki_query_fallbacks_total": 0,
+            "loki_query_duration_sum_seconds": 0.0,
+        }
+
+    def _observe(self, metric: str, value: float = 1.0) -> None:
+        self._metrics[metric] = float(self._metrics.get(metric, 0.0) + value)
+
+    async def _timed_get_json(self, url: str, *, params: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+        started = time.perf_counter()
+        try:
+            response = await self._client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        finally:
+            elapsed = time.perf_counter() - started
+            self._observe("loki_query_total", 1)
+            self._observe("loki_query_duration_sum_seconds", elapsed)
 
     def _get_headers(self, tenant_id: str = config.DEFAULT_ORG_ID) -> dict:
         """Get headers including tenant ID for multi-tenancy.
@@ -186,28 +210,33 @@ class LokiService:
         """
         params = self._build_query_params(query)
         headers = self._get_headers(tenant_id)
+        endpoint = f"{self.loki_url}/loki/api/v1/query_range"
         
         try:
-            response = await self._client.get(
-                f"{self.loki_url}/loki/api/v1/query_range",
-                params=params,
-                headers=headers
-            )
-            response.raise_for_status()
-            data = response.json()
+            data = await self._timed_get_json(endpoint, params=params, headers=headers)
             
             if query.query and not data.get("data", {}).get("result"):
-                for candidate in self._build_service_fallback_queries(query.query):
-                    params["query"] = candidate
-                    response = await self._client.get(
-                        f"{self.loki_url}/loki/api/v1/query_range",
-                        params=params,
-                        headers=headers
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    if data.get("data", {}).get("result"):
-                        break
+                candidates = self._build_service_fallback_queries(query.query)[: max(0, config.LOKI_MAX_FALLBACK_QUERIES)]
+                if candidates:
+                    self._observe("loki_query_fallbacks_total", len(candidates))
+
+                    semaphore = asyncio.Semaphore(max(1, config.LOKI_FALLBACK_CONCURRENCY))
+
+                    async def _query_candidate(candidate: str):
+                        async with semaphore:
+                            candidate_params = dict(params)
+                            candidate_params["query"] = candidate
+                            try:
+                                payload = await self._timed_get_json(endpoint, params=candidate_params, headers=headers)
+                                return candidate, payload
+                            except httpx.HTTPError:
+                                return candidate, None
+
+                    for task in asyncio.as_completed([_query_candidate(candidate) for candidate in candidates]):
+                        _candidate, payload = await task
+                        if isinstance(payload, dict) and payload.get("data", {}).get("result"):
+                            data = payload
+                            break
 
             data_payload = data.get("data", {})
             self._normalize_stream_labels(data_payload)
@@ -219,6 +248,7 @@ class LokiService:
             )
             
         except httpx.HTTPError as e:
+            self._observe("loki_query_errors_total", 1)
             logger.error("Error querying logs: %s", e)
             return LogResponse(
                 status="error",
@@ -298,6 +328,12 @@ class LokiService:
             List of label names
         """
         params = {}
+        now = time.monotonic()
+        cache_key = f"{tenant_id}:{start}:{end}"
+        cached = self._labels_cache.get(cache_key)
+        if isinstance(cached, dict) and cached.get("expires", 0) > now:
+            return LogLabelsResponse(status="success", data=list(cached.get("data", [])))
+
         if start:
             params["start"] = start
         if end:
@@ -312,6 +348,10 @@ class LokiService:
             )
             response.raise_for_status()
             data = response.json()
+            self._labels_cache[cache_key] = {
+                "expires": now + self._cache_ttl_seconds,
+                "data": list(data.get("data", [])),
+            }
             
             return LogLabelsResponse(
                 status=data.get("status", "success"),
@@ -411,13 +451,11 @@ class LokiService:
         
         headers = self._get_headers(tenant_id)
         try:
-            response = await self._client.get(
+            data = await self._timed_get_json(
                 f"{self.loki_url}/loki/api/v1/query_range",
                 params=params,
-                headers=headers
+                headers=headers,
             )
-            response.raise_for_status()
-            data = response.json()
             
             return {
                 "status": data.get("status", "success"),
@@ -427,6 +465,7 @@ class LokiService:
             }
             
         except httpx.HTTPError as e:
+            self._observe("loki_query_errors_total", 1)
             logger.error("Error aggregating logs: %s", e)
             return {
                 "status": "error",
@@ -473,9 +512,16 @@ class LokiService:
             "step": step
         }
 
-        for candidate in candidates:
-            volume_query = f'sum(count_over_time({candidate}[{step}s]))'
-            result = await self.aggregate_logs(volume_query, start, end, step, tenant_id=tenant_id)
+        semaphore = asyncio.Semaphore(max(1, config.LOKI_FALLBACK_CONCURRENCY))
+
+        async def _aggregate(candidate: str):
+            async with semaphore:
+                volume_query = f'sum(count_over_time({candidate}[{step}s]))'
+                result = await self.aggregate_logs(volume_query, start, end, step, tenant_id=tenant_id)
+                return candidate, result
+
+        for task in asyncio.as_completed([_aggregate(candidate) for candidate in candidates[: max(1, config.LOKI_MAX_FALLBACK_QUERIES + 2)]]):
+            _candidate, result = await task
             last_result = result
             data = result.get("data") if isinstance(result, dict) else None
             if isinstance(data, dict) and data.get("result"):

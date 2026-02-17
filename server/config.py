@@ -114,6 +114,20 @@ class Config:
         self.DEFAULT_TIMEOUT: float = float(os.getenv("DEFAULT_TIMEOUT", "30.0"))
         self.MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
         self.RETRY_BACKOFF: float = float(os.getenv("RETRY_BACKOFF", "1.0"))
+        self.RETRY_MAX_BACKOFF: float = float(os.getenv("RETRY_MAX_BACKOFF", "8.0"))
+        self.RETRY_JITTER: float = float(os.getenv("RETRY_JITTER", "0.1"))
+
+        # Shared upstream HTTP client pool tuning
+        self.HTTP_CLIENT_MAX_CONNECTIONS: int = int(os.getenv("HTTP_CLIENT_MAX_CONNECTIONS", "100"))
+        self.HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS: int = int(os.getenv("HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS", "40"))
+        self.HTTP_CLIENT_KEEPALIVE_EXPIRY: float = float(os.getenv("HTTP_CLIENT_KEEPALIVE_EXPIRY", "30"))
+
+        # Query optimizations
+        self.LOKI_FALLBACK_CONCURRENCY: int = int(os.getenv("LOKI_FALLBACK_CONCURRENCY", "4"))
+        self.LOKI_MAX_FALLBACK_QUERIES: int = int(os.getenv("LOKI_MAX_FALLBACK_QUERIES", "4"))
+        self.TEMPO_TRACE_FETCH_CONCURRENCY: int = int(os.getenv("TEMPO_TRACE_FETCH_CONCURRENCY", "8"))
+        self.TEMPO_VOLUME_BUCKET_CONCURRENCY: int = int(os.getenv("TEMPO_VOLUME_BUCKET_CONCURRENCY", "8"))
+        self.SERVICE_CACHE_TTL_SECONDS: int = int(os.getenv("SERVICE_CACHE_TTL_SECONDS", "30"))
 
         # CORS settings
         self.CORS_ORIGINS: List[str] = _to_list(os.getenv("CORS_ORIGINS"), default=["*"])
@@ -202,6 +216,7 @@ class Config:
         self.RATE_LIMIT_GC_EVERY: int = int(os.getenv("RATE_LIMIT_GC_EVERY", "1024"))
         self.RATE_LIMIT_STALE_AFTER_SECONDS: int = int(os.getenv("RATE_LIMIT_STALE_AFTER_SECONDS", "3600"))
         self.RATE_LIMIT_MAX_STATES: int = int(os.getenv("RATE_LIMIT_MAX_STATES", "200000"))
+        self.RATE_LIMIT_FALLBACK_MODE: str = os.getenv("RATE_LIMIT_FALLBACK_MODE", "memory").strip().lower()
         self.PASSWORD_HASH_MAX_CONCURRENCY: int = int(os.getenv("PASSWORD_HASH_MAX_CONCURRENCY", "8"))
 
         # Default admin bootstrap (can be overridden via environment)

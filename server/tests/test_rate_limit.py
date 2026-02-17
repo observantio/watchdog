@@ -59,12 +59,12 @@ class RateLimitTests(unittest.TestCase):
         module = _reload_rate_limit_module()
         limiter = module.InMemoryRateLimiter()
 
-        self.assertTrue(limiter.hit("user:1", limit=2, window_seconds=1)[0])
-        self.assertTrue(limiter.hit("user:1", limit=2, window_seconds=1)[0])
-        self.assertFalse(limiter.hit("user:1", limit=2, window_seconds=1)[0])
+        self.assertTrue(limiter.hit("user:1", limit=2, window_seconds=1).allowed)
+        self.assertTrue(limiter.hit("user:1", limit=2, window_seconds=1).allowed)
+        self.assertFalse(limiter.hit("user:1", limit=2, window_seconds=1).allowed)
 
         time.sleep(1.1)
-        self.assertTrue(limiter.hit("user:1", limit=2, window_seconds=1)[0])
+        self.assertTrue(limiter.hit("user:1", limit=2, window_seconds=1).allowed)
 
     def test_hybrid_limiter_falls_back_when_primary_fails(self):
         module = _reload_rate_limit_module()
@@ -75,6 +75,15 @@ class RateLimitTests(unittest.TestCase):
         module.enforce_rate_limit(key="user:test", limit=1, window_seconds=60)
         with self.assertRaises(HTTPException):
             module.enforce_rate_limit(key="user:test", limit=1, window_seconds=60)
+
+    def test_hybrid_limiter_deny_mode_blocks_when_redis_down(self):
+        module = _reload_rate_limit_module()
+        fallback = module.InMemoryRateLimiter()
+        hybrid = module.HybridRateLimiter(_BrokenPrimaryLimiter(), fallback)
+        module.rate_limiter = hybrid
+
+        with self.assertRaises(HTTPException):
+            module.enforce_rate_limit(key="user:test-deny", limit=1, window_seconds=60, fallback_mode="deny")
 
     def test_client_ip_uses_forwarded_header_when_proxy_trusted(self):
         module = _reload_rate_limit_module()

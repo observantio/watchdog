@@ -11,10 +11,15 @@ Shared HTTP client factory for service-layer integrations.
 """
 
 import httpx
+from config import config
 
 
 def create_async_client(timeout_seconds: float) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=httpx.Timeout(timeout_seconds),
-        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        limits=httpx.Limits(
+            max_connections=config.HTTP_CLIENT_MAX_CONNECTIONS,
+            max_keepalive_connections=config.HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS,
+            keepalive_expiry=config.HTTP_CLIENT_KEEPALIVE_EXPIRY,
+        ),
     )
