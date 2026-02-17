@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import PropTypes from 'prop-types'
-import { Button, Badge, Input, Select } from '../ui'
+import { Button, Badge, Input } from '../ui'
 
 function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, meta, groups }) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -31,8 +31,9 @@ function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveF
         <div className="px-4 pb-4 border-t border-sre-border/30">
           <div className="flex flex-wrap items-center gap-4 pt-4">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-sre-text-muted">Group:</label>
+              <label htmlFor="group-filter" className="text-sm font-medium text-sre-text-muted">Group:</label>
               <select
+                id="group-filter"
                 value={filters.teamId}
                 onChange={e => setFilters({...filters, teamId: e.target.value})}
                 className="px-3 py-2 text-sm bg-sre-bg border border-sre-border rounded-lg text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"

@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import { Button, Input, Select } from '../ui'
 import RuleEditorWizard from './RuleEditorWizard'

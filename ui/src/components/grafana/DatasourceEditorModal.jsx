@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Button, Input, Modal, Select } from '../../components/ui'
 import VisibilitySelector from './VisibilitySelector'
-import { VISIBILITY_OPTIONS } from '../../utils/constants'
 import { GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES } from '../../utils/grafanaUtils'
 import { MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL } from '../../utils/constants'
 

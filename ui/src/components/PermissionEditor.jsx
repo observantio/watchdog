@@ -19,12 +19,6 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
   const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [computedPermissions, setComputedPermissions] = useState(new Set())
 
-  const roleBadgeVariant = useMemo(() => {
-    if (role === 'admin') return 'error'
-    if (role === 'user') return 'info'
-    return 'default'
-  }, [role])
-
 
   const getPermissionDescription = (permissionName) => {
     const descriptions = {

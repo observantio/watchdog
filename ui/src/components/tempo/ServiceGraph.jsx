@@ -7,7 +7,6 @@ import { useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
 import ReactFlow, { Background, Controls, MiniMap, Handle, Position } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { percentile } from '../../utils/helpers'
 import { formatDuration } from '../../utils/formatters'
 import {
   buildServiceGraphData,

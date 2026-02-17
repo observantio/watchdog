@@ -48,7 +48,7 @@ export default function IncidentBoardPage() {
 
   useEffect(() => {
     loadData()
-  }, [incidentVisibilityTab, selectedGroup])
+  }, [incidentVisibilityTab, selectedGroup, showHiddenResolved])
 
   useEffect(() => {
     loadGroups()
@@ -636,7 +636,7 @@ export default function IncidentBoardPage() {
                     type="checkbox"
                     className="form-checkbox h-4 w-4"
                     checked={showHiddenResolved}
-                    onChange={(e) => { setShowHiddenResolved(e.target.checked); loadData() }}
+                    onChange={(e) => { setShowHiddenResolved(e.target.checked) }}
                   />
                   <span>Show hidden resolved</span>
                   <HelpTooltip text="Include resolved incidents that are normally hidden from the board. Useful for reviewing recent incident history." />

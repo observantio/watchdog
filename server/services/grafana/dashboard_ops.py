@@ -183,6 +183,68 @@ async def get_dashboard(service, db: Session, uid: str, user_id: str, tenant_id:
     return await service.grafana_service.get_dashboard(uid)
 
 
+def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
+    """Return True if the dashboard JSON contains datasource references.
+
+    Checks for:
+    - templating datasource variable (type=='datasource' with current.value)
+    - panel-level `datasource` / `datasourceUid` or object `datasource.uid`
+    - target-level `datasource` / `datasourceUid`
+    - heuristic: targets with `expr`/`query` count as requiring a datasource
+    """
+    if not dashboard_obj:
+        return False
+
+    # normalize to plain dict
+    dash = dashboard_obj.model_dump() if hasattr(dashboard_obj, "model_dump") else dict(dashboard_obj)
+
+    # templating var satisfied?
+    templ = (dash.get("templating") or {}).get("list") or []
+    for item in templ:
+        try:
+            if item and item.get("type") == "datasource":
+                current = item.get("current") or {}
+                if current.get("value"):
+                    return True
+        except Exception:
+            continue
+
+    panels = dash.get("panels") or []
+    for panel in panels:
+        panel_has_ds = False
+        try:
+            pds = panel.get("datasource")
+            if pds:
+                # string or object
+                if isinstance(pds, str) and pds.strip():
+                    panel_has_ds = True
+                elif isinstance(pds, dict) and pds.get("uid"):
+                    panel_has_ds = True
+            if panel.get("datasourceUid"):
+                panel_has_ds = True
+        except Exception:
+            pass
+
+        targets = panel.get("targets") or []
+        for t in targets:
+            try:
+                target_has_ds = bool(t.get("datasource") or t.get("datasourceUid") or (isinstance(t.get("datasource"), dict) and t.get("datasource").get("uid")))
+                requires_ds = bool(t.get("expr") or t.get("query") or t.get("rawQuery") or t.get("metric"))
+                if target_has_ds:
+                    return True
+                if requires_ds and not panel_has_ds:
+                    # missing datasource for a target that requires one
+                    return False
+            except Exception:
+                continue
+
+        if panel_has_ds:
+            return True
+
+    # No templating var, no panel/target datasource found
+    return False
+
+
 async def create_dashboard(
     service,
     db: Session,
@@ -195,6 +257,17 @@ async def create_dashboard(
     is_admin: bool = False,
 ) -> Optional[Dict[str, Any]]:
     try:
+        # Validate dashboard JSON contains datasource references early
+        try:
+            dash_obj = dashboard_create.dashboard if hasattr(dashboard_create, 'dashboard') else None
+            if dash_obj and not _dashboard_has_datasource(dash_obj):
+                raise HTTPException(status_code=400, detail="Dashboard JSON missing datasource references; include a templating datasource (ds_default) or explicit panel/target datasources")
+        except HTTPException:
+            raise
+        except Exception:
+            # continue; we'll rely on Grafana to validate more strictly
+            pass
+
         groups: List[Group] = []
         if visibility == "group":
             groups = service._validate_group_visibility(
@@ -268,6 +341,17 @@ async def update_dashboard(
     db_dashboard = check_dashboard_access(service, db, uid, user_id, tenant_id, group_ids, require_write=True)
     if not db_dashboard:
         return None
+
+    # Validate incoming dashboard JSON contains datasource references
+    try:
+        dash_obj = dashboard_update.dashboard if hasattr(dashboard_update, 'dashboard') else None
+        if dash_obj and not _dashboard_has_datasource(dash_obj):
+            raise HTTPException(status_code=400, detail="Dashboard JSON missing datasource references; include a templating datasource (ds_default) or explicit panel/target datasources")
+    except HTTPException:
+        raise
+    except Exception:
+        # ignore validation errors and let Grafana validate
+        pass
 
     try:
         result = await service.grafana_service.update_dashboard(uid, dashboard_update)

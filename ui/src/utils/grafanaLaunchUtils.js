@@ -22,8 +22,32 @@ export function normalizeGrafanaPath(path) {
   return normalizedPath
 }
 
+import { GRAFANA_URL } from './constants'
+
 export function buildGrafanaLaunchUrl({ path, protocol, hostname }) {
-  const proxyOrigin = `${protocol}//${hostname}:8080`
   const normalizedPath = normalizeGrafanaPath(path)
-  return `${proxyOrigin}${normalizedPath}`
+  let grafanaBase = ''
+  try {
+    const parsed = new URL(GRAFANA_URL)
+    grafanaBase = (parsed.pathname || '') .replace(/\/$/, '')
+  } catch {
+    grafanaBase = '/grafana'
+  }
+  const proxyOrigin = `${protocol}//${hostname}:8080`
+  return `${proxyOrigin}${grafanaBase}${normalizedPath}`
+}
+
+export function buildGrafanaBootstrapUrl({ path, protocol, hostname, token }) {
+  const normalizedPath = normalizeGrafanaPath(path)
+  const proxyOrigin = `${protocol}//${hostname}:8080`
+  if (!token) {
+    return buildGrafanaLaunchUrl({ path, protocol, hostname })
+  }
+  // Use the grafana proxy bootstrap endpoint which sets the auth cookie.
+  // Keep literal slashes in the `next` param so NGINX's `if ($next_path !~ "^/")`
+  // check receives a leading `/` (avoids falling back to `/`). Encode other
+  // characters but preserve `/`.
+  const encoded = encodeURIComponent(normalizedPath).replace(/%2F/g, '/')
+  const tokenParam = encodeURIComponent(token)
+  return `${proxyOrigin}/grafana/bootstrap?token=${tokenParam}&next=${encoded}`
 }

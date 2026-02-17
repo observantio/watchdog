@@ -38,7 +38,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => {
     try {
-      return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(TOKEN_STORAGE_KEY)) || null
+      return (typeof localStorage !== 'undefined' && localStorage.getItem(TOKEN_STORAGE_KEY)) || null
     } catch (e) {
       return null
     }
@@ -108,7 +108,7 @@ export function AuthProvider({ children }) {
     const { access_token } = response
     setToken(access_token)
     try {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(TOKEN_STORAGE_KEY, access_token)
+      if (typeof localStorage !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, access_token)
     } catch (e) {
       /* ignore storage errors */
     }
@@ -153,7 +153,7 @@ export function AuthProvider({ children }) {
 
     setToken(access_token)
     try {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(TOKEN_STORAGE_KEY, access_token)
+      if (typeof localStorage !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, access_token)
     } catch (e) {
       /* ignore storage errors */
     }
@@ -174,7 +174,7 @@ export function AuthProvider({ children }) {
       // best-effort logout; still clear local auth state
     }
     try {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_STORAGE_KEY)
     } catch (e) {
       /* ignore storage errors */
     }

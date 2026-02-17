@@ -6,7 +6,7 @@ import {
   toggleDashboardHidden, toggleDatasourceHidden,
   getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard
 } from '../api'
-import { Button, Input, ConfirmDialog, Select, Checkbox } from '../components/ui'
+import { Button, Input, ConfirmDialog, Select } from '../components/ui'
 import PageHeader from '../components/ui/PageHeader'
 import DashboardEditorModal from '../components/grafana/DashboardEditorModal'
 import DatasourceEditorModal from '../components/grafana/DatasourceEditorModal'
@@ -17,14 +17,14 @@ import GrafanaTabs from '../components/grafana/GrafanaTabs'
 import GrafanaContent from '../components/grafana/GrafanaContent'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE, GRAFANA_URL, MIMIR_PROMETHEUS_URL, LOKI_BASE, TEMPO_URL, VISIBILITY_OPTIONS, GRAFANA_REFRESH_INTERVALS, REFRESH_INTERVALS } from '../utils/constants'
-import { GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES } from '../utils/grafanaUtils'
-import { buildGrafanaLaunchUrl } from '../utils/grafanaLaunchUtils'
+import { GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES, overrideDashboardDatasource, inferDashboardDatasource } from '../utils/grafanaUtils'
+import { buildGrafanaLaunchUrl, buildGrafanaBootstrapUrl } from '../utils/grafanaLaunchUtils'
 // handlers moved into the component so they can access component state
 
 
 
 export default function GrafanaPage() { // NOSONAR
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboards')
   const [dashboards, setDashboards] = useState([])
   const [datasources, setDatasources] = useState([])
@@ -73,6 +73,7 @@ export default function GrafanaPage() { // NOSONAR
     folderId: 0,
     refresh: '30s',
     datasourceUid: '',
+    useTemplating: false,
     visibility: 'private',
     sharedGroupIds: [],
   })
@@ -120,11 +121,12 @@ export default function GrafanaPage() { // NOSONAR
 
   function confirmOpenInGrafana() {
     const { path } = grafanaConfirmDialog || {}
-    const launchUrl = buildGrafanaLaunchUrl({
-      path,
-      protocol: window.location.protocol,
-      hostname: window.location.hostname,
-    })
+
+    // Prefer proxy bootstrap when we have an auth token so the grafana-proxy
+    // sets the httpOnly cookie and the new tab is authenticated immediately.
+    const launchUrl = token
+      ? buildGrafanaBootstrapUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname, token })
+      : buildGrafanaLaunchUrl({ path, protocol: window.location.protocol, hostname: window.location.hostname })
 
     window.open(launchUrl, '_blank', 'noopener,noreferrer')
     setGrafanaConfirmDialog({ isOpen: false, path: null })
@@ -242,32 +244,16 @@ export default function GrafanaPage() { // NOSONAR
     if (dashboard) {
       setEditingDashboard(dashboard)
 
-      // Helper: resolve a templating value (could be uid or name) to a datasource.uid
-      const resolveToUid = (val) => {
-        if (!val && val !== 0) return ''
-        // templating current.value may be an object like { text, value } or a plain string
-        const candidate = (typeof val === 'object' && val !== null) ? (val.value || val.text) : String(val)
-        if (!candidate) return ''
-        // direct uid match
-        const byUid = datasources.find(d => String(d.uid) === String(candidate))
-        if (byUid) return byUid.uid
-        // match by friendly name
-        const byName = datasources.find(d => String(d.name) === String(candidate))
-        if (byName) return byName.uid
-        return ''
-      }
-
-      // Try to extract datasource value from the lightweight dashboard object first
-      const lightTemplating = dashboard?.templating || dashboard?.dashboard?.templating
-      const rawDsValue = lightTemplating?.list?.find(v => v?.type === 'datasource')?.current?.value || ''
-      const resolvedUid = resolveToUid(rawDsValue)
+      // Infer datasource + whether it uses templating from the dashboard
+      const inferred = inferDashboardDatasource(dashboard, datasources)
 
       setDashboardForm({
         title: dashboard.title || dashboard?.dashboard?.title || '',
         tags: dashboard.tags?.join(', ') || (dashboard?.dashboard?.tags || []).join(', ') || '',
         folderId: dashboard.folderId || dashboard?.dashboard?.folderId || 0,
         refresh: dashboard.refresh || (dashboard?.dashboard?.refresh) || '30s',
-        datasourceUid: resolvedUid || '',
+        datasourceUid: inferred.uid || '',
+        useTemplating: Boolean(inferred.useTemplating),
         visibility: dashboard.visibility || 'private',
         sharedGroupIds: dashboard.sharedGroupIds || dashboard.shared_group_ids || [],
       })
@@ -284,10 +270,10 @@ export default function GrafanaPage() { // NOSONAR
         (async () => {
           try {
             const full = await getDashboard(dashboard.uid).catch(() => null)
-            const templ = full?.dashboard?.templating || full?.templating
-            const raw = templ?.list?.find(v => v?.type === 'datasource')?.current?.value || ''
-            const uid = resolveToUid(raw)
-            if (uid) setDashboardForm(prev => ({ ...prev, datasourceUid: uid }))
+            const inferred = inferDashboardDatasource(full?.dashboard || full, datasources)
+            if (inferred.uid) {
+              setDashboardForm(prev => ({ ...prev, datasourceUid: inferred.uid, useTemplating: inferred.useTemplating }))
+            }
 
             // Always replace the JSON editor with the full dashboard when available
             if (full?.dashboard) {
@@ -377,7 +363,7 @@ export default function GrafanaPage() { // NOSONAR
             timezone: 'browser',
             schemaVersion: 16,
             editable: true,
-            templating: selectedDatasource
+            templating: (selectedDatasource && dashboardForm.useTemplating)
               ? {
                   list: [
                     {
@@ -397,6 +383,11 @@ export default function GrafanaPage() { // NOSONAR
           folderId: Number.parseInt(dashboardForm.folderId, 10) || 0,
           overwrite: !!editingDashboard,
         }
+      }
+
+      // If a default datasource was chosen in the form, apply it to the dashboard JSON
+      if (payload && payload.dashboard && dashboardForm.datasourceUid) {
+        payload.dashboard = overrideDashboardDatasource(payload.dashboard, dashboardForm.datasourceUid, datasources, Boolean(dashboardForm.useTemplating))
       }
 
       // If JSON editor was used, allow the form-level tags/visibility to override or supplement

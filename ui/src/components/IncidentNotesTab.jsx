@@ -1,4 +1,4 @@
-import { Card, Button, Input, Spinner } from './ui'
+import { Card, Button, Input } from './ui'
 import HelpTooltip from './HelpTooltip'
 
 export default function IncidentNotesTab({

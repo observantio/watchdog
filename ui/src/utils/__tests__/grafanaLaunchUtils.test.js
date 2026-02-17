@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeGrafanaPath, buildGrafanaLaunchUrl } from '../grafanaLaunchUtils'
+import { normalizeGrafanaPath, buildGrafanaLaunchUrl, buildGrafanaBootstrapUrl } from '../grafanaLaunchUtils'
 
 describe('grafana launch utilities', () => {
   it('normalizes absolute grafana URLs into a safe path', () => {
@@ -18,7 +18,20 @@ describe('grafana launch utilities', () => {
       protocol: 'http:',
       hostname: 'localhost',
     })
-    expect(url).toBe('http://localhost:8080/d/xyz?var-service=api')
-    expect(url).not.toContain('token=')
+    expect(url.startsWith('http://localhost:8080')).toBe(true)
+    expect(url).toContain('/d/xyz?var-service=api')
+  })
+
+  it('builds grafana bootstrap URL with token when provided', () => {
+    const url = buildGrafanaBootstrapUrl({
+      path: '/grafana/d/xyz?var-service=api',
+      protocol: 'http:',
+      hostname: 'localhost',
+      token: 'tok-123',
+    })
+    expect(url.startsWith('http://localhost:8080/grafana/bootstrap')).toBe(true)
+    expect(url).toContain('token=tok-123')
+    // next should include a leading slash (slashes preserved)
+    expect(url).toContain('next=/d/xyz%3Fvar-service%3Dapi')
   })
 })

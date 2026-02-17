@@ -1,4 +1,4 @@
-import { Card, Input, Button } from './ui'
+import { Card, Input } from './ui'
 
 export default function IncidentAssignmentTab({
   canReadUsers,

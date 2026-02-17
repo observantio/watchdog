@@ -1,4 +1,3 @@
-import React from 'react'
 import { Card } from '../ui'
 import { METRIC_DATA } from '../../utils/alertManagerConstants'
 

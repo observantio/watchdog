@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import PropTypes from 'prop-types'
-import { Button, Input, Badge, Select } from '../ui'
+import { Button, Input, Badge } from '../ui'
 
 function FilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, meta, groups }) {
   const [isExpanded, setIsExpanded] = useState(false)

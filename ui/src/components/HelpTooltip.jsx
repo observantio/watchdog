@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useId } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 
 export default function HelpTooltip({ text }) {
   const [show, setShow] = useState(false)

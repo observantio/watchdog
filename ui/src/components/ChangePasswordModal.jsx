@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import PropTypes from 'prop-types'
-import { Modal, Button, Input, Spinner } from './ui'
+import { Modal, Button, Input } from './ui'
 import { useToast } from '../contexts/ToastContext'
 import HelpTooltip from './HelpTooltip'
 import * as api from '../api'

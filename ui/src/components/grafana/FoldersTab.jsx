@@ -1,6 +1,5 @@
-import React from 'react'
 import PropTypes from 'prop-types'
-import { Card, Button, Input } from '../ui'
+import { Button, Input } from '../ui'
 import { useState, useMemo } from 'react'
 
 export default function FoldersTab({ folders, onCreateFolder, onDeleteFolder }) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
-import { Modal, Button, Input, Spinner } from './ui'
+import { Modal, Button, Input } from './ui'
 import { useAuth } from '../contexts/AuthContext'
 import * as api from '../api'
 

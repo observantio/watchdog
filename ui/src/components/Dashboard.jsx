@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { useDashboardData, useAgentActivity, usePersistentOrder } from '../hooks'
 import { getMetricsConfig } from '../constants/dashboard.jsx'
-import { MetricsGrid, DashboardLayout } from './dashboard'
+import { MetricsGrid, DashboardLayout } from './dashboard/index.js'
 import PageHeader from './ui/PageHeader'
 
 export default function Dashboard({ info }) {

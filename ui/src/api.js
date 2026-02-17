@@ -77,7 +77,7 @@ async function requestWithHeaders(path, opts = {}, headers = {}) {
     if (res.status === 401 && !isAuthLoginEndpoint) {
       authToken = null
       try {
-        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('beobservant_access_token')
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('beobservant_access_token')
       } catch (e) {
         /* ignore */
       }

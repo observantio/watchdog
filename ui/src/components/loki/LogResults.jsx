@@ -2,7 +2,6 @@ import { Badge, Spinner } from '../../components/ui'
 import PropTypes from 'prop-types'
 import { formatNsToIso, formatRelativeTime, parseLogLine } from '../../utils/formatters'
 import { getLogLevel } from '../../utils/helpers'
-import { LOG_LEVELS } from '../../utils/constants'
 
 function normalizeStreamLabelValue(label, value) {
   if (typeof value !== 'string') return value

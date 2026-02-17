@@ -1,10 +1,9 @@
-import React from 'react'
-import { Button, Select } from '../ui'
+import { Select } from '../ui'
 import AlertItem from './AlertItem'
 import HelpTooltip from '../HelpTooltip'
 import { ALERT_SEVERITY_OPTIONS } from '../../utils/constants'
 
-const AlertsTab = ({ filteredAlerts, filterSeverity, onFilterChange, stats }) => {
+const AlertsTab = ({ filteredAlerts, filterSeverity, onFilterChange }) => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">

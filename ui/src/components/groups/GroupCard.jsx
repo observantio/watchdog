@@ -1,7 +1,5 @@
 import PropTypes from 'prop-types'
 import { Card, Badge, Button } from '../ui'
-import HelpTooltip from '../HelpTooltip'
-import MemberList from './MemberList'
 
 export default function GroupCard({ group, usersCount, permsCount, onOpenPermissions, onEdit, onDelete }) {
   return (

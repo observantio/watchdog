@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import { Button, Alert, Checkbox, Card } from '../ui'
+import { Alert, Checkbox } from '../ui'
 import HelpTooltip from '../HelpTooltip'
 
 export default function GroupPermissions({
