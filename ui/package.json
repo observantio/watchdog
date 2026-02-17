@@ -9,7 +9,11 @@
     "build": "vite build",
     "start": "vite preview --port 5173",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:ci": "vitest --run",
+    "lint:css": "stylelint \"src/**/*.{css,scss}\" --allow-empty-input",
+    "lint": "npm run lint:css",
+    "a11y": "vitest -t a11y"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.3",
@@ -18,6 +22,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.30.3",
+    "react-window": "^1.8.11",
     "reactflow": "^11.11.4"
   },
   "devDependencies": {
@@ -25,9 +30,11 @@
     "@testing-library/react": "^16.2.0",
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.24",
-    "jsdom": "^25.0.1",
     "jest-axe": "^10.0.0",
+    "jsdom": "^25.0.1",
     "postcss": "^8.5.6",
+    "stylelint": "^15.11.0",
+    "stylelint-config-tailwindcss": "^1.0.1",
     "tailwind-scrollbar": "^2.0.0",
     "tailwindcss": "^3.4.19",
     "vite": "^5.0.0",

@@ -6,12 +6,15 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Authentication and access management router.
 """
 
 
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Query
+from fastapi.concurrency import run_in_threadpool
 
 from config import config
 from models.access.user_models import (
@@ -84,8 +87,8 @@ def _clear_auth_cookie(request: Request, response: Response) -> None:
 
 @router.get("/mode", response_model=AuthModeResponse)
 async def auth_mode():
-    oidc_enabled = auth_service.is_external_auth_enabled()
-    password_enabled = auth_service.is_password_auth_enabled() if oidc_enabled else True
+    oidc_enabled = await run_in_threadpool(auth_service.is_external_auth_enabled)
+    password_enabled = await run_in_threadpool(auth_service.is_password_auth_enabled) if oidc_enabled else True
     return AuthModeResponse(
         provider=config.AUTH_PROVIDER,
         oidc_enabled=oidc_enabled,
@@ -104,10 +107,15 @@ async def login(request: Request, login_request: LoginRequest, response: Respons
         window_seconds=60,
         allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
     )
-    token_or_challenge = auth_service.login(login_request.username, login_request.password, getattr(login_request, 'mfa_code', None))
+    token_or_challenge = await run_in_threadpool(
+        auth_service.login,
+        login_request.username,
+        login_request.password,
+        getattr(login_request, 'mfa_code', None),
+    )
 
     if not token_or_challenge:
-        if auth_service.is_external_auth_enabled() and not auth_service.is_password_auth_enabled():
+        if await run_in_threadpool(auth_service.is_external_auth_enabled) and not await run_in_threadpool(auth_service.is_password_auth_enabled):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Password login is disabled. Use OIDC login.",
@@ -139,10 +147,11 @@ async def oidc_authorize_url(request: Request, payload: OIDCAuthURLRequest):
         window_seconds=60,
         allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
     )
-    if not auth_service.is_external_auth_enabled():
+    if not await run_in_threadpool(auth_service.is_external_auth_enabled):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC is not enabled")
     try:
-        url = auth_service.get_oidc_authorization_url(
+        url = await run_in_threadpool(
+            auth_service.get_oidc_authorization_url,
             redirect_uri=payload.redirect_uri,
             state=payload.state,
             nonce=payload.nonce,
@@ -162,9 +171,9 @@ async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest
         window_seconds=60,
         allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
     )
-    if not auth_service.is_external_auth_enabled():
+    if not await run_in_threadpool(auth_service.is_external_auth_enabled):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC is not enabled")
-    token_or_challenge = auth_service.exchange_oidc_authorization_code(payload.code, payload.redirect_uri)
+    token_or_challenge = await run_in_threadpool(auth_service.exchange_oidc_authorization_code, payload.code, payload.redirect_uri)
     if not token_or_challenge:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed")
     if isinstance(token_or_challenge, dict) and token_or_challenge.get('mfa_setup_required'):
@@ -182,7 +191,7 @@ async def logout(request: Request, response: Response):
 @router.post("/register", response_model=UserResponse)
 @handle_route_errors()
 async def register(request: Request, register_request: RegisterRequest):
-    if auth_service.is_external_auth_enabled():
+    if await run_in_threadpool(auth_service.is_external_auth_enabled):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Registration is managed by the external identity provider",
@@ -205,7 +214,7 @@ async def register(request: Request, register_request: RegisterRequest):
         default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
         tenant_id = default_tenant.id if default_tenant else config.DEFAULT_ADMIN_TENANT
 
-    user = auth_service.create_user(user_create, tenant_id=tenant_id)
+    user = await run_in_threadpool(auth_service.create_user, user_create, tenant_id)
 
     try:
         await notification_service.send_user_welcome_email(
@@ -217,12 +226,12 @@ async def register(request: Request, register_request: RegisterRequest):
     except Exception as exc:
         logger.warning("User welcome email skipped: %s", exc)
 
-    return auth_service.build_user_response(user, fallback_permissions=ROLE_PERMISSIONS.get(user.role, []))
+    return await run_in_threadpool(auth_service.build_user_response, user, ROLE_PERMISSIONS.get(user.role, []))
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: TokenData = Depends(require_authenticated_with_scope("auth"))):
-    user = auth_service.get_user_by_id(current_user.user_id)
+    user = await run_in_threadpool(auth_service.get_user_by_id, current_user.user_id)
     
     if not user:
         raise HTTPException(
@@ -230,14 +239,14 @@ async def get_current_user_info(current_user: TokenData = Depends(require_authen
             detail=USER_NOT_FOUND
         )
     
-    return auth_service.build_user_response(user, fallback_permissions=current_user.permissions)
+    return await run_in_threadpool(auth_service.build_user_response, user, current_user.permissions)
 
 
 @router.post('/mfa/enroll', response_model=TotpEnrollResponse)
 async def mfa_enroll(current_user: TokenData = Depends(get_current_user_or_mfa_setup)):
     """Generate a TOTP secret for the current user (persist encrypted secret, not enabled until verify)."""
     try:
-        payload = auth_service.enroll_totp(current_user.user_id)
+        payload = await run_in_threadpool(auth_service.enroll_totp, current_user.user_id)
         return TotpEnrollResponse(**payload)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -247,7 +256,7 @@ async def mfa_enroll(current_user: TokenData = Depends(get_current_user_or_mfa_s
 async def mfa_verify(payload: MfaVerifyRequest, current_user: TokenData = Depends(get_current_user_or_mfa_setup)):
     """Verify TOTP code and enable MFA for the current user; return recovery codes."""
     try:
-        codes = auth_service.verify_enable_totp(current_user.user_id, payload.code)
+        codes = await run_in_threadpool(auth_service.verify_enable_totp, current_user.user_id, payload.code)
         return RecoveryCodesResponse(recovery_codes=codes)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -256,7 +265,7 @@ async def mfa_verify(payload: MfaVerifyRequest, current_user: TokenData = Depend
 @router.post('/mfa/disable')
 async def mfa_disable(payload: MfaDisableRequest, current_user: TokenData = Depends(require_authenticated_with_scope("auth"))):
     """Disable MFA after verifying password or TOTP code."""
-    ok = auth_service.disable_totp(current_user.user_id, current_password=payload.current_password, code=payload.code)
+    ok = await run_in_threadpool(auth_service.disable_totp, current_user.user_id, current_password=payload.current_password, code=payload.code)
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to disable MFA")
     return {"message": "MFA disabled"}
@@ -264,7 +273,7 @@ async def mfa_disable(payload: MfaDisableRequest, current_user: TokenData = Depe
 
 @router.post('/users/{user_id}/mfa/reset')
 async def admin_reset_user_mfa(user_id: str, current_user: TokenData = Depends(require_any_permission_with_scope([Permission.MANAGE_USERS], "auth"))):
-    ok = auth_service.reset_totp(user_id, current_user.user_id)
+    ok = await run_in_threadpool(auth_service.reset_totp, user_id, current_user.user_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
     return {"message": "User MFA reset"}
@@ -279,22 +288,23 @@ async def update_current_user_info(
     for field in ("role", "group_ids", "is_active"):
         update_data.pop(field, None)
     user_update = UserUpdate(**update_data)
-    updated_user = auth_service.update_user(
+    updated_user = await run_in_threadpool(
+        auth_service.update_user,
         current_user.user_id,
         user_update,
         current_user.tenant_id,
-        updater_id=current_user.user_id,
+        current_user.user_id,
     )
 
     if not updated_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
 
-    return auth_service.build_user_response(updated_user, fallback_permissions=current_user.permissions)
+    return await run_in_threadpool(auth_service.build_user_response, updated_user, current_user.permissions)
 
 
 @router.get("/api-keys", response_model=List[ApiKey])
 async def list_api_keys(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_API_KEYS, "auth"))):
-    return auth_service.list_api_keys(current_user.user_id)
+    return await run_in_threadpool(auth_service.list_api_keys, current_user.user_id)
 
 
 @router.post("/api-keys", response_model=ApiKey)
@@ -303,7 +313,7 @@ async def create_api_key(
     key_create: ApiKeyCreate,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.CREATE_API_KEYS, "auth"))
 ):
-    return auth_service.create_api_key(current_user.user_id, current_user.tenant_id, key_create)
+    return await run_in_threadpool(auth_service.create_api_key, current_user.user_id, current_user.tenant_id, key_create)
 
 
 @router.patch("/api-keys/{key_id}", response_model=ApiKey)
@@ -313,7 +323,7 @@ async def update_api_key(
     key_update: ApiKeyUpdate,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_API_KEYS, "auth"))
 ):
-    return auth_service.update_api_key(current_user.user_id, key_id, key_update)
+    return await run_in_threadpool(auth_service.update_api_key, current_user.user_id, key_id, key_update)
 
 
 @router.delete("/api-keys/{key_id}")
@@ -322,7 +332,7 @@ async def delete_api_key(
     key_id: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.DELETE_API_KEYS, "auth"))
 ):
-    success = auth_service.delete_api_key(current_user.user_id, key_id)
+    success = await run_in_threadpool(auth_service.delete_api_key, current_user.user_id, key_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
     return {"message": "API key deleted"}
@@ -330,12 +340,14 @@ async def delete_api_key(
 
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
+    limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
+    offset: int = Query(0, ge=0, description="Page offset"),
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.READ_USERS, Permission.MANAGE_USERS], "auth")
     )
 ):
-    users = auth_service.list_users(current_user.tenant_id)
-    return [auth_service.build_user_response(user, fallback_permissions=ROLE_PERMISSIONS.get(user.role, [])) for user in users]
+    users = await run_in_threadpool(auth_service.list_users, current_user.tenant_id, limit=limit, offset=offset)
+    return [await run_in_threadpool(auth_service.build_user_response, user, ROLE_PERMISSIONS.get(user.role, [])) for user in users]
 
 
 @router.post("/users", response_model=UserResponse)
@@ -346,7 +358,7 @@ async def create_user(
         require_any_permission_with_scope([Permission.CREATE_USERS, Permission.MANAGE_USERS], "auth")
     )
 ):
-    user = auth_service.create_user(user_create, current_user.tenant_id)
+    user = await run_in_threadpool(auth_service.create_user, user_create, current_user.tenant_id)
     try:
         await notification_service.send_user_welcome_email(
             recipient_email=user.email,
@@ -357,7 +369,7 @@ async def create_user(
     except Exception as exc:
         logger.warning("User welcome email skipped: %s", exc)
 
-    return auth_service.build_user_response(user, fallback_permissions=ROLE_PERMISSIONS.get(user.role, []))
+    return await run_in_threadpool(auth_service.build_user_response, user, ROLE_PERMISSIONS.get(user.role, []))
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
@@ -368,12 +380,12 @@ async def update_user(
         require_any_permission_with_scope([Permission.UPDATE_USERS, Permission.MANAGE_USERS], "auth")
     )
 ):
-    user = auth_service.update_user(user_id, user_update, current_user.tenant_id, current_user.user_id)
+    user = await run_in_threadpool(auth_service.update_user, user_id, user_update, current_user.tenant_id, current_user.user_id)
     
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
     
-    return auth_service.build_user_response(user, fallback_permissions=ROLE_PERMISSIONS.get(user.role, []))
+    return await run_in_threadpool(auth_service.build_user_response, user, ROLE_PERMISSIONS.get(user.role, []))
 
 
 @router.put("/users/{user_id}/password")
@@ -384,8 +396,8 @@ async def update_user_password(
     current_user: TokenData = Depends(require_authenticated_with_scope("auth"))
 ):
     if current_user.user_id != user_id:
-        user_obj = auth_service.get_user_by_id(current_user.user_id)
-        user_perms = auth_service.get_user_permissions(user_obj) if user_obj else (getattr(current_user, "permissions", []) or [])
+        user_obj = await run_in_threadpool(auth_service.get_user_by_id, current_user.user_id)
+        user_perms = await run_in_threadpool(auth_service.get_user_permissions, user_obj) if user_obj else (getattr(current_user, "permissions", []) or [])
         if (
             Permission.MANAGE_USERS.value not in user_perms
             and Permission.UPDATE_USERS.value not in user_perms
@@ -396,7 +408,7 @@ async def update_user_password(
                 detail="Cannot update another user's password"
             )
 
-    success = auth_service.update_password(user_id, password_update, current_user.tenant_id)
+    success = await run_in_threadpool(auth_service.update_password, user_id, password_update, current_user.tenant_id)
 
     if not success:
         raise HTTPException(
@@ -420,13 +432,13 @@ async def delete_user(
             detail="Cannot delete your own account"
         )
 
-    target_user = auth_service.get_user_by_id(user_id)
+    target_user = await run_in_threadpool(auth_service.get_user_by_id, user_id)
     if target_user and target_user.role == Role.ADMIN and current_user.role != Role.ADMIN and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only administrators can delete admin accounts"
         )
-    success = auth_service.delete_user(user_id, current_user.tenant_id, current_user.user_id)
+    success = await run_in_threadpool(auth_service.delete_user, user_id, current_user.tenant_id, current_user.user_id)
 
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
@@ -436,7 +448,7 @@ async def delete_user(
 
 @router.get("/groups", response_model=List[Group])
 async def list_groups(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_GROUPS, "auth"))):
-    return auth_service.list_groups(current_user.tenant_id)
+    return await run_in_threadpool(auth_service.list_groups, current_user.tenant_id)
 
 
 @router.post("/groups", response_model=Group)
@@ -446,7 +458,7 @@ async def create_group(
         require_any_permission_with_scope([Permission.CREATE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    return auth_service.create_group(group_create, current_user.tenant_id)
+    return await run_in_threadpool(auth_service.create_group, group_create, current_user.tenant_id)
 
 
 @router.get("/groups/{group_id}", response_model=Group)
@@ -456,7 +468,7 @@ async def get_group(
         require_any_permission_with_scope([Permission.READ_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    group = auth_service.get_group(group_id, current_user.tenant_id)
+    group = await run_in_threadpool(auth_service.get_group, group_id, current_user.tenant_id)
     
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
@@ -472,7 +484,7 @@ async def update_group(
         require_any_permission_with_scope([Permission.UPDATE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    group = auth_service.update_group(group_id, group_update, current_user.tenant_id)
+    group = await run_in_threadpool(auth_service.update_group, group_id, group_update, current_user.tenant_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
     return group
@@ -485,7 +497,7 @@ async def delete_group(
         require_any_permission_with_scope([Permission.DELETE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    success = auth_service.delete_group(group_id, current_user.tenant_id)
+    success = await run_in_threadpool(auth_service.delete_group, group_id, current_user.tenant_id)
     
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
@@ -502,7 +514,7 @@ async def update_user_permissions(
     )
 ):
     """Update user's direct permissions."""
-    success = auth_service.update_user_permissions(user_id, permission_names, current_user.tenant_id)
+    success = await run_in_threadpool(auth_service.update_user_permissions, user_id, permission_names, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
     return {"success": True, "permissions": permission_names}
@@ -517,7 +529,7 @@ async def update_group_permissions(
     )
 ):
     """Update group's permissions."""
-    success = auth_service.update_group_permissions(group_id, permission_names, current_user.tenant_id)
+    success = await run_in_threadpool(auth_service.update_group_permissions, group_id, permission_names, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
     return {"success": True, "permissions": permission_names}
@@ -532,7 +544,7 @@ async def update_group_members(
     )
 ):
     """Update group membership."""
-    success = auth_service.update_group_members(group_id, members.user_ids, current_user.tenant_id)
+    success = await run_in_threadpool(auth_service.update_group_members, group_id, members.user_ids, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
     return {"success": True, "user_ids": members.user_ids}
@@ -548,7 +560,7 @@ async def list_all_permissions(
     )
 ):
     """List all available permissions."""
-    return auth_service.list_all_permissions()
+    return await run_in_threadpool(auth_service.list_all_permissions)
 
 
 @router.get("/role-defaults")

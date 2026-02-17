@@ -6,16 +6,16 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Minimal OIDC client for token verification and auth flows.
 """
-
-
-"""OIDC/Keycloak integration helpers."""
 
 from __future__ import annotations
 
 import logging
 import time
 import json
+import threading
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
@@ -45,6 +45,7 @@ class OIDCService:
         self._well_known_cache_at: float = 0
         self._jwks_cache: Optional[Dict[str, Any]] = None
         self._jwks_cache_at: float = 0
+        self._cache_lock = threading.RLock()
         self._cache_ttl_seconds = 600
         self._timeout = max(float(config.DEFAULT_TIMEOUT), 5.0)
 
@@ -55,8 +56,9 @@ class OIDCService:
         return (time.time() - ts) < self._cache_ttl_seconds
 
     def _get_well_known(self) -> Dict[str, Any]:
-        if self._well_known_cache and self._is_fresh(self._well_known_cache_at):
-            return self._well_known_cache
+        with self._cache_lock:
+            if self._well_known_cache and self._is_fresh(self._well_known_cache_at):
+                return self._well_known_cache
 
         issuer = (config.OIDC_ISSUER_URL or "").rstrip("/")
         if not issuer:
@@ -68,13 +70,15 @@ class OIDCService:
             response.raise_for_status()
             payload = response.json()
 
-        self._well_known_cache = payload
-        self._well_known_cache_at = time.time()
+        with self._cache_lock:
+            self._well_known_cache = payload
+            self._well_known_cache_at = time.time()
         return payload
 
     def _get_jwks(self) -> Dict[str, Any]:
-        if self._jwks_cache and self._is_fresh(self._jwks_cache_at):
-            return self._jwks_cache
+        with self._cache_lock:
+            if self._jwks_cache and self._is_fresh(self._jwks_cache_at):
+                return self._jwks_cache
 
         jwks_url = config.OIDC_JWKS_URL
         if not jwks_url:
@@ -88,8 +92,9 @@ class OIDCService:
             response.raise_for_status()
             payload = response.json()
 
-        self._jwks_cache = payload
-        self._jwks_cache_at = time.time()
+        with self._cache_lock:
+            self._jwks_cache = payload
+            self._jwks_cache_at = time.time()
         return payload
 
     def verify_access_token(self, token: str) -> Optional[Dict[str, Any]]:

@@ -80,12 +80,10 @@ async function requestWithHeaders(path, opts = {}, headers = {}) {
 
     const isAuthLoginEndpoint = path === '/api/auth/login' || path === '/api/auth/oidc/exchange'
     if (res.status === 401 && !isAuthLoginEndpoint) {
+      // Clear any in-memory token and redirect to login. Do NOT rely on
+      // client-side localStorage for session persistence — server cookies are
+      // the canonical source of session state.
       authToken = null
-      try {
-        if (typeof localStorage !== 'undefined') localStorage.removeItem('beobservant_access_token')
-      } catch (e) {
-        /* ignore */
-      }
       globalThis.window.location.href = '/#/login'
     }
 
@@ -140,7 +138,16 @@ export async function fetchSystemMetrics() {
 export async function login(username, password, mfa_code) {
   const payload = { username, password }
   if (mfa_code) payload.mfa_code = mfa_code
+  // Server should set an httpOnly session cookie on success. If the server
+  // also returns an access_token we accept it as an in-memory fallback.
   return requestJson('/api/auth/login', { payload })
+}
+
+// Attempt a server-side session refresh (cookie-based). If the backend does
+// not implement /api/auth/refresh this will reject with 404 and callers should
+// handle the fallback gracefully.
+export async function refreshSession() {
+  return request('/api/auth/refresh', { method: 'POST' })
 }
 
 export async function enrollMFA() {
@@ -214,6 +221,30 @@ export async function register(username, email, password, full_name) {
 
 export async function getCurrentUser() {
   return request('/api/auth/me')
+}
+
+// Variant used on app startup that MUST NOT trigger an automatic redirect
+// to the login page on 401 — AuthProvider handles unauthenticated state
+// itself. This performs a direct fetch so the centralized request() helper
+// (which redirects on 401) is bypassed.
+export async function getCurrentUserNoRedirect() {
+  const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+  if (!res.ok) {
+    const text = await res.text()
+    let body
+    try {
+      body = text?.startsWith('{') ? JSON.parse(text) : { message: text }
+    } catch {
+      body = { message: text || res.statusText }
+    }
+    const err = new Error(body?.message || body?.detail || text || res.statusText)
+    err.status = res.status
+    err.body = body
+    throw err
+  }
+  const ct = res.headers.get('content-type') || ''
+  if (ct.includes('application/json')) return await res.json()
+  return await res.text()
 }
 
 export async function updateCurrentUser(updates) {

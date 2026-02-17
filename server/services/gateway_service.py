@@ -6,10 +6,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Gateway service for OTLP token validation logic.
 """
-
-
-"""Gateway service for OTLP token validation logic."""
 from typing import Optional
 
 from services.database_auth_service import DatabaseAuthService

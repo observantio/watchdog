@@ -6,10 +6,13 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Tempo API router.
+
+Provides endpoints for querying traces, retrieving trace details, and getting trace metrics and volume over time.
+
+Supports multi-tenancy and permission-based access control.
 """
-
-
-"""Tempo API router."""
 from fastapi import APIRouter, HTTPException, Query, status, Depends, Request
 from typing import Optional, List
 

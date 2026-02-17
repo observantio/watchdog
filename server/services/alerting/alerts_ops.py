@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Alert-focused operations for AlertManagerService.
+
+Includes alert fetching, posting, deletion, and metric name listing.
 """
-
-
-"""Alert-focused operations for AlertManagerService."""
 
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional

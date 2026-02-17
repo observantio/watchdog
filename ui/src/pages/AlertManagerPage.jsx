@@ -249,7 +249,7 @@ export default function AlertManagerPage() {
       {error && (
         <Alert variant="danger" className="mb-4">
           {error.split('\n').map((msg, idx) => (
-            <div key={idx}>{msg}</div>
+            <div key={`err-${idx}`}>{msg}</div>
           ))}
         </Alert>
       )}

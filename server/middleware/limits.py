@@ -6,15 +6,8 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-"""
 
-
-"""
-Request limiting middleware (backpressure and payload protection).
-
-These middlewares are intentionally dependency-free and work per-process.
-For horizontally scaled deployments, combine them with an upstream proxy
-(e.g. Nginx/Envoy) and/or a distributed rate limiter.
+Request size and concurrency limit middleware for FastAPI.
 """
 
 from __future__ import annotations

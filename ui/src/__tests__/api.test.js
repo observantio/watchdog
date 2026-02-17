@@ -31,6 +31,16 @@ describe('api request behavior', () => {
     expect(options.headers.Authorization).toBe('Bearer token-123')
   })
 
+  it('sends credentials but no Authorization header when token is not set (cookie sessions)', async () => {
+    api.setAuthToken(null)
+    await api.getCurrentUser()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [, options] = fetch.mock.calls[0]
+    expect(options.credentials).toBe('include')
+    expect(options.headers.Authorization).toBeUndefined()
+  })
+
   it('adds X-Scope-OrgID for Loki/Tempo requests', async () => {
     api.setAuthToken('token-abc')
     api.setUserOrgIds(['org-a'])

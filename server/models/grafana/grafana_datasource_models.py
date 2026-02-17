@@ -6,10 +6,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Grafana datasource models (split from grafana_models.py).
 """
-
-
-"""Grafana datasource models (split from grafana_models.py)."""
 from typing import Dict, Optional, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum

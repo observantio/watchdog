@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Central permission catalog used by auth services.
+
+Defines all available permissions in the system with their metadata. This is used for permission management, role definitions, and enforcement across the application.
 """
-
-
-"""Central permission catalog used by auth services."""
 
 PERMISSION_DEFS = [
     ("read:alerts", "Read Alerts", "View alert rules and active alerts", "alerts", "read"),

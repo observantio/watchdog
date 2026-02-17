@@ -6,10 +6,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Grafana proxy service with multi-tenancy, team scoping, and access control.
 """
-
-
-"""Grafana proxy service with multi-tenancy, team scoping, and access control."""
 import logging
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
@@ -195,8 +194,6 @@ class GrafanaProxyService:
     ) -> tuple[List[str], bool]:
         return get_accessible_datasource_uids(self, db, user_id, tenant_id, group_ids)
 
-    # ------------------------------------------------------------------
-        # Dashboard CRUD with hide/show, UID search
 
     async def search_dashboards(
         self,
@@ -211,6 +208,8 @@ class GrafanaProxyService:
         team_id: Optional[str] = None,
         show_hidden: bool = False,
         is_admin: bool = False,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> List[DashboardSearchResult]:
         return await search_dashboards(
             self,
@@ -225,6 +224,8 @@ class GrafanaProxyService:
             team_id=team_id,
             show_hidden=show_hidden,
             is_admin=is_admin,
+            limit=limit,
+            offset=offset,
         )
 
     async def get_dashboard(
@@ -265,8 +266,9 @@ class GrafanaProxyService:
         self, db: Session, user_id: str, tenant_id: str, group_ids: List[str],
         uid: Optional[str] = None, team_id: Optional[str] = None,
         show_hidden: bool = False, is_admin: bool = False,
+        limit: Optional[int] = None, offset: int = 0,
     ) -> List[Datasource]:
-        return await get_datasources(self, db, user_id, tenant_id, group_ids, uid, team_id, show_hidden, is_admin)
+        return await get_datasources(self, db, user_id, tenant_id, group_ids, uid, team_id, show_hidden, is_admin, limit, offset)
 
     async def get_datasource(self, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str]) -> Optional[Datasource]:
         return await get_datasource(self, db, uid, user_id, tenant_id, group_ids)

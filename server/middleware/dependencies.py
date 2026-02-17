@@ -6,13 +6,10 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-"""
 
+Shared FastAPI dependency helpers (moved from routers).
 
-"""Shared FastAPI dependency helpers (moved from routers).
-
-This module centralizes authentication and scoped rate-limit dependencies
-for use by route handlers and other middleware.
+This module centralizes authentication and scoped rate-limit dependencies for use by route handlers and other middleware.
 """
 
 from hmac import compare_digest

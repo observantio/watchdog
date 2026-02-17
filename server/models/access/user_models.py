@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+User models.
+
+Defines Pydantic models for user creation, update, and retrieval, including authentication-related models for login and MFA management.
 """
-
-
-"""User models."""
 from enum import Enum
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime

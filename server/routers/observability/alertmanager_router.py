@@ -6,11 +6,13 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+AlertManager API router.
+
+Provides endpoints for receiving AlertManager webhooks, querying alerts and incidents, and managing Jira integrations.
 """
-
-
-"""AlertManager API router."""
 from fastapi import APIRouter, HTTPException, Query, Body, Request, status, Depends
+from fastapi.concurrency import run_in_threadpool
 from typing import Optional, List, Dict
 import httpx
 import logging
@@ -88,7 +90,7 @@ async def alert_webhook(request: Request) -> dict:
     try:
         scoped_header = request.headers.get("x-scope-orgid") or request.headers.get("X-Scope-OrgID")
         tenant_id = _tenant_id_from_scope_header(scoped_header)
-        storage_service.sync_incidents_from_alerts(tenant_id, alerts, resolve_missing=False)
+        await run_in_threadpool(storage_service.sync_incidents_from_alerts, tenant_id, alerts, False)
     except Exception as exc:
         logger.warning("Incident sync from webhook skipped: %s", exc)
 
@@ -115,7 +117,7 @@ async def alert_critical(request: Request) -> dict:
     try:
         scoped_header = request.headers.get("x-scope-orgid") or request.headers.get("X-Scope-OrgID")
         tenant_id = _tenant_id_from_scope_header(scoped_header)
-        storage_service.sync_incidents_from_alerts(tenant_id, alerts, resolve_missing=False)
+        await run_in_threadpool(storage_service.sync_incidents_from_alerts, tenant_id, alerts, False)
     except Exception as exc:
         logger.warning("Incident sync from webhook skipped: %s", exc)
     await alertmanager_service.notify_for_alerts(alerts, storage_service, notification_service)
@@ -141,7 +143,7 @@ async def alert_warning(request: Request) -> dict:
     try:
         scoped_header = request.headers.get("x-scope-orgid") or request.headers.get("X-Scope-OrgID")
         tenant_id = _tenant_id_from_scope_header(scoped_header)
-        storage_service.sync_incidents_from_alerts(tenant_id, alerts, resolve_missing=False)
+        await run_in_threadpool(storage_service.sync_incidents_from_alerts, tenant_id, alerts, False)
     except Exception as exc:
         logger.warning("Incident sync from webhook skipped: %s", exc)
     await alertmanager_service.notify_for_alerts(alerts, storage_service, notification_service)
@@ -170,7 +172,8 @@ async def get_alerts(
         inhibited=inhibited
     )
     try:
-        storage_service.sync_incidents_from_alerts(
+        await run_in_threadpool(
+            storage_service.sync_incidents_from_alerts,
             current_user.tenant_id,
             [alert.model_dump(by_alias=True) for alert in alerts],
         )
@@ -184,15 +187,20 @@ async def get_incidents(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by incident status: open|resolved"),
     visibility_filter: Optional[str] = Query(None, alias="visibility", description="Filter by incident visibility: public|private|group"),
     group_id_filter: Optional[str] = Query(None, alias="group_id", description="Filter by specific group ID when visibility is group"),
+    limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
+    offset: int = Query(0, ge=0, description="Page offset"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_INCIDENTS, "alertmanager")),
 ):
-    return storage_service.list_incidents(
+    return await run_in_threadpool(
+        storage_service.list_incidents,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         group_ids=getattr(current_user, "group_ids", []) or [],
         status=status_filter,
         visibility=visibility_filter,
         group_id=group_id_filter,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -202,7 +210,8 @@ async def patch_incident(
     payload: AlertIncidentUpdateRequest,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
-    existing = storage_service.get_incident_for_user(
+    existing = await run_in_threadpool(
+        storage_service.get_incident_for_user,
         incident_id,
         current_user.tenant_id,
         current_user.user_id,
@@ -242,7 +251,7 @@ async def patch_incident(
         )
     except Exception:
         pass
-    updated = storage_service.update_incident(incident_id, current_user.tenant_id, current_user.user_id, payload)
+    updated = await run_in_threadpool(storage_service.update_incident, incident_id, current_user.tenant_id, current_user.user_id, payload)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
 
@@ -251,7 +260,7 @@ async def patch_incident(
     if new_assignee and new_assignee != previous_assignee:
         assignee_user = None
         try:
-            assignee_user = auth_service.get_user_by_id(new_assignee)
+            assignee_user = await run_in_threadpool(auth_service.get_user_by_id, new_assignee)
             if assignee_user and getattr(assignee_user, "email", None):
                 await notification_service.send_incident_assignment_email(
                     recipient_email=assignee_user.email,
@@ -266,13 +275,13 @@ async def patch_incident(
         # Append a note recording the assignment (who assigned, target assignee with email if available)
         try:
             assignee_label = alertmanager_service.display_user_label(assignee_user, new_assignee)
-            assigner_user = auth_service.get_user_by_id(current_user.user_id)
+            assigner_user = await run_in_threadpool(auth_service.get_user_by_id, current_user.user_id)
             assigner_label = alertmanager_service.display_user_label(assigner_user, current_user.username)
             note_text = f"Assigned to {assignee_label} by {assigner_label}"
             # Use a lightweight update to append note
             try:
                 from models.alerting.incidents import AlertIncidentUpdateRequest as _Req
-                storage_service.update_incident(incident_id, current_user.tenant_id, current_user.user_id, _Req(note=note_text))
+                await run_in_threadpool(storage_service.update_incident, incident_id, current_user.tenant_id, current_user.user_id, _Req(note=note_text))
             except Exception:
                 # if pydantic import or update fails silently continue
                 logger.warning("Failed to append assignment note for incident %s", incident_id)
@@ -365,7 +374,7 @@ async def import_alert_rules(
             "rules": [rule.model_dump(by_alias=True) for rule in parsed_rules],
         }
 
-    existing_rules = storage_service.get_alert_rules(tenant_id, user_id, group_ids)
+    existing_rules = await run_in_threadpool(storage_service.get_alert_rules, tenant_id, user_id, group_ids)
     existing_index = {
         (rule.name, rule.group, rule.org_id or ""): rule
         for rule in existing_rules
@@ -378,20 +387,20 @@ async def import_alert_rules(
         key = (rule.name, rule.group, rule.org_id or "")
         current = existing_index.get(key)
         if current:
-            updated_rule = storage_service.update_alert_rule(current.id, rule, tenant_id, user_id, group_ids)
+            updated_rule = await run_in_threadpool(storage_service.update_alert_rule, current.id, rule, tenant_id, user_id, group_ids)
             if updated_rule:
                 updated += 1
                 imported_rules.append(updated_rule)
             continue
 
-        new_rule = storage_service.create_alert_rule(rule, tenant_id, user_id, group_ids)
+        new_rule = await run_in_threadpool(storage_service.create_alert_rule, rule, tenant_id, user_id, group_ids)
         created += 1
         imported_rules.append(new_rule)
         existing_index[(new_rule.name, new_rule.group, new_rule.org_id or "")] = new_rule
 
     sync_org_ids = {rule.org_id for rule in imported_rules if rule.org_id}
     for org_id in sync_org_ids:
-        rules_for_org = storage_service.get_alert_rules_for_org(tenant_id, org_id)
+        rules_for_org = await run_in_threadpool(storage_service.get_alert_rules_for_org, tenant_id, org_id)
         await alertmanager_service.sync_mimir_rules_for_org(org_id, rules_for_org)
 
     return {
@@ -671,7 +680,8 @@ async def create_incident_jira(
     Requires `update:incidents` permission. Server reads Jira credentials from
     environment variables (JIRA_BASE_URL + JIRA_EMAIL/JIRA_API_TOKEN or JIRA_BEARER_TOKEN).
     """
-    incident = storage_service.get_incident_for_user(
+    incident = await run_in_threadpool(
+        storage_service.get_incident_for_user,
         incident_id,
         current_user.tenant_id,
         current_user.user_id,
@@ -717,7 +727,7 @@ async def create_incident_jira(
         jira_ticket_url=url or None,
         jira_integration_id=payload.integrationId,
     )
-    updated = storage_service.update_incident(incident_id, current_user.tenant_id, current_user.user_id, update_payload)
+    updated = await run_in_threadpool(storage_service.update_incident, incident_id, current_user.tenant_id, current_user.user_id, update_payload)
     if not updated:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to persist Jira metadata")
 
@@ -734,7 +744,8 @@ async def list_incident_jira_comments(
     incident_id: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_INCIDENTS, "alertmanager")),
 ):
-    incident = storage_service.get_incident_for_user(
+    incident = await run_in_threadpool(
+        storage_service.get_incident_for_user,
         incident_id,
         current_user.tenant_id,
         current_user.user_id,
@@ -767,7 +778,8 @@ async def sync_incident_jira_comments(
     incident_id: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
-    incident = storage_service.get_incident_for_user(
+    incident = await run_in_threadpool(
+        storage_service.get_incident_for_user,
         incident_id,
         current_user.tenant_id,
         current_user.user_id,
@@ -802,7 +814,8 @@ async def create_incident_jira_comment(
     payload: JiraCommentRequest,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
-    incident = storage_service.get_incident_for_user(
+    incident = await run_in_threadpool(
+        storage_service.get_incident_for_user,
         incident_id,
         current_user.tenant_id,
         current_user.user_id,
@@ -1057,7 +1070,11 @@ async def get_receivers(current_user: TokenData = Depends(require_permission_wit
 
 
 @router.get("/rules", response_model=List[AlertRule])
-async def get_alert_rules(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_RULES, "alertmanager"))):
+async def get_alert_rules(
+    limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
+    offset: int = Query(0, ge=0, description="Page offset"),
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_RULES, "alertmanager")),
+):
     """Get all alert rules.
     
     Returns all configured alert rules accessible to the user.
@@ -1065,7 +1082,14 @@ async def get_alert_rules(current_user: TokenData = Depends(require_permission_w
     tenant_id = current_user.tenant_id
     user_id = current_user.user_id
     group_ids = getattr(current_user, 'group_ids', []) or []
-    rules_with_owner = storage_service.get_alert_rules_with_owner(tenant_id, user_id, group_ids)
+    rules_with_owner = await run_in_threadpool(
+        storage_service.get_alert_rules_with_owner,
+        tenant_id,
+        user_id,
+        group_ids,
+        limit,
+        offset,
+    )
 
     result: List[AlertRule] = []
     for rule, owner in rules_with_owner:
@@ -1096,7 +1120,7 @@ async def get_public_alert_rules(request: Request):
             return []
         tenant_id = tenant.id
 
-    return storage_service.get_public_alert_rules(tenant_id)
+    return await run_in_threadpool(storage_service.get_public_alert_rules, tenant_id)
 
 
 @router.get("/metrics/names")
@@ -1142,11 +1166,11 @@ async def get_alert_rule(rule_id: str, current_user: TokenData = Depends(require
     Returns detailed information about a single alert rule.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    rule = storage_service.get_alert_rule(rule_id, tenant_id, user_id, group_ids)
+    rule = await run_in_threadpool(storage_service.get_alert_rule, rule_id, tenant_id, user_id, group_ids)
     if not rule:
         raise HTTPException(status_code=404, detail=f"Alert rule {rule_id} not found")
 
-    raw = storage_service.get_alert_rule_raw(rule_id, tenant_id)
+    raw = await run_in_threadpool(storage_service.get_alert_rule_raw, rule_id, tenant_id)
     if raw and raw.created_by != current_user.user_id and not getattr(current_user, 'is_superuser', False):
         rule.org_id = None
 
@@ -1169,9 +1193,9 @@ async def create_alert_rule(
     resolved_org_id = alertmanager_service.resolve_rule_org_id(rule.org_id, current_user)
     if rule.org_id != resolved_org_id:
         rule = rule.model_copy(update={"org_id": resolved_org_id})
-    created_rule = storage_service.create_alert_rule(rule, tenant_id, user_id, group_ids)
+    created_rule = await run_in_threadpool(storage_service.create_alert_rule, rule, tenant_id, user_id, group_ids)
     org_to_sync = created_rule.org_id or resolved_org_id
-    rules = storage_service.get_alert_rules_for_org(tenant_id, org_to_sync)
+    rules = await run_in_threadpool(storage_service.get_alert_rules_for_org, tenant_id, org_to_sync)
     await alertmanager_service.sync_mimir_rules_for_org(org_to_sync, rules)
     return created_rule
 
@@ -1190,7 +1214,7 @@ async def update_alert_rule(
     Can update visibility settings and shared groups.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    existing_rule = storage_service.get_alert_rule(rule_id, tenant_id, user_id, group_ids)
+    existing_rule = await run_in_threadpool(storage_service.get_alert_rule, rule_id, tenant_id, user_id, group_ids)
     if not existing_rule:
         raise HTTPException(status_code=404, detail=f"Alert rule {rule_id} not found or access denied")
 
@@ -1198,15 +1222,15 @@ async def update_alert_rule(
     if rule.org_id != resolved_org_id:
         rule = rule.model_copy(update={"org_id": resolved_org_id})
 
-    updated_rule = storage_service.update_alert_rule(rule_id, rule, tenant_id, user_id, group_ids)
+    updated_rule = await run_in_threadpool(storage_service.update_alert_rule, rule_id, rule, tenant_id, user_id, group_ids)
     if not updated_rule:
         raise HTTPException(status_code=404, detail=f"Alert rule {rule_id} not found or access denied")
 
     updated_org_id = updated_rule.org_id or resolved_org_id
-    updated_rules = storage_service.get_alert_rules_for_org(tenant_id, updated_org_id)
+    updated_rules = await run_in_threadpool(storage_service.get_alert_rules_for_org, tenant_id, updated_org_id)
     await alertmanager_service.sync_mimir_rules_for_org(updated_org_id, updated_rules)
     if existing_rule.org_id and existing_rule.org_id != updated_rule.org_id:
-        previous_rules = storage_service.get_alert_rules_for_org(tenant_id, existing_rule.org_id)
+        previous_rules = await run_in_threadpool(storage_service.get_alert_rules_for_org, tenant_id, existing_rule.org_id)
         await alertmanager_service.sync_mimir_rules_for_org(existing_rule.org_id, previous_rules)
 
     return updated_rule
@@ -1224,11 +1248,11 @@ async def test_alert_rule(
     This does not require Prometheus evaluation and is meant for validation.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    rule = storage_service.get_alert_rule(rule_id, tenant_id, user_id, group_ids)
+    rule = await run_in_threadpool(storage_service.get_alert_rule, rule_id, tenant_id, user_id, group_ids)
     if not rule:
         raise HTTPException(status_code=404, detail=f"Alert rule {rule_id} not found")
 
-    channels = storage_service.get_notification_channels(tenant_id, user_id, group_ids)
+    channels = await run_in_threadpool(storage_service.get_notification_channels, tenant_id, user_id, group_ids)
     if rule.notification_channels:
         channels = [c for c in channels if c.id in rule.notification_channels]
 
@@ -1282,28 +1306,32 @@ async def delete_alert_rule(rule_id: str, current_user: TokenData = Depends(requ
     Removes an alert rule from the configuration. Only the owner can delete.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    existing_rule = storage_service.get_alert_rule(rule_id, tenant_id, user_id, group_ids)
+    existing_rule = await run_in_threadpool(storage_service.get_alert_rule, rule_id, tenant_id, user_id, group_ids)
     if not existing_rule:
         raise HTTPException(status_code=404, detail=f"Alert rule {rule_id} not found or access denied")
 
-    success = storage_service.delete_alert_rule(rule_id, tenant_id, user_id, group_ids)
+    success = await run_in_threadpool(storage_service.delete_alert_rule, rule_id, tenant_id, user_id, group_ids)
     if not success:
         raise HTTPException(status_code=404, detail=f"Alert rule {rule_id} not found or access denied")
 
     resolved_org_id = alertmanager_service.resolve_rule_org_id(existing_rule.org_id, current_user)
-    rules = storage_service.get_alert_rules_for_org(tenant_id, resolved_org_id)
+    rules = await run_in_threadpool(storage_service.get_alert_rules_for_org, tenant_id, resolved_org_id)
     await alertmanager_service.sync_mimir_rules_for_org(resolved_org_id, rules)
     return {"status": "success", "message": f"Alert rule {rule_id} deleted"}
 
 
 @router.get("/channels", response_model=List[NotificationChannel])
-async def get_notification_channels(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_CHANNELS, "alertmanager"))):
+async def get_notification_channels(
+    limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
+    offset: int = Query(0, ge=0, description="Page offset"),
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_CHANNELS, "alertmanager")),
+):
     """Get all notification channels.
     
     Returns all configured notification channels accessible to the user.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    channels = storage_service.get_notification_channels(tenant_id, user_id, group_ids)
+    channels = await run_in_threadpool(storage_service.get_notification_channels, tenant_id, user_id, group_ids, limit, offset)
     return channels
 
 
@@ -1314,7 +1342,7 @@ async def get_notification_channel(channel_id: str, current_user: TokenData = De
     Returns detailed information about a single notification channel.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    channel = storage_service.get_notification_channel(channel_id, tenant_id, user_id, group_ids)
+    channel = await run_in_threadpool(storage_service.get_notification_channel, channel_id, tenant_id, user_id, group_ids)
     if not channel:
         raise HTTPException(status_code=404, detail=f"Notification channel {channel_id} not found")
     return channel
@@ -1343,7 +1371,7 @@ async def create_notification_channel(
     validation_errors = notification_service.validate_channel_config(requested_type, channel.config)
     if validation_errors:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"errors": validation_errors, "status": "error"})
-    created_channel = storage_service.create_notification_channel(channel, tenant_id, user_id, group_ids)
+    created_channel = await run_in_threadpool(storage_service.create_notification_channel, channel, tenant_id, user_id, group_ids)
     return created_channel
 
 
@@ -1371,7 +1399,7 @@ async def update_notification_channel(
     validation_errors = notification_service.validate_channel_config(requested_type, channel.config)
     if validation_errors:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"errors": validation_errors, "status": "error"})
-    updated_channel = storage_service.update_notification_channel(channel_id, channel, tenant_id, user_id, group_ids)
+    updated_channel = await run_in_threadpool(storage_service.update_notification_channel, channel_id, channel, tenant_id, user_id, group_ids)
     if not updated_channel:
         raise HTTPException(status_code=404, detail=f"Notification channel {channel_id} not found or access denied")
     return updated_channel
@@ -1384,7 +1412,7 @@ async def delete_notification_channel(channel_id: str, current_user: TokenData =
     Removes a notification channel from the configuration. Only the owner can delete.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    success = storage_service.delete_notification_channel(channel_id, tenant_id, user_id, group_ids)
+    success = await run_in_threadpool(storage_service.delete_notification_channel, channel_id, tenant_id, user_id, group_ids)
     if not success:
         raise HTTPException(status_code=404, detail=f"Notification channel {channel_id} not found or access denied")
     return {"status": "success", "message": f"Notification channel {channel_id} deleted"}
@@ -1403,9 +1431,9 @@ async def test_notification_channel(
     Sends a test notification through the specified channel.
     """
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
-    if not storage_service.is_notification_channel_owner(channel_id, tenant_id, user_id):
+    if not await run_in_threadpool(storage_service.is_notification_channel_owner, channel_id, tenant_id, user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only channel owner can test this channel")
-    channel = storage_service.get_notification_channel(channel_id, tenant_id, user_id, group_ids)
+    channel = await run_in_threadpool(storage_service.get_notification_channel, channel_id, tenant_id, user_id, group_ids)
     if not channel:
         raise HTTPException(status_code=404, detail=f"Notification channel {channel_id} not found")
     

@@ -11,8 +11,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 """Platform-level routers."""
 
-from . import gateway_router
 from . import system_router
 
-__all__ = ["gateway_router", "system_router"]
+__all__ = ["system_router"]
 

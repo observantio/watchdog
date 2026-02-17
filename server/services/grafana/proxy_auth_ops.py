@@ -15,6 +15,7 @@ import re
 from typing import Dict, Optional, Set
 
 from fastapi import HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session, joinedload
 
 from db_models import GrafanaDashboard, GrafanaDatasource
@@ -255,7 +256,7 @@ async def authorize_proxy_request(
     if not token_to_verify:
         raise HTTPException(status_code=401, detail="You need to log in to access this resource.")
 
-    token_data = auth_service.decode_token(token_to_verify)
+    token_data = await run_in_threadpool(auth_service.decode_token, token_to_verify)
     if not token_data:
         raise HTTPException(status_code=401, detail="Your session has expired or your token is invalid. Let's get you a new one.")
 
@@ -306,9 +307,12 @@ async def authorize_proxy_request(
 
         dashboard_uid = extract_dashboard_uid(service, original_path)
         if dashboard_uid:
-            dashboard = db.query(GrafanaDashboard).options(joinedload(GrafanaDashboard.shared_groups)).filter(
-                GrafanaDashboard.grafana_uid == dashboard_uid
-            ).first()
+            dashboard = await run_in_threadpool(
+                lambda: db.query(GrafanaDashboard)
+                .options(joinedload(GrafanaDashboard.shared_groups))
+                .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
+                .first()
+            )
             if dashboard:
                 if not is_resource_accessible(service, dashboard, token_data, require_write=dashboard_write_intent):
                     raise HTTPException(status_code=403, detail="Dashboard access denied")
@@ -317,9 +321,12 @@ async def authorize_proxy_request(
 
         datasource_uid = extract_datasource_uid(service, original_path)
         if datasource_uid:
-            datasource = db.query(GrafanaDatasource).options(joinedload(GrafanaDatasource.shared_groups)).filter(
-                GrafanaDatasource.grafana_uid == datasource_uid
-            ).first()
+            datasource = await run_in_threadpool(
+                lambda: db.query(GrafanaDatasource)
+                .options(joinedload(GrafanaDatasource.shared_groups))
+                .filter(GrafanaDatasource.grafana_uid == datasource_uid)
+                .first()
+            )
             if datasource:
                 if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
                     raise HTTPException(status_code=403, detail="Datasource access denied")
@@ -330,9 +337,12 @@ async def authorize_proxy_request(
 
         datasource_id = extract_datasource_id(service, original_path)
         if datasource_id is not None:
-            datasource = db.query(GrafanaDatasource).options(joinedload(GrafanaDatasource.shared_groups)).filter(
-                GrafanaDatasource.grafana_id == datasource_id
-            ).first()
+            datasource = await run_in_threadpool(
+                lambda: db.query(GrafanaDatasource)
+                .options(joinedload(GrafanaDatasource.shared_groups))
+                .filter(GrafanaDatasource.grafana_id == datasource_id)
+                .first()
+            )
             if datasource:
                 if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
                     raise HTTPException(status_code=403, detail="Datasource access denied")

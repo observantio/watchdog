@@ -42,15 +42,13 @@ function resolveActiveOrgId(userData) {
 }
 
 export function AuthProvider({ children }) {
-  const TOKEN_STORAGE_KEY = 'beobservant_access_token'
+  // Token is intentionally kept in-memory only. Authentication is cookie-first
+  // (httpOnly, secure). Do NOT persist tokens to localStorage — this removes the
+  // attack surface of long-lived tokens in client storage while remaining
+  // backward-compatible for API-key flows that set an in-memory token.
+  const TOKEN_STORAGE_KEY = null
   const [user, setUser] = useState(null)
-  const [token, setToken] = useState(() => {
-    try {
-      return (typeof localStorage !== 'undefined' && localStorage.getItem(TOKEN_STORAGE_KEY)) || null
-    } catch (e) {
-      return null
-    }
-  })
+  const [token, setToken] = useState(null)
   const [authMode, setAuthMode] = useState({
     provider: 'local',
     oidc_enabled: false,
@@ -86,22 +84,27 @@ export function AuthProvider({ children }) {
     loadAuthMode()
   }, [loadAuthMode])
 
+  // Keep api client in sync with any in-memory token (API-key flows).
+  // For cookie-based sessions 'token' will normally be null and the browser
+  // will send the httpOnly session cookie automatically with requests.
   useEffect(() => {
-    if (token) {
-      api.setAuthToken(token)
-    } else {
-      api.setAuthToken(null)
-    }
+    api.setAuthToken(token || null)
   }, [token])
 
   const loadUser = useCallback(async () => {
     try {
-      const userData = await api.getCurrentUser()
+      // Use a non-redirecting /me call during initial app startup so a
+      // transient 401 or network error does not instantly navigate the
+      // user away or clear server-managed session cookies.
+      const userData = await api.getCurrentUserNoRedirect()
       setUser(userData)
       api.setUserOrgIds(resolveActiveOrgId(userData))
     } catch (error) {
-      console.error('Failed to load user:', error)
-      logout()
+      // Do NOT call logout() here — if /me fails we simply treat the user
+      // as unauthenticated and let the UI remain in-place (avoids flashing
+      // the login screen on reload). Callers can use `logout()` explicitly.
+      console.debug('AuthProvider: initial user load failed (treating as unauthenticated):', error?.message || error)
+      setUser(null)
     } finally {
       setLoading(false)
     }
@@ -111,19 +114,44 @@ export function AuthProvider({ children }) {
     loadUser()
   }, [loadUser])
 
-  const login = useCallback(async (username, password, mfa_code) => {
-    const response = await api.login(username, password, mfa_code)
-    const { access_token } = response
-    setToken(access_token)
+  // Always attempt to refresh user details from the server. In cookie-based
+  // sessions there will be no in-memory token, but the browser will send the
+  // httpOnly cookie with the request; treat a successful /me call as proof of
+  // authentication.
+  const refreshUser = useCallback(async () => {
     try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, access_token)
-    } catch (e) {
-      /* ignore storage errors */
+      const userData = await api.getCurrentUser()
+      setUser(userData)
+      api.setUserOrgIds(resolveActiveOrgId(userData))
+    } catch (error) {
+      // Ignore failures here; caller can decide to log out or show UI.
+      console.error('Failed to refresh user:', error)
+      setUser(null)
     }
-    api.setAuthToken(access_token)
-    await loadUser()
+  }, [])
+
+  const login = useCallback(async (username, password, mfa_code) => {
+    // The server SHOULD set an httpOnly session cookie on successful login.
+    // If it additionally returns an access_token we accept it as an in-memory
+    // fallback (useful for API-key or non-cookie environments), but we NEVER
+    // persist tokens to localStorage.
+    const response = await api.login(username, password, mfa_code)
+    const { access_token } = response || {}
+
+    // keep token in-memory only (no localStorage)
+    setToken(access_token || null)
+
+    // api client follows the in-memory token (if any)
+    api.setAuthToken(access_token || null)
+
+    // Always refresh user state from server (cookie-based or token-based).
+    // Use `refreshUser()` here so a returned `access_token` (in-memory)
+    // is used via the Authorization header if present. This fixes a race
+    // where `/api/auth/login` returns a token but the cookie isn't set —
+    // `getCurrentUser()` will succeed using the in-memory token.
+    await refreshUser()
     return response
-  }, [loadUser])
+  }, [refreshUser])
 
   const startOIDCLogin = useCallback(async () => {
     const state = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
@@ -152,20 +180,13 @@ export function AuthProvider({ children }) {
     const redirectUri = `${globalThis.location.origin}/#/auth/callback`
     const response = await api.exchangeOIDCCode(code, redirectUri)
     const { access_token } = response || {}
-    if (!access_token) {
-      throw new Error('OIDC login succeeded but no access token was returned')
-    }
 
     sessionStorage.removeItem(OIDC_STATE_KEY)
     sessionStorage.removeItem(OIDC_NONCE_KEY)
 
-    setToken(access_token)
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, access_token)
-    } catch (e) {
-      /* ignore storage errors */
-    }
-    api.setAuthToken(access_token)
+    // prefer cookie-based session; accept access_token as in-memory fallback
+    setToken(access_token || null)
+    api.setAuthToken(access_token || null)
     await loadUser()
     return response
   }, [loadUser])
@@ -177,32 +198,16 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
+      // Server should clear the httpOnly cookie and invalidate the session.
       await api.logout()
     } catch {
-      // best-effort logout; still clear local auth state
-    }
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_STORAGE_KEY)
-    } catch (e) {
-      /* ignore storage errors */
+      // best-effort logout; still clear client state
     }
     setToken(null)
     setUser(null)
     api.setAuthToken(null)
     syncGrafanaAuthCookie(null)
   }, [])
-
-  const refreshUser = useCallback(async () => {
-    if (token) {
-      try {
-        const userData = await api.getCurrentUser()
-        setUser(userData)
-        api.setUserOrgIds(resolveActiveOrgId(userData))
-      } catch (error) {
-        console.error('Failed to refresh user:', error)
-      }
-    }
-  }, [token])
 
   const updateUser = useCallback((userData) => {
     setUser(userData)
@@ -213,6 +218,7 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     user,
+    // token is intentionally in-memory only and may be null for cookie sessions
     token,
     authMode,
     authModeLoading,
@@ -225,7 +231,8 @@ export function AuthProvider({ children }) {
     logout,
     refreshUser,
     updateUser,
-    isAuthenticated: !!token && !!user,
+    // Authentication is determined by the server-provided `user` object
+    isAuthenticated: !!user,
     hasPermission
   }), [user, token, authMode, authModeLoading, loading, login, startOIDCLogin, finishOIDCLogin, loadAuthMode, register, logout, refreshUser, updateUser, hasPermission])
 

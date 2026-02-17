@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Notification channel models.
+
+Defines Pydantic models for notification channel configurations used by the AlertManager service.
 """
-
-
-"""Notification channel models."""
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 from enum import Enum

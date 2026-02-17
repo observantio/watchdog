@@ -6,16 +6,16 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Agents router for OTLP heartbeat and agent listing.
 """
-
-
-"""Agents router for OTLP heartbeat and agent listing."""
 import logging
 import asyncio
 from typing import Dict, Any, List
 
 import httpx
 from fastapi import APIRouter, Request, Depends
+from fastapi.concurrency import run_in_threadpool
 
 from models.observability.agent_models import AgentHeartbeat
 from services.agent_service import AgentService
@@ -49,7 +49,7 @@ async def list_agents(current_user: TokenData = Depends(require_permission_with_
 @router.get("/active")
 async def list_active_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))):
     """List activity per API key assigned to the user."""
-    api_keys = auth_service.list_api_keys(current_user.user_id)
+    api_keys = await run_in_threadpool(auth_service.list_api_keys, current_user.user_id)
 
     tasks: List[asyncio.Task] = []
     for key in api_keys:

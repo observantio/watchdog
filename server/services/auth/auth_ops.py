@@ -6,10 +6,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Authentication/token/password operations for DatabaseAuthService.
 """
-
-
-"""Authentication/token/password operations for DatabaseAuthService."""
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
@@ -162,8 +161,6 @@ def decode_token(service, token: str) -> Optional[TokenData]:
             permissions=permissions,
             group_ids=group_ids
         )
-        # Attach mfa_setup marker when present in JWT payload so callers may
-        # treat it specially (limited setup token).
         setattr(td, 'is_mfa_setup', is_mfa_setup)
         return td
     except jwt.PyJWTError:

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from db_models import GrafanaDashboard, Group
 from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardUpdate, DashboardSearchResult
+from config import config
 
 
 def check_dashboard_access(
@@ -73,9 +74,9 @@ def get_accessible_dashboard_uids(service, db: Session, user_id: str, tenant_id:
         )
 
     query = query.filter(or_(*conditions))
-    dashboards = query.all()
+    capped = query.with_entities(GrafanaDashboard.grafana_uid).limit(int(config.MAX_QUERY_LIMIT)).all()
 
-    return [d.grafana_uid for d in dashboards], True
+    return [uid for (uid,) in capped], True
 
 
 async def search_dashboards(
@@ -91,7 +92,14 @@ async def search_dashboards(
     team_id: Optional[str] = None,
     show_hidden: bool = False,
     is_admin: bool = False,
+    limit: Optional[int] = None,
+    offset: int = 0,
 ) -> List[DashboardSearchResult]:
+    requested_limit = int(limit) if limit is not None else int(config.DEFAULT_QUERY_LIMIT)
+    max_limit = int(config.MAX_QUERY_LIMIT)
+    capped_limit = max(1, min(requested_limit, max_limit))
+    capped_offset = max(0, int(offset))
+
     if uid:
         dashboard = await service.grafana_service.get_dashboard(uid)
         if not dashboard:
@@ -146,15 +154,19 @@ async def search_dashboards(
         accessible_uids = set(accessible_uids)
 
     all_registered_uids = {
-        d.grafana_uid
-        for d in db.query(GrafanaDashboard).filter(GrafanaDashboard.tenant_id == tenant_id).all()
+        uid
+        for (uid,) in db.query(GrafanaDashboard.grafana_uid)
+        .filter(GrafanaDashboard.tenant_id == tenant_id)
+        .limit(int(config.MAX_QUERY_LIMIT))
+        .all()
     }
 
     db_dashboards = {
         d.grafana_uid: d
-        for d in db.query(GrafanaDashboard).filter(
-            GrafanaDashboard.tenant_id == tenant_id
-        ).all()
+        for d in db.query(GrafanaDashboard)
+        .filter(GrafanaDashboard.tenant_id == tenant_id)
+        .limit(int(config.MAX_QUERY_LIMIT))
+        .all()
     }
 
     filtered = []
@@ -184,7 +196,7 @@ async def search_dashboards(
 
         filtered.append(DashboardSearchResult(**payload))
 
-    return filtered
+    return filtered[capped_offset:capped_offset + capped_limit]
 
 
 async def get_dashboard(service, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str]) -> Optional[Dict[str, Any]]:
@@ -217,7 +229,7 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
                 current = item.get("current") or {}
                 if current.get("value"):
                     return True
-        except Exception:
+        except AttributeError:
             continue
 
     panels = dash.get("panels") or []
@@ -233,8 +245,8 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
                     panel_has_ds = True
             if panel.get("datasourceUid"):
                 panel_has_ds = True
-        except Exception:
-            pass
+        except AttributeError:
+            panel_has_ds = False
 
         targets = panel.get("targets") or []
         for t in targets:
@@ -246,7 +258,7 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
                 if requires_ds and not panel_has_ds:
                     # missing datasource for a target that requires one
                     return False
-            except Exception:
+            except AttributeError:
                 continue
 
         if panel_has_ds:
@@ -275,9 +287,9 @@ async def create_dashboard(
                 raise HTTPException(status_code=400, detail="Dashboard JSON missing datasource references; include a templating datasource (ds_default) or explicit panel/target datasources")
         except HTTPException:
             raise
-        except Exception:
+        except (TypeError, AttributeError):
             # continue; we'll rely on Grafana to validate more strictly
-            pass
+            service.logger.debug("Skipping local dashboard datasource pre-validation due to malformed payload")
 
         groups: List[Group] = []
         if visibility == "group":
@@ -360,9 +372,9 @@ async def update_dashboard(
             raise HTTPException(status_code=400, detail="Dashboard JSON missing datasource references; include a templating datasource (ds_default) or explicit panel/target datasources")
     except HTTPException:
         raise
-    except Exception:
+    except (TypeError, AttributeError):
         # ignore validation errors and let Grafana validate
-        pass
+        service.logger.debug("Skipping local dashboard datasource validation for malformed update payload")
 
     try:
         result = await service.grafana_service.update_dashboard(uid, dashboard_update)

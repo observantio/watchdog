@@ -6,12 +6,12 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Database-backed authentication service with enterprise IAM.
 """
-
-
-"""Database-backed authentication service with enterprise IAM."""
 import logging
 import secrets
+import threading
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from passlib.context import CryptContext
@@ -99,6 +99,7 @@ class DatabaseAuthService:
         self._initialized = False
         self.logger = logger
         self.oidc_service = OIDCService()
+        self._password_op_semaphore = threading.BoundedSemaphore(max(1, int(config.PASSWORD_HASH_MAX_CONCURRENCY)))
 
     def is_external_auth_enabled(self) -> bool:
         return config.AUTH_PROVIDER == "keycloak" and self.oidc_service.is_enabled()
@@ -252,10 +253,12 @@ class DatabaseAuthService:
         db.add(default_key)
     
     def hash_password(self, password: str) -> str:
-        return pwd_context.hash(password)
+        with self._password_op_semaphore:
+            return pwd_context.hash(password)
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        return pwd_context.verify(plain_password, hashed_password)
+        with self._password_op_semaphore:
+            return pwd_context.verify(plain_password, hashed_password)
 
     # ------------------------- TOTP / MFA helpers -------------------------
     def _get_fernet(self) -> Optional[Fernet]:
@@ -758,9 +761,9 @@ class DatabaseAuthService:
         """Create a new user."""
         return create_user_op(self, user_create, tenant_id, creator_id)
     
-    def list_users(self, tenant_id: str) -> List[UserSchema]:
+    def list_users(self, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
         """List all users in a tenant."""
-        return list_users_op(self, tenant_id)
+        return list_users_op(self, tenant_id, limit=limit, offset=offset)
     
     def update_user(self, user_id: str, user_update: UserUpdate, tenant_id: str, updater_id: str = None) -> Optional[UserSchema]:
         """Update user information."""

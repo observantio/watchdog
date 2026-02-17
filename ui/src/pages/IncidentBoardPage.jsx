@@ -1040,7 +1040,7 @@ export default function IncidentBoardPage() {
                 <div className="mt-3 text-xs text-sre-text-muted text-left">
                   <div className="text-left">
                     No accessible Jira integration found.{' '}
-                    <a href="/integrations#integrations" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">
+                    <a href="#/integrations" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">
                       Create Jira integration
                     </a>
                   </div>

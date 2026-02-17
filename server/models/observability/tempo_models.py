@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Tempo/Tracing related models.
+
+Defines Pydantic models for representing Tempo trace data, including spans, traces, and query parameters, as used in the TempoService.
 """
-
-
-"""Tempo/Tracing related models."""
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 from datetime import datetime

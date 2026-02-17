@@ -28,7 +28,7 @@ const AlertsTab = ({ filteredAlerts, filterSeverity, onFilterChange }) => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={filterSeverity} onChange={(e) => onFilterChange(e.target.value)}>
+          <Select aria-label="Filter alerts by severity" value={filterSeverity} onChange={(e) => onFilterChange(e.target.value)}>
             {ALERT_SEVERITY_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
@@ -39,9 +39,10 @@ const AlertsTab = ({ filteredAlerts, filterSeverity, onFilterChange }) => {
 
       {filteredAlerts.length > 0 ? (
         <div className="space-y-4">
-          {filteredAlerts.map((alert, idx) => (
-            <AlertItem key={alert.fingerprint || alert.id || alert.starts_at || idx} alert={alert} idx={idx} />
-          ))}
+          {filteredAlerts.map((alert) => {
+            const alertKey = alert.fingerprint ?? alert.id ?? alert.starts_at ?? `${alert.labels?.alertname ?? 'alert'}-${alert.annotations?.summary ?? ''}-${alert.starts_at ?? alert.startsAt ?? ''}`
+            return <AlertItem key={alertKey} alert={alert} />
+          })}
         </div>
       ) : (
         <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">

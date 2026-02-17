@@ -6,10 +6,8 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-"""
 
-
-"""Database configuration and session management.
+Database configuration and session management.
 
 Optimizations added:
 - idempotent initialization and env-driven pool tuning
@@ -133,7 +131,7 @@ def connection_test(timeout_seconds: int = 5) -> bool:
         with _engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return True
-    except Exception as exc:  # noqa: BLE001 - keep broad catch for healthcheck
+    except Exception as exc: 
         logger.debug("DB connection test failed: %s", exc)
         return False
 
@@ -158,6 +156,11 @@ def init_db() -> None:
     """Create database tables from SQLAlchemy models (idempotent)."""
     if _engine is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
+
+    from config import config
+    if not config.DB_AUTO_CREATE_SCHEMA:
+        logger.info("Skipping Base.metadata.create_all because DB_AUTO_CREATE_SCHEMA=false")
+        return
 
     from db_models import Base  
 

@@ -304,15 +304,31 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
             )}
             <div className="grid gap-3 grid-cols-2">
               {displayedGroups.map((group) => (
-                <div key={group.id} className="flex items-start gap-3 p-4 bg-gradient-to-r from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-md transition-all duration-200 backdrop-blur-sm rounded-lg cursor-pointer" onClick={() => {
-                  const next = new Set(formData.group_ids)
-                  if (next.has(group.id)) {
-                    next.delete(group.id)
-                  } else {
-                    next.add(group.id)
-                  }
-                  setFormData({ ...formData, group_ids: Array.from(next) })
-                }}>
+                <div
+                  key={group.id}
+                  role="checkbox"
+                  tabIndex={0}
+                  aria-checked={formData.group_ids.includes(group.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      const next = new Set(formData.group_ids)
+                      if (next.has(group.id)) next.delete(group.id)
+                      else next.add(group.id)
+                      setFormData({ ...formData, group_ids: Array.from(next) })
+                    }
+                  }}
+                  className="flex items-start gap-3 p-4 bg-gradient-to-r from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-md transition-all duration-200 backdrop-blur-sm rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-sre-primary/50"
+                  onClick={() => {
+                    const next = new Set(formData.group_ids)
+                    if (next.has(group.id)) {
+                      next.delete(group.id)
+                    } else {
+                      next.add(group.id)
+                    }
+                    setFormData({ ...formData, group_ids: Array.from(next) })
+                  }}
+                >
                   <div className="flex-shrink-0 pt-1">
                     <Checkbox
                       checked={formData.group_ids.includes(group.id)}

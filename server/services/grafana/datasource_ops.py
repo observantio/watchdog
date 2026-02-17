@@ -118,9 +118,9 @@ def get_accessible_datasource_uids(service, db: Session, user_id: str, tenant_id
         )
 
     query = query.filter(or_(*conditions))
-    datasources = query.all()
+    capped = query.with_entities(GrafanaDatasource.grafana_uid).limit(int(config.MAX_QUERY_LIMIT)).all()
 
-    return [d.grafana_uid for d in datasources], True
+    return [uid for (uid,) in capped], True
 
 
 def collect_datasource_refs_from_query_payload(service, payload: Any) -> Set[str]:
@@ -225,7 +225,14 @@ async def get_datasources(
     team_id: Optional[str] = None,
     show_hidden: bool = False,
     is_admin: bool = False,
+    limit: Optional[int] = None,
+    offset: int = 0,
 ) -> List[Datasource]:
+    requested_limit = int(limit) if limit is not None else int(config.DEFAULT_QUERY_LIMIT)
+    max_limit = int(config.MAX_QUERY_LIMIT)
+    capped_limit = max(1, min(requested_limit, max_limit))
+    capped_offset = max(0, int(offset))
+
     if uid:
         datasource = await service.grafana_service.get_datasource(uid)
         if not datasource:
@@ -252,7 +259,10 @@ async def get_datasources(
         # For admin responses merge Grafana fields with local DB metadata when present
         db_entries = {
             d.grafana_uid: d
-            for d in db.query(GrafanaDatasource).filter(GrafanaDatasource.tenant_id == tenant_id).all()
+            for d in db.query(GrafanaDatasource)
+            .filter(GrafanaDatasource.tenant_id == tenant_id)
+            .limit(int(config.MAX_QUERY_LIMIT))
+            .all()
         }
         processed = []
         for d in all_datasources:
@@ -266,14 +276,17 @@ async def get_datasources(
             payload["shared_group_ids"] = [g.id for g in db_ds.shared_groups] if db_ds else (payload.get("shared_group_ids") or [])
             payload["sharedGroupIds"] = payload["shared_group_ids"]
             processed.append(Datasource(**payload))
-        return processed
+        return processed[capped_offset:capped_offset + capped_limit]
 
     accessible_uids, allow_system = get_accessible_datasource_uids(service, db, user_id, tenant_id, group_ids)
     accessible_uids = set(accessible_uids)
 
     all_registered_uids = {
-        d.grafana_uid
-        for d in db.query(GrafanaDatasource).filter(GrafanaDatasource.tenant_id == tenant_id).all()
+        uid
+        for (uid,) in db.query(GrafanaDatasource.grafana_uid)
+        .filter(GrafanaDatasource.tenant_id == tenant_id)
+        .limit(int(config.MAX_QUERY_LIMIT))
+        .all()
     }
 
     filtered = []
@@ -304,7 +317,7 @@ async def get_datasources(
         payload["sharedGroupIds"] = payload["shared_group_ids"]
         filtered.append(Datasource(**payload))
 
-    return filtered
+    return filtered[capped_offset:capped_offset + capped_limit]
 
 
 async def get_datasource(service, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str]) -> Optional[Datasource]:
@@ -492,7 +505,12 @@ def toggle_datasource_hidden(service, db: Session, uid: str, user_id: str, tenan
 
 
 def get_datasource_metadata(service, db: Session, tenant_id: str) -> Dict[str, Any]:
-    datasources = db.query(GrafanaDatasource).filter(GrafanaDatasource.tenant_id == tenant_id).all()
+    datasources = (
+        db.query(GrafanaDatasource)
+        .filter(GrafanaDatasource.tenant_id == tenant_id)
+        .limit(int(config.MAX_QUERY_LIMIT))
+        .all()
+    )
     all_teams = set()
     for ds in datasources:
         for group in ds.shared_groups:

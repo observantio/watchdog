@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Grafana service for dashboard and datasource management.
+
+Provides methods to search, create, update, and delete dashboards and datasources, as well as query datasources. Handles authentication and error parsing for Grafana API interactions.
 """
-
-
-"""Grafana service for dashboard and datasource management."""
 import httpx
 import logging
 from typing import List, Optional, Dict, Any

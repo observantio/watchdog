@@ -775,7 +775,7 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
                         <h4 className="text-base font-semibold text-sre-text mb-2">No Channels Configured</h4>
                         <p className="text-sre-text-muted mb-4">Configure notification channels before assigning them to alerts.</p>
                         <div className="flex items-center justify-center gap-3">
-                          <a href="/integrations#integrations" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">Manage Integrations</a>
+                          <a href="#/integrations" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">Manage Integrations</a>
                           <Button variant="ghost" onClick={() => setFormData({ ...formData, notificationChannels: [] })}>Skip for now</Button>
                         </div>
                         <p className="text-sm text-sre-text-muted mt-3">You can assign channels later after creating the rule.</p>

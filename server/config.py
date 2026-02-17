@@ -6,10 +6,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Application configuration and constants.
 """
-
-
-"""Application configuration and constants."""
 import logging
 import os
 import secrets
@@ -195,6 +194,15 @@ class Config:
             os.getenv("REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS"),
             default=self.IS_PRODUCTION,
         )
+        self.DB_AUTO_CREATE_SCHEMA: bool = _to_bool(
+            os.getenv("DB_AUTO_CREATE_SCHEMA"),
+            default=not self.IS_PRODUCTION,
+        )
+
+        self.RATE_LIMIT_GC_EVERY: int = int(os.getenv("RATE_LIMIT_GC_EVERY", "1024"))
+        self.RATE_LIMIT_STALE_AFTER_SECONDS: int = int(os.getenv("RATE_LIMIT_STALE_AFTER_SECONDS", "3600"))
+        self.RATE_LIMIT_MAX_STATES: int = int(os.getenv("RATE_LIMIT_MAX_STATES", "200000"))
+        self.PASSWORD_HASH_MAX_CONCURRENCY: int = int(os.getenv("PASSWORD_HASH_MAX_CONCURRENCY", "8"))
 
         # Default admin bootstrap (can be overridden via environment)
         self.DEFAULT_ADMIN_USERNAME: str = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
@@ -290,6 +298,12 @@ class Config:
         ):
             raise ValueError("DEFAULT_ADMIN_PASSWORD must be set to a strong value in production")
 
+        if self.IS_PRODUCTION and self.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
+            raise ValueError("DEFAULT_ADMIN_BOOTSTRAP_ENABLED must be false in production")
+
+        if self.IS_PRODUCTION and self.DB_AUTO_CREATE_SCHEMA:
+            raise ValueError("DB_AUTO_CREATE_SCHEMA must be disabled in production; use Alembic migrations")
+
         if self.REQUIRE_TOTP_ENCRYPTION_KEY and not self.DATA_ENCRYPTION_KEY:
             raise ValueError("DATA_ENCRYPTION_KEY is required when REQUIRE_TOTP_ENCRYPTION_KEY is enabled")
 
@@ -298,6 +312,13 @@ class Config:
             raise ValueError(
                 "CORS_ORIGINS cannot contain '*' when CORS_ALLOW_CREDENTIALS is enabled."
             )
+
+        if self.MAX_QUERY_LIMIT <= 0:
+            raise ValueError("MAX_QUERY_LIMIT must be greater than 0")
+        if self.DEFAULT_QUERY_LIMIT <= 0:
+            raise ValueError("DEFAULT_QUERY_LIMIT must be greater than 0")
+        if self.DEFAULT_QUERY_LIMIT > self.MAX_QUERY_LIMIT:
+            raise ValueError("DEFAULT_QUERY_LIMIT cannot exceed MAX_QUERY_LIMIT")
 
 
 class Constants:

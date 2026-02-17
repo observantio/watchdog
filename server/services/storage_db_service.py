@@ -6,10 +6,8 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-"""
 
-
-"""Database-backed storage service for alert rules and notification channels.
+Database-backed storage service for alert rules and notification channels.
 
 Primary storage backend using PostgreSQL.  Supports optional Fernet
 encryption of sensitive channel config at rest and the same
@@ -19,6 +17,7 @@ import json
 import logging
 import uuid
 import hashlib
+from json import JSONDecodeError
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
@@ -212,7 +211,7 @@ class DatabaseStorageService:
         if isinstance(raw_meta, str):
             try:
                 meta = json.loads(raw_meta)
-            except Exception:
+            except JSONDecodeError:
                 meta = {}
         elif isinstance(raw_meta, dict):
             meta = raw_meta
@@ -235,8 +234,8 @@ class DatabaseStorageService:
             from models.alerting.incidents import IncidentStatus
             if isinstance(status_value, IncidentStatus):
                 status_value = status_value.value
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("IncidentStatus import unavailable while normalizing incident status")
         if isinstance(status_value, str) and status_value.startswith("IncidentStatus."):
             status_value = status_value.split(".", 1)[1].lower()
 
@@ -356,7 +355,8 @@ class DatabaseStorageService:
                                 rule_visibility = rule.visibility or "public"
                                 rule_shared_group_ids = _get_shared_group_ids(rule)
                                 rule_created_by = rule.created_by
-                        except Exception:
+                        except (TypeError, ValueError) as exc:
+                            logger.debug("Failed to derive rule metadata for incident create: %s", exc)
                             rule_visibility = "public"
 
                     metadata = {
@@ -387,7 +387,7 @@ class DatabaseStorageService:
                         if isinstance(maybe_meta, str):
                             try:
                                 existing_meta = json.loads(maybe_meta)
-                            except Exception:
+                            except JSONDecodeError:
                                 existing_meta = {}
                         elif isinstance(maybe_meta, dict):
                             existing_meta = maybe_meta
@@ -433,8 +433,8 @@ class DatabaseStorageService:
                                 existing_meta["shared_group_ids"] = _get_shared_group_ids(rule)
                                 if rule.created_by:
                                     existing_meta["created_by"] = rule.created_by
-                        except Exception:
-                            pass
+                        except (TypeError, ValueError) as exc:
+                            logger.debug("Failed to refresh incident metadata from rule: %s", exc)
 
                     incident.annotations = {**annotations, INCIDENT_META_KEY: json.dumps(existing_meta)}
                     if parsed_starts and not incident.starts_at:
@@ -459,7 +459,7 @@ class DatabaseStorageService:
                     if isinstance(raw_meta, str):
                         try:
                             meta = json.loads(raw_meta)
-                        except Exception:
+                        except JSONDecodeError:
                             meta = {}
                     elif isinstance(raw_meta, dict):
                         meta = raw_meta
@@ -480,13 +480,19 @@ class DatabaseStorageService:
         status: Optional[str] = None,
         visibility: Optional[str] = None,
         group_id: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> List[AlertIncidentPydantic]:
         group_ids = group_ids or []
+        requested_limit = int(limit) if limit is not None else int(app_config.DEFAULT_QUERY_LIMIT)
+        max_limit = int(app_config.MAX_QUERY_LIMIT)
+        capped_limit = max(1, min(requested_limit, max_limit))
+        capped_offset = max(0, int(offset))
         with get_db_session() as db:
             query = db.query(AlertIncidentDB).filter(AlertIncidentDB.tenant_id == tenant_id)
             if status:
                 query = query.filter(AlertIncidentDB.status == status)
-            incidents = query.order_by(AlertIncidentDB.updated_at.desc()).all()
+            incidents = query.order_by(AlertIncidentDB.updated_at.desc()).offset(capped_offset).limit(capped_limit).all()
             result: List[AlertIncidentPydantic] = []
             for incident in incidents:
                 annotations = incident.annotations or {}
@@ -495,7 +501,7 @@ class DatabaseStorageService:
                 if isinstance(raw_meta, str):
                     try:
                         meta = json.loads(raw_meta)
-                    except Exception:
+                    except JSONDecodeError:
                         meta = {}
                 elif isinstance(raw_meta, dict):
                     meta = raw_meta
@@ -643,7 +649,7 @@ class DatabaseStorageService:
             if isinstance(raw_meta, str):
                 try:
                     meta = json.loads(raw_meta)
-                except Exception:
+                except JSONDecodeError:
                     meta = {}
             elif isinstance(raw_meta, dict):
                 meta = raw_meta
@@ -661,10 +667,7 @@ class DatabaseStorageService:
             # and shared_group_ids to enforce inheritance.
 
             # Allow clients to set the hide-when-resolved flag
-            try:
-                hide_flag = getattr(payload, "hide_when_resolved", None)
-            except Exception:
-                hide_flag = None
+            hide_flag = getattr(payload, "hide_when_resolved", None)
             if hide_flag is True:
                 meta["hide_when_resolved"] = True
             elif hide_flag is False:
@@ -696,10 +699,7 @@ class DatabaseStorageService:
             incident.annotations = {**annotations, INCIDENT_META_KEY: json.dumps(meta)}
 
             if payload.note:
-                try:
-                    logger.debug("Appending note for incident %s by user %s: %s", incident_id, user_id, str(payload.note))
-                except Exception:
-                    pass
+                logger.debug("Appending note for incident %s by user %s: %s", incident_id, user_id, str(payload.note))
                 existing_notes = incident.notes or []
                 notes_before = list(existing_notes)
                 notes = list(existing_notes)
@@ -711,11 +711,8 @@ class DatabaseStorageService:
                     }
                 )
                 incident.notes = notes
-                try:
-                    logger.debug("Incident %s notes before append: %s", incident_id, str(notes_before))
-                    logger.debug("Incident %s notes after append: %s", incident_id, str(incident.notes))
-                except Exception:
-                    pass
+                logger.debug("Incident %s notes before append: %s", incident_id, str(notes_before))
+                logger.debug("Incident %s notes after append: %s", incident_id, str(incident.notes))
 
             db.flush()
             return self._incident_to_pydantic(incident)
@@ -731,14 +728,25 @@ class DatabaseStorageService:
             return [self._rule_to_pydantic(r) for r in rules]
 
     def get_alert_rules(
-        self, tenant_id: str, user_id: str, group_ids: Optional[List[str]] = None,
+        self,
+        tenant_id: str,
+        user_id: str,
+        group_ids: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> List[AlertRulePydantic]:
         group_ids = group_ids or []
+        requested_limit = int(limit) if limit is not None else int(app_config.DEFAULT_QUERY_LIMIT)
+        max_limit = int(app_config.MAX_QUERY_LIMIT)
+        capped_limit = max(1, min(requested_limit, max_limit))
+        capped_offset = max(0, int(offset))
         with get_db_session() as db:
             rules = (
                 db.query(AlertRuleDB)
                 .options(joinedload(AlertRuleDB.shared_groups))
                 .filter(AlertRuleDB.tenant_id == tenant_id)
+                .offset(capped_offset)
+                .limit(capped_limit)
                 .all()
             )
             return [
@@ -757,18 +765,31 @@ class DatabaseStorageService:
             )
             return [self._rule_to_pydantic(r) for r in rules]
 
-    def get_alert_rules_with_owner(self, tenant_id: str, user_id: str, group_ids: Optional[List[str]] = None) -> List[tuple]:
+    def get_alert_rules_with_owner(
+        self,
+        tenant_id: str,
+        user_id: str,
+        group_ids: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[tuple]:
         """Return list of (AlertRulePydantic, created_by) tuples for tenant rules.
 
         Useful when callers need owner metadata to decide whether to expose
         tenant-scoped sensitive fields like `org_id`.
         """
         group_ids = group_ids or []
+        requested_limit = int(limit) if limit is not None else int(app_config.DEFAULT_QUERY_LIMIT)
+        max_limit = int(app_config.MAX_QUERY_LIMIT)
+        capped_limit = max(1, min(requested_limit, max_limit))
+        capped_offset = max(0, int(offset))
         with get_db_session() as db:
             rules = (
                 db.query(AlertRuleDB)
                 .options(joinedload(AlertRuleDB.shared_groups))
                 .filter(AlertRuleDB.tenant_id == tenant_id)
+                .offset(capped_offset)
+                .limit(capped_limit)
                 .all()
             )
             result = []
@@ -911,14 +932,25 @@ class DatabaseStorageService:
             return True
 
     def get_notification_channels(
-        self, tenant_id: str, user_id: str, group_ids: Optional[List[str]] = None,
+        self,
+        tenant_id: str,
+        user_id: str,
+        group_ids: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> List[NotificationChannelPydantic]:
         group_ids = group_ids or []
+        requested_limit = int(limit) if limit is not None else int(app_config.DEFAULT_QUERY_LIMIT)
+        max_limit = int(app_config.MAX_QUERY_LIMIT)
+        capped_limit = max(1, min(requested_limit, max_limit))
+        capped_offset = max(0, int(offset))
         with get_db_session() as db:
             channels = (
                 db.query(NotificationChannelDB)
                 .options(joinedload(NotificationChannelDB.shared_groups))
                 .filter(NotificationChannelDB.tenant_id == tenant_id)
+                .offset(capped_offset)
+                .limit(capped_limit)
                 .all()
             )
             return [
@@ -1072,15 +1104,30 @@ class DatabaseStorageService:
         """
         with get_db_session() as db:
             results: List[NotificationChannelPydantic] = []
-            rules = db.query(AlertRuleDB).filter(AlertRuleDB.name == rule_name, AlertRuleDB.enabled == True).all()
+            rules = (
+                db.query(AlertRuleDB)
+                .filter(AlertRuleDB.name == rule_name, AlertRuleDB.enabled == True)
+                .limit(int(app_config.MAX_QUERY_LIMIT))
+                .all()
+            )
             for r in rules:
                 if r.notification_channels:
-                    chs = db.query(NotificationChannelDB).filter(
-                        NotificationChannelDB.tenant_id == r.tenant_id,
-                        NotificationChannelDB.id.in_(r.notification_channels)
-                    ).all()
+                    chs = (
+                        db.query(NotificationChannelDB)
+                        .filter(
+                            NotificationChannelDB.tenant_id == r.tenant_id,
+                            NotificationChannelDB.id.in_(r.notification_channels)
+                        )
+                        .limit(int(app_config.MAX_QUERY_LIMIT))
+                        .all()
+                    )
                 else:
-                    chs = db.query(NotificationChannelDB).filter(NotificationChannelDB.tenant_id == r.tenant_id).all()
+                    chs = (
+                        db.query(NotificationChannelDB)
+                        .filter(NotificationChannelDB.tenant_id == r.tenant_id)
+                        .limit(int(app_config.MAX_QUERY_LIMIT))
+                        .all()
+                    )
                 for ch in chs:
                     results.append(self._channel_to_pydantic(ch))
             return results

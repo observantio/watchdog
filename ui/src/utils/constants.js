@@ -7,7 +7,15 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 `
 
 // API Configuration
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4319'
+function resolveDefaultApiBase() {
+  if (typeof globalThis === 'undefined' || !globalThis.location) {
+    return 'http://localhost:4319'
+  }
+  const { protocol, hostname } = globalThis.location
+  return `${protocol}//${hostname}:4319`
+}
+
+export const API_BASE = import.meta.env.VITE_API_URL || resolveDefaultApiBase()
 export const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL || 'http://localhost:8080/grafana'
 export const OIDC_PROVIDER_LABEL = import.meta.env.VITE_OIDC_PROVIDER_LABEL || 'Microsoft SSO / Keycloak'
 // External service endpoints (configurable via Vite env)

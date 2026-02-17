@@ -6,10 +6,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-"""
 
-
-"""
 Simple in-process rate limiting helpers.
 
 This provides pragmatic spam protection without adding infrastructure.
@@ -23,6 +20,7 @@ import logging
 import os
 import time
 import threading
+import hashlib
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
 from ipaddress import ip_address, ip_network
@@ -48,11 +46,12 @@ class RateLimitState:
 class InMemoryRateLimiter:
     """Fixed-window rate limiter (per process)."""
 
-    def __init__(self, *, gc_every: int = 1024, stale_after_seconds: int = 3600) -> None:
+    def __init__(self, *, gc_every: int = 1024, stale_after_seconds: int = 3600, max_states: int = 200000) -> None:
         self._lock = threading.Lock()
         self._states: Dict[str, RateLimitState] = {}
         self._gc_every = max(100, int(gc_every))
         self._stale_after_seconds = max(60, int(stale_after_seconds))
+        self._max_states = max(10_000, int(max_states))
         self._ops = 0
 
     def _cleanup(self, now: float, window_seconds: int) -> None:
@@ -76,6 +75,9 @@ class InMemoryRateLimiter:
 
         with self._lock:
             self._cleanup(now, window_seconds)
+            if key not in self._states and len(self._states) >= self._max_states:
+                oldest_key = min(self._states, key=lambda k: self._states[k].window_start)
+                self._states.pop(oldest_key, None)
             st = self._states.get(key)
             if st is None or (now - st.window_start) >= window_seconds:
                 st = RateLimitState(window_start=now, count=0)
@@ -154,13 +156,19 @@ def _build_rate_limiter() -> HybridRateLimiter:
     backend = (os.getenv("RATE_LIMIT_BACKEND", "auto") or "auto").strip().lower()
     redis_url = (os.getenv("RATE_LIMIT_REDIS_URL", "") or "").strip()
 
-    fallback = InMemoryRateLimiter()
+    fallback = InMemoryRateLimiter(
+        gc_every=config.RATE_LIMIT_GC_EVERY,
+        stale_after_seconds=config.RATE_LIMIT_STALE_AFTER_SECONDS,
+        max_states=config.RATE_LIMIT_MAX_STATES,
+    )
     if backend in {"memory", "in-memory", "inmemory"}:
         return HybridRateLimiter(None, fallback)
 
     if not redis_url:
         if backend == "redis":
             logger.warning("RATE_LIMIT_BACKEND=redis but RATE_LIMIT_REDIS_URL is not set; using in-memory limiter")
+        if config.IS_PRODUCTION:
+            logger.warning("Using in-memory rate limiter in production. Configure Redis-backed rate limiting for multi-instance safety.")
         return HybridRateLimiter(None, fallback)
 
     try:
@@ -169,6 +177,8 @@ def _build_rate_limiter() -> HybridRateLimiter:
         return HybridRateLimiter(redis_limiter, fallback)
     except Exception as exc:
         logger.warning("Failed to initialize Redis rate limiter, using in-memory fallback: %s", exc)
+        if config.IS_PRODUCTION:
+            logger.warning("Redis rate limiting initialization failed in production; traffic shaping is currently process-local only")
         return HybridRateLimiter(None, fallback)
 
 
@@ -251,7 +261,20 @@ def enforce_ip_rate_limit(
     window_seconds: int,
 ) -> None:
     ip = client_ip(request)
+    unknown_ip = ip == "unknown"
     if ip == "unknown":
+        fingerprint_source = "|".join(
+            [
+                request.headers.get("user-agent", ""),
+                request.headers.get("x-forwarded-for", ""),
+                request.headers.get("x-real-ip", ""),
+                request.headers.get("host", ""),
+                scope,
+            ]
+        )
+        fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:24]
+        ip = f"unknown-{fingerprint}"
+    if unknown_ip:
         logger.warning("Client IP could not be resolved for scope=%s; applying strict unknown-IP bucket", scope)
     enforce_rate_limit(key=f"ip:{ip}:{scope}", limit=limit, window_seconds=window_seconds)
 

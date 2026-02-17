@@ -6,7 +6,7 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 `
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useAutoRefresh } from '../hooks'
 import PageHeader from '../components/ui/PageHeader'
 import AutoRefreshControl from '../components/ui/AutoRefreshControl'
@@ -15,7 +15,8 @@ import { useToast } from '../contexts/ToastContext'
 import { fetchTempoServices, searchTraces, getTrace } from '../api'
 import { Card, Button, Select, Input, Alert, Badge, Spinner } from '../components/ui'
 import ServiceGraph from '../components/tempo/ServiceGraph'
-import TraceTimeline from '../components/tempo/TraceTimeline'
+const TraceResults = lazy(() => import('../components/tempo/TraceResults'))
+const TraceTimeline = lazy(() => import('../components/tempo/TraceTimeline'))
 import { formatDuration } from '../utils/formatters'
 import { getServiceName, hasSpanError } from '../utils/helpers'
 import { TIME_RANGES, DEFAULT_DURATION_RANGE, TRACE_STATUS_OPTIONS, REFRESH_INTERVALS } from '../utils/constants'
@@ -392,84 +393,9 @@ export default function TempoPage() {
           subtitle={filteredTraces.length ? `Found ${filteredTraces.length} trace${filteredTraces.length === 1 ? '' : 's'}` : 'Run a search to see results'}
         >
           <div className="mb-4 flex items-center justify-between pb-4 border-b border-sre-border" />
-          {loading ? (
-            <div className="py-12 flex flex-col items-center">
-              <Spinner size="lg" />
-              <p className="text-sre-text-muted mt-4">Searching traces...</p>
-            </div>
-          ) : filteredTraces.length > 0 ? (
-            <div className="space-y-2">
-              {filteredTraces.map((t) => {
-                const rootSpan = t.spans?.find(s => !s.parentSpanId && !s.parentSpanID) || t.spans?.[0]
-                const duration = rootSpan?.duration || 0
-                const traceHasError = t.spans?.some(hasSpanError)
-                const allServices = t.spans?.map(s => getServiceName(s)).filter(Boolean) || []
-                const serviceCount = new Set(allServices).size
-                const rootServiceName = rootSpan ? getServiceName(rootSpan) : 'unknown'
-                const traceId = t.traceID || t.traceId
-
-                return (
-                  <button
-                    key={traceId}
-                    onClick={() => handleTraceClick(traceId)}
-                    className="p-4 bg-sre-surface/50 border border-sre-border rounded-lg hover:border-sre-primary/50 transition-all cursor-pointer group w-full text-left"
-                    type="button"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className={`material-icons ${traceHasError ? 'text-red-500' : 'text-green-500'} group-hover:scale-110 transition-transform`}>
-                            {traceHasError ? 'error' : 'check_circle'}
-                          </span>
-                          <span className="font-mono text-sm text-sre-text font-semibold">
-                            {traceId?.substring(0, 16)}...
-                          </span>
-                          <Badge variant={traceHasError ? 'error' : 'success'}>
-                            {traceHasError ? 'ERROR' : 'OK'}
-                          </Badge>
-                          <Badge variant="info">{t.spans?.length || 0} spans</Badge>
-                          <Badge variant="default">{serviceCount} service{serviceCount !== 1 ? 's' : ''}</Badge>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <span className="text-sre-text-muted">Service: </span>
-                            <span className="text-sre-text font-semibold">{rootServiceName}</span>
-                          </div>
-                          {rootSpan?.operationName && (
-                            <div>
-                              <span className="text-sre-text-muted">Operation: </span>
-                              <span className="text-sre-text font-semibold">{rootSpan.operationName}</span>
-                            </div>
-                          )}
-                          <div>
-                            <span className="text-sre-text-muted">Duration: </span>
-                            <span className="text-sre-text font-semibold font-mono">{formatDuration(duration)}</span>
-                          </div>
-                          <div>
-                            <span className="text-sre-text-muted">Started: </span>
-                            <span className="text-sre-text font-semibold">
-                              {new Date(rootSpan?.startTime / 1000).toLocaleTimeString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <span className="material-icons text-sre-text-muted group-hover:text-sre-primary transition-colors">
-                        chevron_right
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
-              <span className="material-icons text-5xl text-sre-text-muted mb-4 block">timeline</span>
-              <h3 className="text-xl font-semibold text-sre-text mb-2">No Traces Found</h3>
-              <p className="text-sre-text-muted text-sm mb-6 max-w-md mx-auto">
-                Try adjusting your search criteria, expanding the time range, or pasting a trace ID above. You also must select the right key to look at.
-              </p>
-            </div>
-          )}
+          <Suspense fallback={<div className="py-12 flex flex-col items-center"><Spinner size="lg" /><p className="text-sre-text-muted mt-4">Searching traces...</p></div>}>
+            <TraceResults traces={filteredTraces} loading={loading} handleTraceClick={handleTraceClick} viewMode={viewMode} />
+          </Suspense>
         </Card>
       )}
 

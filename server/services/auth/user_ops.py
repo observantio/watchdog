@@ -6,10 +6,11 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+User-related operations for DatabaseAuthService.
+
+Includes user creation, fetching, updating, deletion, and permission management.
 """
-
-
-"""User-related operations for DatabaseAuthService."""
 
 from datetime import datetime, timezone
 import secrets
@@ -116,9 +117,13 @@ def create_user(service, user_create: UserCreate, tenant_id: str, creator_id: st
         return service._to_user_schema(user)
 
 
-def list_users(service, tenant_id: str) -> List[UserSchema]:
+def list_users(service, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
     with get_db_session() as db:
-        users = db.query(User).options(joinedload(User.groups), joinedload(User.api_keys)).filter_by(tenant_id=tenant_id).all()
+        requested_limit = int(limit) if limit is not None else int(getattr(config, "DEFAULT_QUERY_LIMIT", 100))
+        max_limit = int(getattr(config, "MAX_QUERY_LIMIT", 5000))
+        limit = max(1, min(requested_limit, max_limit))
+        offset = max(0, int(offset))
+        users = db.query(User).options(joinedload(User.groups), joinedload(User.api_keys)).filter_by(tenant_id=tenant_id).limit(limit).offset(offset).all()
         return [service._to_user_schema(user) for user in users]
 
 

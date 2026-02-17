@@ -151,7 +151,7 @@ function AppContent() {
 
       {location.pathname !== '/login' && (
         <footer className="container text-center text-xs text-sre-text-muted mt-8 mb-8">
-          © Be Observant — MIT License
+          © Be Observant — Apache 2.0 License — <a href="https://github.com/StefanKumarasinghe/BeObservant" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">GitHub</a>
         </footer>
       )}
     </div>

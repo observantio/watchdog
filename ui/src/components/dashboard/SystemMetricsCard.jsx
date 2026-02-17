@@ -104,8 +104,8 @@ export function SystemMetricsCard({ loading, systemMetrics }) {
         <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
           <div className="text-xs font-medium text-yellow-600 mb-1">Active Issues</div>
           <ul className="space-y-1">
-            {systemMetrics.stress.issues.map((issue, idx) => (
-              <li key={idx} className="text-xs text-sre-text-muted">• {issue}</li>
+            {systemMetrics.stress.issues.map((issue) => (
+              <li key={issue} className="text-xs text-sre-text-muted">• {issue}</li>
             ))}
           </ul>
         </div>

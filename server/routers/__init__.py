@@ -17,7 +17,6 @@ from .observability import grafana_router
 from .access import auth_router
 from .observability import agents_router
 from .platform import system_router
-from .platform import gateway_router
 
 __all__ = [
     "tempo_router",
@@ -27,5 +26,4 @@ __all__ = [
     "auth_router",
     "agents_router",
     "system_router",
-    "gateway_router",
 ]

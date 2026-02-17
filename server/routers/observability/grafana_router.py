@@ -6,10 +6,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Grafana API router with multi-tenancy, hide/show, team filtering, and UID search.
 """
-
-
-"""Grafana API router with multi-tenancy, hide/show, team filtering, and UID search."""
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request
 from fastapi.responses import Response
 from typing import Optional, List, Dict
@@ -115,6 +114,8 @@ async def search_dashboards(
     uid: Optional[str] = Query(None, description="Search by exact dashboard UID"),
     team_id: Optional[str] = Query(None, description="Filter by team/group ID"),
     show_hidden: bool = Query(False, description="Include hidden dashboards"),
+    limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
+    offset: int = Query(0, ge=0, description="Page offset"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
 ) -> List[DashboardSearchResult]:
@@ -131,6 +132,8 @@ async def search_dashboards(
         team_id=team_id,
         show_hidden=show_hidden,
         is_admin=is_admin,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -251,6 +254,8 @@ async def get_datasources(
     uid: Optional[str] = Query(None, description="Search by exact datasource UID"),
     team_id: Optional[str] = Query(None),
     show_hidden: bool = Query(False),
+    limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
+    offset: int = Query(0, ge=0, description="Page offset"),
     current_user: TokenData = Depends(
         require_permission_with_scope(Permission.READ_DATASOURCES, "grafana")
     ),
@@ -262,6 +267,7 @@ async def get_datasources(
         db=db, user_id=current_user.user_id,
         tenant_id=current_user.tenant_id, group_ids=user_group_ids(current_user),
         uid=uid, team_id=team_id, show_hidden=show_hidden, is_admin=is_admin,
+        limit=limit, offset=offset,
     )
 
 @router.get("/datasources/{uid}", response_model=Datasource)

@@ -6,12 +6,9 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 `
 
-const AlertItem = ({ alert, idx }) => {
+const AlertItem = ({ alert }) => {
   return (
-    <div
-      key={alert.fingerprint || alert.id || alert.starts_at || idx}
-      className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200"
-    >
+    <div className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-3">
