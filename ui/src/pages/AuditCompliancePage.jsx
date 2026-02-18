@@ -147,15 +147,8 @@ export default function AuditCompliancePage() {
         start: toIso(filters.start),
         end: toIso(filters.end),
       })
-      const blob = new Blob([typeof text === 'string' ? text : JSON.stringify(text)], { type: 'text/csv' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'audit-logs.csv'
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
+      const { downloadFile } = await import('../utils/helpers')
+      downloadFile(typeof text === 'string' ? text : JSON.stringify(text), 'audit-logs.csv', 'text/csv')
       toast.success('Audit CSV exported')
     } catch (err) {
       toast.error(err?.body?.detail || err?.message || 'Failed to export audit logs')
@@ -204,13 +197,12 @@ export default function AuditCompliancePage() {
   const pageEnd = items.length ? Math.min(filters.offset + items.length, filters.offset + filters.limit) : 0
   const pageLabel = `Showing ${pageStart} - ${pageEnd} (limit ${filters.limit})`
 
-  const copyToClipboard = useCallback(async (text) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success('Copied to clipboard')
-    } catch {
-      toast.error('Copy failed')
-    }
+  // use shared helper so behavior is consistent across the app
+  const copyText = useCallback(async (text) => {
+    const ok = await copyToClipboard(typeof text === 'string' ? text : JSON.stringify(text))
+    if (ok) toast.success('Copied to clipboard')
+    else toast.error('Copy failed')
+    return ok
   }, [toast])
 
   const clearFilter = (key) => {
@@ -231,7 +223,7 @@ export default function AuditCompliancePage() {
     <div className="animate-fade-in max-w-7xl mx-auto">
       <PageHeader icon="policy" title="Audit & Compliance" subtitle="Who viewed what, who changed resources, and token lifecycle events." />
 
-      <Card className="p-5 mb-4">
+      <Card className="mb-4">
         <div className="flex flex-col xl:flex-row gap-4 xl:items-end xl:justify-between">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full xl:max-w-5xl">
             <div>
@@ -275,8 +267,8 @@ export default function AuditCompliancePage() {
             <Input label="Search details" className="h-10" placeholder="Text in details JSON" value={filters.q} onChange={(e) => setFilters((prev) => ({ ...prev, q: e.target.value }))} />
           </div>
 
-          <div className="flex flex-wrap gap-2 items-end xl:justify-end">
-            <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className="w-32 h-10 flex-shrink-0">
+          <div className="flex px-4 flex-wrap gap-2 items-end justify-start">
+            <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className=" h-10">
               {LIMIT_OPTIONS.map((l) => (
                 <option key={l} value={l}>{l} / page</option>
               ))}
@@ -351,14 +343,26 @@ export default function AuditCompliancePage() {
                   const details = row.details || {}
                   const method = details.method || ''
                   const status = details.status_code || ''
-                  const resource = `${row.resource_type || '-'}${row.resource_id ? `/${row.resource_id}` : ''}`
-
+                  const resource = row.resource_type ? `[${row.resource_type}]${row.resource_id ? ` (${row.resource_id})` : ''}` : '-'
                   return (
-                    <tr key={row.id} className="align-top hover:bg-sre-surface/50" tabIndex={0} onClick={() => setSelected(row)}>
+                    <tr
+                      key={row.id}
+                      role="button"
+                      aria-label={`Open audit details ${row.id}`}
+                      className="align-top hover:bg-sre-surface/50"
+                      tabIndex={0}
+                      onClick={() => setSelected(row)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelected(row)
+                        }
+                      }}
+                    >
                       <td className="py-3 px-4 whitespace-nowrap align-middle">{formatLocal(row.created_at)}</td>
                       <td className="py-3 px-4 align-middle truncate">{userLabelById[row.user_id] || row.username || row.user_id || 'system'}</td>
                       <td className="py-3 px-4 font-medium align-middle truncate">{highlight(row.action || '-', filters.q)}</td>
-                      <td className="py-3 px-4 align-middle truncate">{resource}</td>
+                      <td className="py-3 px-4 align-middle truncate max-w-[240px]">{resource}</td>
                       <td className="py-3 px-4 align-middle">
                         {method && <span className="inline-block px-2 py-0.5 mr-2 rounded text-xs bg-sre-surface-variant">{method}</span>}
                         {status && <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">{status}</span>}
@@ -369,7 +373,7 @@ export default function AuditCompliancePage() {
                           <div className="truncate text-xs text-sre-text-muted flex-1">{highlight(JSON.stringify(details), filters.q)}</div>
                           <div className="flex-shrink-0 flex gap-2">
                             <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); setSelected(row) }}>View</button>
-                            <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); copyToClipboard(prettyJson(details)) }}>Copy</button>
+                            <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); copyText(prettyJson(details)) }}>Copy</button>
                           </div>
                         </div>
                       </td>

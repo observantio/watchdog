@@ -268,14 +268,11 @@ export default function LokiPage() {
     executeQuery([], term)
   }
 
-  async function copyToClipboard(text) {
-    const value = typeof text === 'string' ? text : JSON.stringify(text)
-    try {
-      await navigator.clipboard.writeText(value)
-      toast.success('Copied to clipboard')
-    } catch {
-      toast.error('Failed to copy to clipboard')
-    }
+  // use shared helper and surface toast from page
+  const copyToClipboard = async (text) => {
+    const ok = await (await import('../utils/helpers')).copyToClipboard(typeof text === 'string' ? text : JSON.stringify(text))
+    if (ok) toast.success('Copied to clipboard')
+    else toast.error('Failed to copy to clipboard')
   }
 
   return (

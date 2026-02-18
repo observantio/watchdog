@@ -16,6 +16,7 @@ import { Card, Spinner } from '../components/ui'
 import PasswordLoginForm from '../components/auth/PasswordLoginForm'
 import OIDCLoginButton from '../components/auth/OIDCLoginButton'
 import { OIDC_PROVIDER_LABEL } from '../utils/constants'
+import { copyToClipboard as clipboardCopy } from '../utils/helpers'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -147,25 +148,7 @@ export default function LoginPage() {
 
   const toast = useToast()
 
-  // Robust clipboard copy helper (always use textarea fallback)
-  const copyToClipboard = async (text) => {
-    try {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      ta.style.position = 'fixed'
-      ta.style.left = '-9999px'
-      ta.style.top = '-9999px'
-      ta.style.opacity = '0'
-      document.body.appendChild(ta)
-      ta.focus()
-      ta.select()
-      const success = document.execCommand('copy')
-      ta.remove()
-      if (!success) throw new Error('Copy failed')
-    } catch (ex) {
-      throw ex
-    }
-  }
+
 
   const verifyMfaSetup = async (e) => {
     e.preventDefault()
@@ -332,12 +315,9 @@ export default function LoginPage() {
                       className="px-3 py-2 bg-sre-surface border rounded"
                       onClick={async () => {
                         const txt = setupRecoveryCodes.join('\n')
-                        try {
-                          await copyToClipboard(txt)
-                          toast.success('Recovery codes copied')
-                        } catch (ex) {
-                          toast.error('Unable to copy')
-                        }
+                        const ok = await clipboardCopy(txt)
+                        if (ok) toast.success('Recovery codes copied')
+                        else toast.error('Unable to copy')
                       }}
                     >
                       Copy codes
@@ -347,16 +327,11 @@ export default function LoginPage() {
                       type="button"
                       className="px-3 py-2 bg-sre-surface border rounded"
                       onClick={() => {
-                        const blob = new Blob([setupRecoveryCodes.join('\n')], { type: 'text/plain' })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = 'beobservant-recovery-codes.txt'
-                        document.body.appendChild(a)
-                        a.click()
-                        a.remove()
-                        URL.revokeObjectURL(url)
-                        toast.success('Recovery codes downloaded')
+                        (async () => {
+                          const { downloadFile } = await import('../utils/helpers')
+                          downloadFile(setupRecoveryCodes.join('\n'), 'beobservant-recovery-codes.txt', 'text/plain')
+                          toast.success('Recovery codes downloaded')
+                        })()
                       }}
                     >
                       Download

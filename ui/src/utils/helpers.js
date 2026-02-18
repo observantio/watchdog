@@ -166,6 +166,24 @@ export function downloadJSON(data, filename = 'data.json') {
 }
 
 /**
+ * Download arbitrary text/binary as a file
+ * @param {string|Blob} content
+ * @param {string} filename
+ * @param {string} type
+ */
+export function downloadFile(content, filename = 'file.txt', type = 'text/plain') {
+  const blob = content instanceof Blob ? content : new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/**
  * Debounce function
  * @param {Function} func - Function to debounce
  * @param {number} wait - Wait time in ms

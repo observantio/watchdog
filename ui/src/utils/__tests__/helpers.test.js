@@ -47,4 +47,15 @@ describe('helpers', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
     await expect(copyToClipboard('abc')).resolves.toBe(true)
   })
+
+  it('downloads a file without throwing', () => {
+    if (typeof URL.createObjectURL !== 'function') {
+      vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob://x') })
+    } else {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob://x')
+    }
+    const append = vi.spyOn(document.body, 'appendChild')
+    expect(() => downloadFile('hello', 'file.txt', 'text/plain')).not.toThrow()
+    append.mockRestore()
+  })
 })

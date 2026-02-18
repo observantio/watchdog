@@ -231,6 +231,21 @@ export function useToggle(initialValue = false) {
   return [value, toggle, setTrue, setFalse]
 }
 
+/**
+ * Lock body scroll when `locked` is true and restore when false/unmount
+ */
+export function useBodyScrollLock(locked) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    if (locked) {
+      document.body.style.overflow = 'hidden'
+    }
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [locked])
+}
+
 export { useDashboardData } from './useDashboardData'
 export { useAgentActivity } from './useAgentActivity'
 export { usePersistentOrder } from './usePersistentOrder'

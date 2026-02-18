@@ -10,6 +10,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import PropTypes from 'prop-types'
 import clsx from 'clsx'
+import { useBodyScrollLock } from '../hooks'
 
 /**
  * Button component with SRE styling
@@ -558,6 +559,9 @@ export function Modal({
   const onCloseRef = React.useRef(onClose)
   React.useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
+  // lock body scroll while modal is open
+  useBodyScrollLock(isOpen)
+
   React.useEffect(() => {
     const getFocusableElements = () => {
       const root = contentRef.current
@@ -597,13 +601,12 @@ export function Modal({
       }
     }
 
-    const prevBodyOverflow = document.body.style.overflow
     const prevHtmlOverflow = document.documentElement.style.overflow
 
     if (isOpen) {
       previouslyFocusedElementRef.current = document.activeElement
       document.addEventListener('keydown', handleEscape)
-      document.body.style.overflow = 'hidden'
+      // document.body overflow is handled by useBodyScrollLock hook
       document.documentElement.style.overflow = 'hidden'
       // focus modal content to avoid focus landing on backdrop
       setTimeout(() => {
@@ -623,7 +626,6 @@ export function Modal({
 
     return () => {
       document.removeEventListener('keydown', handleEscape)
-      document.body.style.overflow = prevBodyOverflow
       document.documentElement.style.overflow = prevHtmlOverflow
       if (previouslyFocusedElementRef.current && typeof previouslyFocusedElementRef.current.focus === 'function') {
         try {
