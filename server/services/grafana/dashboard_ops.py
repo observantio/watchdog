@@ -15,6 +15,7 @@ import uuid
 from typing import List, Optional, Dict, Any
 
 from fastapi import HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
@@ -143,9 +144,9 @@ async def search_dashboards(
         dashboard = await service.grafana_service.get_dashboard(uid)
         if not dashboard:
             return []
-        db_dash = db.query(GrafanaDashboard).filter(
+        db_dash = await run_in_threadpool(lambda: db.query(GrafanaDashboard).filter(
             GrafanaDashboard.grafana_uid == uid
-        ).first()
+        ).first())
         if db_dash:
             if check_dashboard_access(service, db, uid, user_id, tenant_id, group_ids) is None:
                 return []
@@ -192,21 +193,21 @@ async def search_dashboards(
         )
         accessible_uids = set(accessible_uids)
 
-    all_registered_uids = {
+    all_registered_uids = await run_in_threadpool(lambda: {
         uid
         for (uid,) in db.query(GrafanaDashboard.grafana_uid)
         .filter(GrafanaDashboard.tenant_id == tenant_id)
         .limit(int(config.MAX_QUERY_LIMIT))
         .all()
-    }
+    })
 
-    db_dashboards = {
+    db_dashboards = await run_in_threadpool(lambda: {
         d.grafana_uid: d
         for d in db.query(GrafanaDashboard)
         .filter(GrafanaDashboard.tenant_id == tenant_id)
         .limit(int(config.MAX_QUERY_LIMIT))
         .all()
-    }
+    })
 
     filtered = []
     for d in all_dashboards:
@@ -241,7 +242,7 @@ async def search_dashboards(
 
 
 async def get_dashboard(service, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str]) -> Optional[Dict[str, Any]]:
-    db_dashboard = db.query(GrafanaDashboard).filter(GrafanaDashboard.grafana_uid == uid).first()
+    db_dashboard = await run_in_threadpool(lambda: db.query(GrafanaDashboard).filter(GrafanaDashboard.grafana_uid == uid).first())
     if db_dashboard and check_dashboard_access(service, db, uid, user_id, tenant_id, group_ids) is None:
         return None
     return await service.grafana_service.get_dashboard(uid)
@@ -274,6 +275,12 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
             continue
 
     panels = dash.get("panels") or []
+
+    # Allow empty dashboards (created via the form editor) — they don't need
+    # datasource references until panels/targets are added.
+    if not panels:
+        return True
+
     for panel in panels:
         panel_has_ds = False
         try:

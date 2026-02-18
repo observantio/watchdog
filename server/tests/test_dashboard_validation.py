@@ -9,6 +9,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 
+from tests._env import ensure_test_env
+ensure_test_env()
+
 import pytest
 
 from services.grafana.dashboard_ops import _dashboard_has_datasource
@@ -39,3 +42,15 @@ def test_dashboard_with_non_expr_target_but_no_datasource_is_allowed():
     # targets that don't look like metric queries shouldn't force datasource
     dash = {"panels": [{"targets": [{"text": "some text"}]}]}
     assert _dashboard_has_datasource(dash) is False
+
+
+def test_dashboard_with_no_panels_is_allowed():
+    # dashboards created from the form editor often contain no panels — allow creation
+    dash = {"panels": []}
+    assert _dashboard_has_datasource(dash) is True
+
+
+def test_dashboard_with_title_but_no_panels_is_allowed():
+    # partial dashboard objects (e.g. only metadata/title) should also be allowed
+    dash = {"title": "Empty Dashboard"}
+    assert _dashboard_has_datasource(dash) is True
