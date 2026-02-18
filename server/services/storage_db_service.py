@@ -27,9 +27,12 @@ from database import get_db_session
 from config import config as app_config
 from services.audit_context import get_request_audit_context
 from services.common.visibility import normalize_storage_visibility
+from services.common.access import _is_tenant_admin, _resolve_groups, _assign_shared_groups, _has_access
+from services.common.meta import INCIDENT_META_KEY, _parse_meta, _safe_group_ids
+from services.common.pagination import _cap_pagination
+from services.common.encryption import encrypt_config as _encrypt_config_helper, decrypt_config as _decrypt_config_helper
 
-logger = logging.getLogger(__name__)
-INCIDENT_META_KEY = "beobservant_meta"
+logger = logging.getLogger(__name__) 
 
 
 def _normalize_visibility(value: Optional[str]) -> str:
@@ -49,27 +52,13 @@ def _get_shared_group_ids(db_obj) -> List[str]:
     return [g.id for g in db_obj.shared_groups] if db_obj.shared_groups else []
 
 
-def _parse_meta(annotations: Any) -> Dict[str, Any]:
-    if not isinstance(annotations, dict):
-        return {}
-    raw = annotations.get(INCIDENT_META_KEY)
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw)
-        except JSONDecodeError:
-            return {}
-    return {}
 
 
-def _safe_group_ids(meta: Dict[str, Any]) -> List[str]:
-    return [str(g) for g in (meta.get("shared_group_ids") or []) if isinstance(g, str) and g.strip()]
 
 
-def _cap_pagination(limit: Optional[int], offset: int) -> Tuple[int, int]:
-    capped_limit = max(1, min(int(limit) if limit is not None else int(app_config.DEFAULT_QUERY_LIMIT), int(app_config.MAX_QUERY_LIMIT)))
-    return capped_limit, max(0, int(offset))
+
+
+
 
 
 def _log_incident_audit(db: Session, *, tenant_id: str, user_id: str, action: str, incident_id: str, details: Dict[str, Any]) -> None:
@@ -81,50 +70,13 @@ def _log_incident_audit(db: Session, *, tenant_id: str, user_id: str, action: st
     ))
 
 
-def _is_tenant_admin(db: Session, tenant_id: str, user_id: Optional[str]) -> bool:
-    if not user_id:
-        return False
-    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
-    return bool(user and (getattr(user, "is_superuser", False) or str(getattr(user, "role", "")).lower() == "admin"))
 
 
-def _resolve_groups(
-    db: Session, tenant_id: str, group_ids: List[str], *,
-    actor_user_id: Optional[str] = None,
-    actor_group_ids: Optional[List[str]] = None,
-    enforce_membership: bool = True,
-) -> List[Group]:
-    normalized = [s for gid in (group_ids or []) if (s := str(gid).strip())]
-    if not normalized:
-        return []
-
-    groups = db.query(Group).filter(Group.tenant_id == tenant_id, Group.id.in_(normalized)).all()
-    missing = sorted(set(normalized) - {g.id for g in groups})
-    if missing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid group ids: {missing}")
-
-    if enforce_membership and not _is_tenant_admin(db, tenant_id, actor_user_id):
-        actor_groups = set(actor_group_ids or [])
-        unauthorized = sorted({gid for gid in normalized if gid not in actor_groups})
-        if unauthorized:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"User not member of groups: {unauthorized}")
-
-    return groups
 
 
-def _has_access(
-    visibility: str, created_by: Optional[str], user_id: str,
-    shared_group_ids: List[str], user_group_ids: List[str], require_write: bool = False,
-) -> bool:
-    if created_by == user_id:
-        return True
-    if require_write:
-        return False
-    if visibility in ("public", "tenant"):
-        return True
-    if visibility == "group" and user_group_ids:
-        return bool(set(shared_group_ids) & set(user_group_ids))
-    return False
+
+
+
 
 
 def _resolve_rule_by_alertname(
@@ -144,43 +96,27 @@ def _resolve_rule_by_alertname(
         return None
 
 
-def _assign_shared_groups(db_obj, db: Session, tenant_id: str, visibility: str, group_ids: Optional[List[str]], *, actor_user_id: str, actor_group_ids: Optional[List[str]]) -> None:
-    if group_ids is None:
-        return
-    db_obj.shared_groups = (
-        _resolve_groups(db, tenant_id, group_ids, actor_user_id=actor_user_id, actor_group_ids=actor_group_ids)
-        if visibility == "group" else []
-    )
+
 
 
 class DatabaseStorageService:
     def __init__(self) -> None:
-        self._fernet: Optional[Fernet] = None
-        if app_config.DATA_ENCRYPTION_KEY:
-            try:
-                self._fernet = Fernet(app_config.DATA_ENCRYPTION_KEY)
-                logger.info("Channel config encryption enabled (Fernet)")
-            except ValueError:
-                logger.error("Invalid DATA_ENCRYPTION_KEY – channel config will be stored unencrypted")
+        # Encryption is centralized in services.common.encryption; constructor retained for compatibility.
+        logger.debug("DatabaseStorageService initialized (encryption handled centrally)")
 
     def _encrypt_config(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
-        if not self._fernet:
-            return cfg
         try:
-            return {"__encrypted__": self._fernet.encrypt(json.dumps(cfg, default=str).encode()).decode()}
+            return _encrypt_config_helper(cfg)
         except Exception:
             logger.exception("Failed to encrypt channel config")
             return cfg
 
     def _decrypt_config(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
-        if "__encrypted__" not in cfg:
-            return cfg
-        if not self._fernet:
-            raise ValueError("Encrypted channel config found but DATA_ENCRYPTION_KEY is not set")
         try:
-            return json.loads(self._fernet.decrypt(cfg["__encrypted__"].encode()).decode())
-        except InvalidToken as exc:
-            raise ValueError("Cannot decrypt channel config – wrong key?") from exc
+            return _decrypt_config_helper(cfg)
+        except Exception:
+            logger.exception("Failed to decrypt channel config")
+            raise
 
     def _rule_to_pydantic(self, r: AlertRuleDB) -> AlertRulePydantic:
         return AlertRulePydantic(

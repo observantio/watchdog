@@ -637,7 +637,6 @@ export default function IncidentBoardPage() {
                     <span className="material-icons text-sm mr-2">group</span>
                     Group
                   </Button>
-                  <HelpTooltip text="Filter incidents by visibility: Public (visible to all), Private (only you), Group (members of selected group)." />
                   {incidentVisibilityTab === 'group' && (
                     groups.length > 0 ? (
                       <Select
@@ -693,8 +692,7 @@ export default function IncidentBoardPage() {
                     onChange={(e) => { setShowHiddenResolved(e.target.checked) }}
                   />
                   <span>Show hidden</span>
-                  <HelpTooltip text="Include resolved incidents that are normally hidden from the board. Useful for reviewing recent incident history." />
-                </label>
+                  </label>
               </div>
             </div>
           </div>
@@ -703,8 +701,6 @@ export default function IncidentBoardPage() {
         {/* Board */}
         {incidents.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[600px]">
-            {/** Board column - extracted to remove duplication and improve readability */}
-            {/** Reusable column component */}
             {(() => {
               const Column = ({ title, count, colorDot, icon, help, items, empty }) => (
                 <div className="flex flex-col">

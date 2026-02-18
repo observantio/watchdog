@@ -18,6 +18,11 @@ from middleware.resilience import with_retry, with_timeout
 from models.observability.tempo_models import Span, Trace, TraceQuery, TraceResponse
 from services.common.http_client import create_async_client
 
+from services.tempo import parsers as tempo_parsers
+from services.tempo import promql as tempo_promql
+from services.tempo import metrics as tempo_metrics
+from services.tempo import params as tempo_params
+
 logger = logging.getLogger(__name__)
 
 _SERVICE_NAME_KEY = "service.name"
@@ -75,78 +80,34 @@ class TempoService:
         step_s: int = 300,
         tenant_id: str = config.DEFAULT_ORG_ID,
     ) -> Dict[str, Any]:
-        _empty = {"status": "error", "data": {"result": []}}
-        if not self._metrics_enabled:
-            return _empty
-
-        params: Dict[str, Any] = {"query": promql, "step": step_s}
-        if start_us:
-            params["start"] = int(start_us / 1_000_000)
-        if end_us:
-            params["end"] = int(end_us / 1_000_000)
-
-        headers = self._get_headers(tenant_id)
-
-        async def _fetch(url: str, req_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-            try:
-                resp = await self._client.get(url, params=req_params, headers=headers)
-                if 400 <= resp.status_code < 500:
-                    self._metrics_enabled = False
-                    self._observe("tempo_metrics_query_errors_total")
-                    logger.debug("Metrics endpoint %s returned %s, disabling", url, resp.status_code)
-                    return None
-                resp.raise_for_status()
-                self._observe("tempo_metrics_queries_total")
-                return resp.json()
-            except httpx.HTTPError as e:
-                self._observe("tempo_metrics_query_errors_total")
-                logger.debug("Metrics query failed for %s: %s", url, e)
-                return None
-
-        result = await _fetch(f"{self.tempo_url}/api/metrics/query_range", params)
-        if result is not None:
-            return result
-
-        mimir_params = {**params, "start": params.get("start"), "end": params.get("end")}
-        result = await _fetch(f"{config.MIMIR_URL.rstrip('/')}/api/v1/query_range", mimir_params)
-        return result if result is not None else _empty
+        """Delegate to `services.tempo.metrics.query_metrics_range` and preserve metrics flag."""
+        result, metrics_enabled = await tempo_metrics.query_metrics_range(
+            client=self._client,
+            promql=promql,
+            start_us=start_us,
+            end_us=end_us,
+            step_s=step_s,
+            tenant_id=tenant_id,
+            tempo_url=self.tempo_url,
+            mimir_url=config.MIMIR_URL,
+            get_headers=self._get_headers,
+            observe=self._observe,
+            metrics_enabled=self._metrics_enabled,
+        )
+        self._metrics_enabled = metrics_enabled
+        return result
 
     def _build_promql_selector(self, service: Optional[str]) -> List[str]:
-        if not service:
-            return ["{}"]
-        return list(dict.fromkeys([
-            f'{{resource.service.name="{service}"}}',
-            f'{{service_name="{service}"}}',
-            f'{{service="{service}"}}',
-            f'{{service.name="{service}"}}',
-        ]))
+        return tempo_promql.build_promql_selector(service)
 
     def _build_count_promql(self, service: Optional[str], range_s: int) -> str:
-        parts = [f"count_over_time({sel}[{range_s}s])" for sel in self._build_promql_selector(service)]
-        return f"sum({ ' + '.join(parts) })"
+        return tempo_promql.build_count_promql(service, range_s)
 
     def _extract_metric_values(self, metrics_resp: Dict[str, Any]) -> List[List[Any]]:
-        results = (metrics_resp.get("data") or {}).get("result") if isinstance(metrics_resp, dict) else None
-        if not results:
-            return []
-        ts_map: Dict[int, int] = {}
-        for series in results:
-            for ts, v in series.get("values") or []:
-                try:
-                    ts_map[int(float(ts))] = ts_map.get(int(float(ts)), 0) + int(float(v))
-                except (TypeError, ValueError):
-                    continue
-        return [[ts, str(ts_map[ts])] for ts in sorted(ts_map)]
+        return tempo_metrics.extract_metric_values(metrics_resp)
 
     def _parse_attributes(self, attrs: List[Dict[str, Any]]) -> Dict[str, Any]:
-        parsed: Dict[str, Any] = {}
-        for attr in attrs or []:
-            value = attr.get("value", {})
-            for val_type in _OTLP_VALUE_TYPES:
-                if val_type in value:
-                    parsed[attr.get("key", "")] = value[val_type]
-                    break
-        return parsed
+        return tempo_parsers.parse_attributes(attrs)
 
     def _parse_span(
         self,
@@ -156,108 +117,16 @@ class TempoService:
         service_name: Optional[str],
         resource_attrs: Optional[Dict[str, Any]] = None,
     ) -> Span:
-        attr_map = self._parse_attributes(span_data.get("attributes", []))
-        tags = [{"key": k, "value": v} for k, v in attr_map.items()]
-
-        if service_name and _SERVICE_NAME_KEY not in attr_map:
-            attr_map[_SERVICE_NAME_KEY] = service_name
-            tags.append({"key": _SERVICE_NAME_KEY, "value": service_name})
-
-        if resource_attrs:
-            for k, v in resource_attrs.items():
-                attr_map.setdefault(k, v)
-
-        start_time = int(span_data.get("startTimeUnixNano", 0)) // 1000
-        end_time = int(span_data.get("endTimeUnixNano", 0)) // 1000
-        parent_span_id = span_data.get("parentSpanId") or None
-
-        return Span(
-            spanID=span_data.get("spanId", ""),
-            traceID=trace_id,
-            parentSpanID=parent_span_id,
-            operationName=span_data.get("name", ""),
-            startTime=start_time,
-            duration=end_time - start_time,
-            tags=tags,
-            serviceName=service_name,
-            attributes=attr_map,
-            processID=process_id,
-        )
+        return tempo_parsers.parse_span(span_data, trace_id, process_id, service_name, resource_attrs)
 
     def _parse_tempo_trace(self, trace_id: str, data: Dict[str, Any]) -> Trace:
-        spans, processes = [], {}
-        for batch in data.get("batches", []):
-            resource_attrs = self._parse_attributes(batch.get("resource", {}).get("attributes", []))
-            service_name = (
-                resource_attrs.get(_SERVICE_NAME_KEY)
-                or resource_attrs.get(_SERVICE_ALIAS_KEY)
-                or resource_attrs.get("serviceName")
-                or "unknown"
-            )
-            process_id = str(service_name)
-            processes[process_id] = {
-                "serviceName": service_name,
-                "resource": batch.get("resource", {}),
-                "attributes": resource_attrs,
-            }
-            for scope in batch.get("scopeSpans", []):
-                spans.extend(
-                    self._parse_span(s, trace_id, process_id, service_name, resource_attrs)
-                    for s in scope.get("spans", [])
-                )
-        return Trace(traceID=trace_id, spans=spans, processes=processes)
+        return tempo_parsers.parse_tempo_trace(trace_id, data)
 
     def _build_search_params(self, query: TraceQuery) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"limit": query.limit}
-        tags = {}
-        if query.service:
-            tags[_SERVICE_NAME_KEY] = query.service
-        if query.operation:
-            tags["name"] = query.operation
-        if query.tags:
-            tags.update(query.tags)
-        if tags:
-            params["tags"] = " && ".join(f'{k}="{v}"' for k, v in tags.items())
-        if query.start:
-            params["start"] = int(query.start) // 1_000_000
-        if query.end:
-            params["end"] = int(query.end) // 1_000_000
-        if query.min_duration:
-            params["minDuration"] = query.min_duration
-        if query.max_duration:
-            params["maxDuration"] = query.max_duration
-        return params
+        return tempo_params.build_search_params(query)
 
     def _build_summary_trace(self, trace_data: Dict[str, Any]) -> Optional[Trace]:
-        trace_id = trace_data.get("traceID")
-        if not trace_id:
-            return None
-        try:
-            start_ns = int(trace_data["startTimeUnixNano"]) if trace_data.get("startTimeUnixNano") else None
-        except (TypeError, ValueError):
-            start_ns = None
-        try:
-            duration_ms = int(trace_data["durationMs"]) if trace_data.get("durationMs") is not None else None
-        except (TypeError, ValueError):
-            duration_ms = None
-
-        return Trace(
-            traceID=trace_id,
-            spans=[{
-                "spanID": "root",
-                "traceID": trace_id,
-                "parentSpanID": None,
-                "operationName": trace_data.get("rootTraceName") or "",
-                "startTime": int(start_ns // 1000) if start_ns else 0,
-                "duration": int(duration_ms * 1000) if duration_ms is not None else 0,
-                "tags": [],
-                "serviceName": trace_data.get("rootServiceName") or trace_data.get("rootService") or "unknown",
-                "attributes": {},
-                "processID": trace_data.get("rootServiceName") or "unknown",
-            }],
-            processes={},
-            warnings=["Trace summary only"],
-        )
+        return tempo_parsers.build_summary_trace(trace_data)
 
     @with_retry()
     @with_timeout()

@@ -702,15 +702,19 @@ export default function IntegrationsPage() {
         isOpen={deleteConfirm.show}
         onCancel={() => setDeleteConfirm({ show: false, type: '', id: '', name: '' })}
         onConfirm={async () => {
+          // snapshot the target (avoid reading `deleteConfirm` after async waits)
+          const target = { ...deleteConfirm }
+          // close modal immediately to prevent race/propagation re-open issues
+          setDeleteConfirm({ show: false, type: '', id: '', name: '' })
           try {
-            if (deleteConfirm.type === 'channel') {
-              await handleDeleteChannel(deleteConfirm.id)
-            } else if (deleteConfirm.type === 'Jira integration') {
-              await handleDeleteJiraIntegration(deleteConfirm.id)
+            if (target.type === 'channel') {
+              await handleDeleteChannel(target.id)
+            } else if (target.type === 'Jira integration') {
+              await handleDeleteJiraIntegration(target.id)
             }
-            setDeleteConfirm({ show: false, type: '', id: '', name: '' })
           } catch (e) {
-            // Error already handled in handleDelete functions
+            // Error already handled in handleDelete functions — re-open so user can retry
+            setDeleteConfirm(target)
           }
         }}
         title="Confirm Delete"

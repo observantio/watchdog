@@ -13,6 +13,9 @@ import types
 services_mod = types.ModuleType("services")
 sys.modules["services"] = services_mod
 
+# Preserve any existing `config` module so we don't pollute other tests
+_original_config_module = sys.modules.get("config")
+
 cfg_mod = types.ModuleType("config")
 from types import SimpleNamespace
 cfg_mod.config = SimpleNamespace(
@@ -97,6 +100,14 @@ from server.services.grafana_proxy_service import GrafanaProxyService
 from server.db_models import Base, Group
 from fastapi import HTTPException
 GrafanaAPIError = gf_mod.GrafanaAPIError
+
+
+def teardown_module(module):
+    # Restore the original `config` module if present to avoid leaking into other tests
+    if _original_config_module is not None:
+        sys.modules["config"] = _original_config_module
+    else:
+        sys.modules.pop("config", None)
 
 def make_session():
     engine = create_engine("sqlite:///:memory:")

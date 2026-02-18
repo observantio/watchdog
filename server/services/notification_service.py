@@ -13,15 +13,18 @@ import os
 from typing import Optional
 from datetime import datetime
 import re
-import aiosmtplib
 from email.message import EmailMessage
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, retry_if_exception_type, before_sleep_log
 
 from models.alerting.channels import NotificationChannel, ChannelType
 from models.alerting.alerts import Alert
 from config import config
-from services.common.url_utils import is_safe_http_url
 from services.common.http_client import create_async_client
+
+from services.notification import payloads as notification_payloads
+from services.notification import validators as notification_validators
+from services.notification import transport as notification_transport
+from services.notification import email_providers as notification_email
+from services.notification import senders as notification_senders
 
 logger = logging.getLogger(__name__)
 NO_VALUE = "(none)"
@@ -35,101 +38,28 @@ class NotificationService:
 
     @staticmethod
     def _as_bool(value) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "on"}
-        return False
+        return notification_validators._as_bool(value)
 
     def validate_channel_config(self, channel_type: str, channel_config: dict | None) -> list[str]:
-        cfg = channel_config or {}
-        normalized_type = str(channel_type or "").strip().lower()
-        errors: list[str] = []
+        return notification_validators.validate_channel_config(channel_type, channel_config)
 
-        if normalized_type == "email":
-            to_field = cfg.get('to') or cfg.get('recipient')
-            recipients = [r.strip() for r in re.split(r"[,;\s]+", str(to_field or "")) if r.strip()]
-            if not recipients:
-                errors.append("Email channel requires at least one recipient in 'to'")
 
-            provider = (cfg.get('email_provider') or cfg.get('emailProvider') or 'smtp').strip().lower()
-            if provider == 'smtp':
-                smtp_host = cfg.get('smtp_host') or cfg.get('smtpHost')
-                if not str(smtp_host or "").strip():
-                    errors.append("SMTP email channel requires 'smtp_host'")
-            elif provider == 'sendgrid':
-                api_key = cfg.get('sendgrid_api_key') or cfg.get('sendgridApiKey') or cfg.get('api_key') or cfg.get('apiKey')
-                if not str(api_key or "").strip():
-                    errors.append("SendGrid email channel requires 'sendgrid_api_key'")
-            elif provider == 'resend':
-                api_key = cfg.get('resend_api_key') or cfg.get('resendApiKey') or cfg.get('api_key') or cfg.get('apiKey')
-                if not str(api_key or "").strip():
-                    errors.append("Resend email channel requires 'resend_api_key'")
-            else:
-                errors.append(f"Unsupported email provider '{provider}'")
 
-        elif normalized_type == "slack":
-            webhook_url = cfg.get('webhook_url') or cfg.get('webhookUrl')
-            if not is_safe_http_url(webhook_url):
-                errors.append("Slack channel requires a valid 'webhook_url'")
-
-        elif normalized_type == "teams":
-            webhook_url = cfg.get('webhook_url') or cfg.get('webhookUrl')
-            if not is_safe_http_url(webhook_url):
-                errors.append("Teams channel requires a valid 'webhook_url'")
-
-        elif normalized_type == "webhook":
-            webhook_url = cfg.get('url') or cfg.get('webhook_url') or cfg.get('webhookUrl')
-            if not is_safe_http_url(webhook_url):
-                errors.append("Webhook channel requires a valid URL")
-
-        elif normalized_type == "pagerduty":
-            routing_key = cfg.get('routing_key') or cfg.get('integrationKey')
-            if not str(routing_key or "").strip():
-                errors.append("PagerDuty channel requires 'routing_key'")
-
-        return errors
-
-    def _is_transient_http_exception(self, exc) -> bool:
-        """Return True for exceptions that should be retried for HTTP calls."""
-        if isinstance(exc, httpx.RequestError):
-            return True
-        if isinstance(exc, httpx.HTTPStatusError):
-            status = exc.response.status_code if exc.response is not None else 0
-            return 500 <= status < 600
-        return False
-
-    @retry(
-        retry=retry_if_exception(lambda e: self._is_transient_http_exception(e)),
-        stop=stop_after_attempt(config.MAX_RETRIES),
-        wait=wait_exponential(multiplier=config.RETRY_BACKOFF),
-        before_sleep=before_sleep_log(logger, logging.INFO),
-        reraise=True,
-    )
     async def _post_with_retry(self, url: str, json: dict | None = None, headers: dict | None = None, params: dict | None = None) -> httpx.Response:
-        resp = await self._client.post(url, json=json, headers=headers, params=params)
-        resp.raise_for_status()
-        return resp
+        """Delegate HTTP POST with retry to module-level transport helper."""
+        return await notification_transport.post_with_retry(self._client, url, json=json, headers=headers, params=params)
 
-    @retry(
-        retry=retry_if_exception_type(Exception),
-        stop=stop_after_attempt(config.MAX_RETRIES),
-        wait=wait_exponential(multiplier=config.RETRY_BACKOFF),
-        before_sleep=before_sleep_log(logger, logging.INFO),
-        reraise=True,
-    )
     async def _send_smtp_with_retry(self, message: EmailMessage, hostname: str, port: int, username: str | None = None, password: str | None = None, start_tls: bool = False, use_tls: bool = False):
-        return await aiosmtplib.send(
-            message=message,
+        """Delegate SMTP send with retry to module-level transport helper."""
+        return await notification_transport.send_smtp_with_retry(
+            message,
             hostname=hostname,
             port=port,
             username=username,
             password=password,
             start_tls=start_tls,
-            timeout=self.timeout,
             use_tls=use_tls,
+            timeout=self.timeout,
         )
 
     async def send_notification(
@@ -318,7 +248,6 @@ class NotificationService:
         """
         channel_config = channel.config or {}
 
-        # recipients
         to_field = channel_config.get('to') or channel_config.get('recipient')
         if not to_field:
             logger.error("Email channel '%s' has no 'to' address configured", channel.name)
@@ -344,46 +273,24 @@ class NotificationService:
             if not api_key:
                 logger.error("SendGrid API key not configured for email channel %s", channel.name)
                 return False
-            payload = {
-                "personalizations": [{"to": [{"email": recipient} for recipient in recipients]}],
-                "from": {"email": smtp_from},
-                "subject": subject,
-                "content": [{"type": "text/plain", "value": body}],
-            }
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-            try:
-                await self._post_with_retry("https://api.sendgrid.com/v3/mail/send", json=payload, headers=headers)
+            sent = await notification_email.send_via_sendgrid(self._client, api_key, subject, body, recipients, smtp_from)
+            if sent:
                 logger.info("Email notification sent via SendGrid (channel=%s)", channel.name)
                 return True
-            except Exception as exc:
-                logger.exception("Failed SendGrid email for channel %s after retries: %s", channel.name, exc)
-                return False
+            logger.error("Failed SendGrid email for channel %s", channel.name)
+            return False
 
         if provider == 'resend':
             api_key = channel_config.get('resend_api_key') or channel_config.get('resendApiKey') or channel_config.get('api_key') or channel_config.get('apiKey')
             if not api_key:
                 logger.error("Resend API key not configured for email channel %s", channel.name)
                 return False
-            payload = {
-                "from": smtp_from,
-                "to": recipients,
-                "subject": subject,
-                "text": body,
-            }
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-            try:
-                await self._post_with_retry("https://api.resend.com/emails", json=payload, headers=headers)
+            sent = await notification_email.send_via_resend(self._client, api_key, subject, body, recipients, smtp_from)
+            if sent:
                 logger.info("Email notification sent via Resend (channel=%s)", channel.name)
                 return True
-            except Exception as exc:
-                logger.exception("Failed Resend email for channel %s after retries: %s", channel.name, exc)
-                return False
+            logger.error("Failed Resend email for channel %s", channel.name)
+            return False
 
         if provider != 'smtp':
             logger.error("Unsupported email provider '%s' for channel %s", provider, channel.name)
@@ -420,219 +327,47 @@ class NotificationService:
                 smtp_pass = smtp_api_key
 
         # Build message
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = smtp_from
-        msg["To"] = ", ".join(recipients)
-        msg.set_content(body)
+        msg = notification_email.build_smtp_message(subject, body, smtp_from, recipients)
 
         logger.info("Sending email notification to %s via %s:%s (channel=%s)", recipients, smtp_host, smtp_port, channel.name)
 
-        try:
-            await self._send_smtp_with_retry(
-                message=msg,
-                hostname=smtp_host,
-                port=smtp_port,
-                username=smtp_user,
-                password=smtp_pass,
-                start_tls=use_starttls,
-                use_tls=use_ssl,
-            )
+        sent = await notification_email.send_via_smtp(msg, smtp_host, smtp_port, smtp_user, smtp_pass, use_starttls, use_ssl, timeout=self.timeout)
+        if sent:
             logger.info("Email notification sent (channel=%s)", channel.name)
             return True
-        except Exception as exc:
-            logger.exception("Failed to send email for channel %s after retries: %s", channel.name, exc)
-            return False
+        logger.error("Failed to send email for channel %s after retries", channel.name)
+        return False
     
     async def _send_slack(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
-        """Send Slack notification."""
-        channel_config = channel.config
-        webhook_url = channel_config.get('webhook_url') or channel_config.get('webhookUrl')
-        
-        if not is_safe_http_url(webhook_url):
-            logger.error("Slack webhook URL is missing or invalid")
-            return False
-        
-        color = "danger" if action == "firing" else "good"
-        if alert.labels.get('severity') == 'warning':
-            color = "warning"
-        
-        summary = self._get_annotation(alert, "summary")
-        description = self._get_annotation(alert, "description")
-        payload = {
-            "attachments": [{
-                "color": color,
-                "title": f"[{action.upper()}] {self._get_label(alert, 'alertname', 'Alert')}",
-                "text": self._get_alert_text(alert),
-                "fields": [
-                    {
-                        "title": "Severity",
-                        "value": self._get_label(alert, 'severity', 'unknown'),
-                        "short": True
-                    },
-                    {
-                        "title": "Status",
-                        "value": action,
-                        "short": True
-                    },
-                    {
-                        "title": "Summary",
-                        "value": summary or NO_VALUE,
-                        "short": False
-                    },
-                    {
-                        "title": "Description",
-                        "value": description or NO_VALUE,
-                        "short": False
-                    }
-                ],
-                "footer": f"Started: {alert.starts_at}",
-                "ts": int(datetime.now().timestamp())
-            }]
-        }
-        
-        response = await self._post_with_retry(webhook_url, json=payload)
-        logger.info(
-            "Slack notification sent to %s",
-            channel_config.get('channel', config.DEFAULT_SLACK_CHANNEL),
-        )
-        return True
+        """Delegate Slack sending to `services.notification.senders`."""
+        channel_config = (channel.config or {})
+        return await notification_senders.send_slack(self._client, channel_config, alert, action)
     
     async def _send_teams(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
-        """Send Microsoft Teams notification."""
-        channel_config = channel.config
-        webhook_url = channel_config.get('webhook_url') or channel_config.get('webhookUrl')
-        
-        if not is_safe_http_url(webhook_url):
-            logger.error("Teams webhook URL is missing or invalid")
-            return False
-        
-        theme_color = "FF0000" if action == "firing" else "00FF00"
-        if alert.labels.get('severity') == 'warning':
-            theme_color = "FFA500"
-        
-        summary = self._get_annotation(alert, "summary")
-        description = self._get_annotation(alert, "description")
-        payload = {
-            "@type": "MessageCard",
-            "@context": "https://schema.org/extensions",
-            "themeColor": theme_color,
-            "title": f"[{action.upper()}] {self._get_label(alert, 'alertname', 'Alert')}",
-            "text": self._get_alert_text(alert),
-            "sections": [{
-                "facts": [
-                    {"name": "Severity", "value": self._get_label(alert, 'severity', 'unknown')},
-                    {"name": "Status", "value": action},
-                    {"name": "Started", "value": alert.starts_at},
-                    {"name": "Summary", "value": summary or NO_VALUE},
-                    {"name": "Description", "value": description or NO_VALUE}
-                ]
-            }]
-        }
-        
-        response = await self._post_with_retry(webhook_url, json=payload)
-        logger.info("Teams notification sent")
-        return True
+        """Delegate Teams sending to `services.notification.senders`."""
+        channel_config = (channel.config or {})
+        return await notification_senders.send_teams(self._client, channel_config, alert, action)
     
     async def _send_webhook(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
-        """Send webhook notification."""
-        channel_config = channel.config
-        webhook_url = channel_config.get('url') or channel_config.get('webhook_url') or channel_config.get('webhookUrl')
-        
-        if not is_safe_http_url(webhook_url):
-            logger.error("Webhook URL is missing or invalid")
-            return False
-        
-        payload = {
-            "action": action,
-            "alert": {
-                "labels": alert.labels,
-                "annotations": alert.annotations,
-                "startsAt": alert.starts_at,
-                "endsAt": alert.ends_at,
-                "fingerprint": alert.fingerprint
-            }
-        }
-        
-        headers = channel_config.get('headers', {})
-        
-        response = await self._post_with_retry(webhook_url, json=payload, headers=headers)
-        logger.info("Webhook notification sent to %s", webhook_url)
-        return True
+        """Delegate webhook sending to `services.notification.senders`."""
+        channel_config = (channel.config or {})
+        return await notification_senders.send_webhook(self._client, channel_config, alert, action)
     
     async def _send_pagerduty(self, channel: NotificationChannel, alert: Alert, action: str) -> bool:
-        """Send PagerDuty notification."""
-        channel_config = channel.config
-        routing_key = channel_config.get('routing_key') or channel_config.get('integrationKey')
-        
-        if not routing_key:
-            logger.error("PagerDuty routing key not configured")
-            return False
-        
-        event_action = "trigger" if action == "firing" else "resolve"
-        
-        summary = self._get_annotation(alert, "summary")
-        description = self._get_annotation(alert, "description")
-        payload = {
-            "routing_key": routing_key,
-            "event_action": event_action,
-            "dedup_key": alert.fingerprint,
-            "payload": {
-                "summary": summary or description or self._get_label(alert, 'alertname', 'Alert'),
-                "severity": self._get_label(alert, 'severity', 'warning'),
-                "source": self._get_label(alert, 'instance', 'unknown'),
-                "custom_details": {
-                    "labels": alert.labels or {},
-                    "annotations": alert.annotations or {},
-                    "summary": summary,
-                    "description": description
-                }
-            }
-        }
-        
-        response = await self._post_with_retry("https://events.pagerduty.com/v2/enqueue", json=payload)
-        logger.info("PagerDuty notification sent")
-        return True
+        """Delegate PagerDuty sending to `services.notification.senders`."""
+        channel_config = (channel.config or {})
+        return await notification_senders.send_pagerduty(self._client, channel_config, alert, action)
 
     
     def _format_alert_body(self, alert: Alert, action: str) -> str:
-        """Format alert body for email/text notifications."""
-        summary = self._get_annotation(alert, "summary")
-        description = self._get_annotation(alert, "description")
-        lines = [
-            f"Alert: {self._get_label(alert, 'alertname', 'Unknown')}",
-            f"Status: {action}",
-            f"Severity: {self._get_label(alert, 'severity', 'unknown')}",
-            f"Started: {alert.starts_at}",
-            "",
-            "Summary:",
-            summary or "No summary",
-            "",
-            "Description:",
-            description or "No description",
-            "",
-            "Labels:"
-        ]
-        
-        for key, value in alert.labels.items():
-            lines.append(f"  {key}: {value}")
-        
-        return "\n".join(lines)
+        """Delegate formatting to `services.notification.payloads`."""
+        return notification_payloads.format_alert_body(alert, action)
 
     def _get_label(self, alert: Alert, key: str, default: str = "") -> str:
-        labels = alert.labels or {}
-        return str(labels.get(key, default))
+        return notification_payloads.get_label(alert, key, default)
 
     def _get_annotation(self, alert: Alert, key: str) -> Optional[str]:
-        annotations = alert.annotations or {}
-        value = annotations.get(key)
-        if value is None:
-            return None
-        return str(value)
+        return notification_payloads.get_annotation(alert, key)
 
     def _get_alert_text(self, alert: Alert) -> str:
-        summary = self._get_annotation(alert, "summary")
-        description = self._get_annotation(alert, "description")
-        if summary and description and summary != description:
-            return f"{summary}\n{description}"
-        return summary or description or "No description"
+        return notification_payloads.get_alert_text(alert)

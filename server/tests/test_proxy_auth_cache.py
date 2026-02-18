@@ -47,6 +47,8 @@ class DummyRequest:
         self.method = "GET"
 
 
+import asyncio
+
 def test_authorize_proxy_request_is_cached():
     svc = GrafanaProxyService()
     auth = FakeAuthService()
@@ -54,14 +56,14 @@ def test_authorize_proxy_request_is_cached():
     db = DummyDB()
 
     # first call should invoke decode_token
-    headers1 = authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/")
+    headers1 = asyncio.run(authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/"))
     assert isinstance(headers1, dict)
     assert auth.decode_calls == 1
     assert auth.get_user_calls == 1
     assert auth.get_perms_calls == 1
 
     # second call with same token should be served from cache (no extra decode_token call)
-    headers2 = authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/")
+    headers2 = asyncio.run(authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/"))
     assert headers1 == headers2
     assert auth.decode_calls == 1
     assert auth.get_user_calls == 1
@@ -69,6 +71,6 @@ def test_authorize_proxy_request_is_cached():
 
     # wait for cache expiry and ensure decode_token is invoked again
     time.sleep(11)
-    headers3 = authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/")
+    headers3 = asyncio.run(authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/"))
     assert auth.decode_calls == 2
     assert headers3 == headers1
