@@ -18,6 +18,7 @@ import PageHeader from '../components/ui/PageHeader'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import HelpTooltip from '../components/HelpTooltip'
+import { useIncidentsData } from '../hooks'
 
 export function clearDroppedState(prev, droppedId) {
   if (typeof droppedId === 'undefined' || droppedId === null || droppedId === '') return prev
@@ -28,19 +29,15 @@ export function clearDroppedState(prev, droppedId) {
 
 export default function IncidentBoardPage() {
   const { user, hasPermission } = useAuth()
-  const [incidents, setIncidents] = useState([])
   const [incidentDrafts, setIncidentDrafts] = useState({})
   const [expandedNotes, setExpandedNotes] = useState(new Set())
   const [incidentModalTab, setIncidentModalTab] = useState('details')
-  const [incidentUsers, setIncidentUsers] = useState([])
   const [incidentVisibilityTab, setIncidentVisibilityTab] = useState('public')
   const [selectedGroup, setSelectedGroup] = useState('')
   const [groups, setGroups] = useState([])
   const [incidentModal, setIncidentModal] = useState({ isOpen: false, incident: null })
   const [dropping, setDropping] = useState({})
   const [assigneeSearch, setAssigneeSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showHiddenResolved, setShowHiddenResolved] = useState(false)
   const [jiraCreating, setJiraCreating] = useState({})
   const [jiraProjects, setJiraProjects] = useState([])
@@ -53,9 +50,19 @@ export default function IncidentBoardPage() {
   const canReadUsers = hasPermission('read:users') || hasPermission('manage:users')
   const canUpdateIncidents = hasPermission('update:incidents')
 
+  const { incidents, incidentUsers, loading, error, refresh } = useIncidentsData({
+    visibilityTab: incidentVisibilityTab,
+    selectedGroup,
+    showHiddenResolved,
+    canReadUsers,
+  })
+
+  // permissions (single declaration retained)
+
   useEffect(() => {
-    loadData()
-  }, [incidentVisibilityTab, selectedGroup, showHiddenResolved])
+    // refresh hook-driven data when page-level filters change
+    refresh()
+  }, [incidentVisibilityTab, selectedGroup, showHiddenResolved, refresh])
 
   useEffect(() => {
     loadGroups()

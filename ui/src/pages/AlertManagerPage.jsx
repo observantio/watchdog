@@ -20,7 +20,7 @@ import RuleEditor from '../components/alertmanager/RuleEditor'
 import SilenceForm from '../components/alertmanager/SilenceForm'
 import { ALERT_SEVERITY_OPTIONS } from '../utils/constants'
 import { useAuth } from '../contexts/AuthContext'
-import { useLocalStorage } from '../hooks'
+import { useLocalStorage, useAlertManagerData } from '../hooks'
 import { EMPTY_CONFIRM_DIALOG, DEFAULT_ALERTMANAGER_METRIC_KEYS } from '../utils/alertmanagerChannelUtils'
 import {
   shouldIgnoreAlertManagerError,
@@ -32,12 +32,6 @@ export default function AlertManagerPage() {
   const { user, hasPermission } = useAuth()
   const apiKeys = user?.api_keys || []
   const [activeTab, setActiveTab] = useState('alerts')
-  const [alerts, setAlerts] = useState([])
-  const [silences, setSilences] = useState([])
-  const [rules, setRules] = useState([])
-  const [channels, setChannels] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showRuleEditor, setShowRuleEditor] = useState(false)
   const [showSilenceForm, setShowSilenceForm] = useState(false)
   const [editingRule, setEditingRule] = useState(null)
@@ -54,6 +48,8 @@ export default function AlertManagerPage() {
   const [importFileName, setImportFileName] = useState('')
   const { toast } = useToast()
 
+  const { alerts, silences, rules, channels, loading, error, stats, reloadData, setError: setHookError } = useAlertManagerData()
+
   useEffect(() => {
     const defaults = DEFAULT_ALERTMANAGER_METRIC_KEYS
     if (!Array.isArray(metricOrder)) {
@@ -68,34 +64,14 @@ export default function AlertManagerPage() {
 
   function handleApiError(e) {
     if (shouldIgnoreAlertManagerError(e)) return
-    setError(e.message || String(e))
-  }
-
-  async function loadData() {
-    setLoading(true)
-    setError(null)
-    const canReadUsers = hasPermission('read:users') || hasPermission('manage:users')
-    try {
-      const [alertsData, silencesData, rulesData, channelsData] = await Promise.all([
-        getAlerts().catch(() => []),
-        getSilences().catch(() => []),
-        getAlertRules().catch(() => []),
-        getNotificationChannels().catch(() => [])
-      ])
-      setAlerts(alertsData)
-      setSilences(silencesData)
-      setRules(Array.isArray(rulesData) ? rulesData.map(normalizeRuleForUI) : [])
-      setChannels(channelsData)
-    } catch (e) {
-      handleApiError(e)
-    } finally {
-      setLoading(false)
-    }
+    // delegate to hook-managed error state
+    setHookError(e.message || String(e))
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    // initial load handled by hook; keep API compatibility for existing code paths
+    // reloadData can be used after create/update/delete operations
+  }, [reloadData])
 
   async function handleSaveRule(ruleData) {
     const payload = buildRulePayload(ruleData)
@@ -106,7 +82,7 @@ export default function AlertManagerPage() {
       } else {
         await createAlertRule(payload)
       }
-      await loadData()
+      await reloadData()
       return true
     } catch (e) {
       handleApiError(e)
@@ -124,7 +100,7 @@ export default function AlertManagerPage() {
       onConfirm: async () => {
         try {
           await deleteAlertRule(ruleId)
-          await loadData()
+          await reloadData()
           setConfirmDialog(EMPTY_CONFIRM_DIALOG)
         } catch (e) {
           handleApiError(e)
@@ -147,7 +123,7 @@ export default function AlertManagerPage() {
   async function handleCreateSilence(silenceData) {
     try {
       await createSilence(silenceData)
-      await loadData()
+      await reloadData()
       setShowSilenceForm(false)
     } catch (e) {
       handleApiError(e)
@@ -163,7 +139,7 @@ export default function AlertManagerPage() {
       })
       setImportResult(result)
       if (!dryRun) {
-        await loadData()
+        await reloadData()
       }
     } catch (e) {
       handleApiError(e)
@@ -182,7 +158,7 @@ export default function AlertManagerPage() {
       onConfirm: async () => {
         try {
           await deleteSilence(silenceId)
-          await loadData()
+          await reloadData()
           setConfirmDialog(EMPTY_CONFIRM_DIALOG)
         } catch (e) {
           handleApiError(e)

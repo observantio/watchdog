@@ -270,7 +270,7 @@ export default function AuditCompliancePage() {
           <div className="flex px-4 flex-wrap gap-2 items-end justify-start">
             <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className=" h-10">
               {LIMIT_OPTIONS.map((l) => (
-                <option key={l} value={l}>{l} / page</option>
+                <option key={l} value={l}>{l}</option>
               ))}
             </Select>
 

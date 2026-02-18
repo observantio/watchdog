@@ -249,3 +249,5 @@ export function useBodyScrollLock(locked) {
 export { useDashboardData } from './useDashboardData'
 export { useAgentActivity } from './useAgentActivity'
 export { usePersistentOrder } from './usePersistentOrder'
+export { useIncidentsData } from './useIncidentsData'
+export { useAlertManagerData } from './useAlertManagerData'
