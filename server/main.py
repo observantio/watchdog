@@ -88,6 +88,9 @@ SENSITIVE_AUDIT_KEYS = (
 
 def _is_sensitive_audit_key(key: str) -> bool:
     lowered = str(key or "").strip().lower()
+    # `status_code` is not a secret — avoid redacting it even though it contains 'code'
+    if lowered == "status_code":
+        return False
     return any(marker in lowered for marker in SENSITIVE_AUDIT_KEYS)
 
 

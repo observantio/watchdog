@@ -213,7 +213,7 @@ export default function IncidentBoardPage() {
   const getUserLabel = (userItem) => {
     if (!userItem) return 'Unknown user'
     const name = userItem.username || userItem.id
-    const email = userItem.email ? ` <${userItem.email}>` : ''
+    const email = userItem.email ? ` ${userItem.email}` : ''
     return `${name}${email}`
   }
 
@@ -497,6 +497,19 @@ export default function IncidentBoardPage() {
       try { toast.error(err?.body?.detail || err?.message || 'Unable to update incident') } catch (_) {}
     }
   }
+
+  useEffect(() => {
+    if (!incidentModal.isOpen) return
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        const current = incidentModal.incident
+        if (canUpdateIncidents && current) handleSaveIncident(current)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [incidentModal.isOpen, incidentModal.incident, canUpdateIncidents, handleSaveIncident])
 
   // Quickly add a single note (does not close modal). Clears draft and refreshes notes.
   const handleAddNote = async (incidentId) => {
@@ -782,26 +795,74 @@ export default function IncidentBoardPage() {
         >
           <div className="space-y-6">
             <div className="mb-4">
-              <div className="flex gap-2 border-b border-sre-border pb-2">
-                <button type="button" onClick={() => setIncidentModalTab('details')} className={`pl-4 pr-4 py-2 text-sm flex items-center gap-2 border-b-2 transition-colors ${incidentModalTab === 'details' ? 'border-sre-primary text-sre-primary' : 'border-transparent text-sre-text-muted hover:text-sre-text'}`}>
-                  <span className="material-icons text-sm">info</span>
+              <div className="flex items-center justify-between gap-4 pb-3 border-b border-sre-border/60">
+                <div className="min-w-0">
+                  <h3 className="text-2xl font-bold text-sre-text truncate">{activeIncident.alertName}</h3>
+                  <p className="text-xs text-sre-text-muted mt-1 truncate">{activeIncident.fingerprint ? `Fingerprint: ${activeIncident.fingerprint}` : activeIncident.alertName}</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Badge variant={activeIncident.severity === 'critical' ? 'error' : activeIncident.severity === 'warning' ? 'warning' : 'info'} className="text-xs px-2 py-0.5 rounded-full font-semibold">
+                    <span className="uppercase">{activeIncident.severity}</span>
+                  </Badge>
+
+                  <div className={`px-2 py-0.5 rounded-full border border-sre-border text-xs ${activeIncident.status === 'resolved' ? 'bg-sre-success/5 text-sre-success' : 'bg-sre-warning/5 text-sre-warning'}`}>
+                    {activeIncident.status}
+                  </div>
+
+                  <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-sre-bg-alt border border-sre-border">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sre-primary/10 to-sre-primary/5 text-sre-primary flex items-center justify-center text-[10px] font-semibold border border-sre-border/40 flex-shrink-0">
+                      {String((userById[activeIncident.assignee]?.username || activeIncident.assignee || 'U') || '')
+                        .split(' ')
+                        .map(s => s[0])
+                        .slice(0,2)
+                        .join('')
+                        .toUpperCase()}
+                    </div>
+                    <div className="text-xs text-sre-text truncate">
+                      {userById[activeIncident.assignee] ? getUserLabel(userById[activeIncident.assignee]) : (activeIncident.assignee || 'Unassigned')}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-sre-text-muted ml-2 hidden sm:block">{new Date(activeIncident.lastSeenAt).toLocaleString()}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 inline-flex bg-sre-bg-alt rounded-lg p-1 border border-sre-border">
+                <button
+                  type="button"
+                  onClick={() => setIncidentModalTab('details')}
+                  aria-pressed={incidentModalTab === 'details'}
+                  className={`px-4 py-2 text-sm rounded-md transition-all ${incidentModalTab === 'details' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+                  <span className="material-icons text-sm mr-2">info</span>
                   Details
-                  <HelpTooltip content="View and edit incident details including status, priority, and description" />
                 </button>
-                <button type="button" onClick={() => setIncidentModalTab('assignment')} className={`pl-4 pr-4 py-2 text-sm flex items-center gap-2 border-b-2 transition-colors ${incidentModalTab === 'assignment' ? 'border-sre-primary text-sre-primary' : 'border-transparent text-sre-text-muted hover:text-sre-text'}`}>
-                  <span className="material-icons text-sm">person</span>
+
+                <button
+                  type="button"
+                  onClick={() => setIncidentModalTab('assignment')}
+                  aria-pressed={incidentModalTab === 'assignment'}
+                  className={`px-4 py-2 text-sm rounded-md transition-all ${incidentModalTab === 'assignment' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+                  <span className="material-icons text-sm mr-2">person</span>
                   Assignment
-                  <HelpTooltip content="Assign incident to team members and track ownership" />
                 </button>
-                <button type="button" onClick={() => setIncidentModalTab('jira')} className={`pl-4 pr-4 py-2 text-sm flex items-center gap-2 border-b-2 transition-colors ${incidentModalTab === 'jira' ? 'border-sre-primary text-sre-primary' : 'border-transparent text-sre-text-muted hover:text-sre-text'}`}>
-                  <span className="material-icons text-sm">link</span>
+
+                <button
+                  type="button"
+                  onClick={() => setIncidentModalTab('jira')}
+                  aria-pressed={incidentModalTab === 'jira'}
+                  className={`px-4 py-2 text-sm rounded-md transition-all ${incidentModalTab === 'jira' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+                  <span className="material-icons text-sm mr-2">link</span>
                   Jira
-                  <HelpTooltip content="Link incident to Jira tickets for external tracking and collaboration" />
                 </button>
-                <button type="button" onClick={() => setIncidentModalTab('notes')} className={`pl-4 pr-4 py-2 text-sm flex items-center gap-2 border-b-2 transition-colors ${incidentModalTab === 'notes' ? 'border-sre-primary text-sre-primary' : 'border-transparent text-sre-text-muted hover:text-sre-text'}`}>
-                  <span className="material-icons text-sm">notes</span>
+
+                <button
+                  type="button"
+                  onClick={() => setIncidentModalTab('notes')}
+                  aria-pressed={incidentModalTab === 'notes'}
+                  className={`px-4 py-2 text-sm rounded-md transition-all ${incidentModalTab === 'notes' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+                  <span className="material-icons text-sm mr-2">notes</span>
                   Notes
-                  <HelpTooltip content="Add and view internal notes and investigation details" />
                 </button>
               </div>
             </div>
@@ -815,16 +876,25 @@ export default function IncidentBoardPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Status</label>
-                  <Select
-                    value={activeIncidentDraft.status ?? activeIncident.status}
-                    onChange={(e) => setIncidentDrafts((prev) => ({
-                      ...prev,
-                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), status: e.target.value }
-                    }))}
-                  >
-                    <option value="open">Open</option>
-                    <option value="resolved">Resolved</option>
-                  </Select>
+                  <div className="inline-flex rounded-lg bg-sre-bg-alt p-1 border border-sre-border">
+                    <button
+                      type="button"
+                      className={`px-3 py-1.5 text-sm rounded-md transition ${((activeIncidentDraft.status ?? activeIncident.status) === 'open') ? 'bg-sre-primary text-white' : 'text-sre-text-muted hover:text-sre-text'}`}
+                      aria-pressed={(activeIncidentDraft.status ?? activeIncident.status) === 'open'}
+                      onClick={() => setIncidentDrafts((prev) => ({ ...prev, [activeIncident.id]: { ...(prev[activeIncident.id] || {}), status: 'open' } }))}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      className={`ml-1 px-3 py-1.5 text-sm rounded-md transition ${((activeIncidentDraft.status ?? activeIncident.status) === 'resolved') ? 'bg-sre-success text-white' : 'text-sre-text-muted hover:text-sre-text'}`}
+                      aria-pressed={(activeIncidentDraft.status ?? activeIncident.status) === 'resolved'}
+                      onClick={() => setIncidentDrafts((prev) => ({ ...prev, [activeIncident.id]: { ...(prev[activeIncident.id] || {}), status: 'resolved' } }))}
+                    >
+                      Resolved
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-sre-text-muted">Quick toggle — resolving runs a safety check.</p>
                 </div>
 
                 <div>
@@ -870,11 +940,26 @@ export default function IncidentBoardPage() {
               </h4>
               {canReadUsers ? (
                 <div className="space-y-3">
-                  <Input
-                    value={assigneeSearch}
-                    onChange={(e) => setAssigneeSearch(e.target.value)}
-                    placeholder="Search users by name, username, or email"
-                  />
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      className="flex-1"
+                      value={assigneeSearch}
+                      onChange={(e) => setAssigneeSearch(e.target.value)}
+                      placeholder="Search users by name, username, or email"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setIncidentDrafts((prev) => ({
+                        ...prev,
+                        [activeIncident.id]: { ...(prev[activeIncident.id] || {}), assignee: user?.id || '' }
+                      }))}
+                      disabled={!canUpdateIncidents || !user?.id}
+                      title="Assign to me"
+                    >
+                      Assign to me
+                    </Button>
+                  </div>
                   <div className="max-h-36 overflow-auto border border-sre-border rounded-lg bg-sre-bg-alt">
                     <button
                       type="button"
@@ -935,6 +1020,15 @@ export default function IncidentBoardPage() {
                   }))}
                   placeholder="Optional: override ticket summary (defaults to incident title)"
                 />
+
+                {activeIncident.jiraTicketKey && (
+                  <div className="flex items-center gap-3 ml-2">
+                    <a href={activeIncident.jiraTicketUrl} target="_blank" rel="noopener noreferrer" className="text-sre-primary font-medium">
+                      {activeIncident.jiraTicketKey}
+                    </a>
+                    <span className="text-xs text-sre-text-muted">Linked ticket</span>
+                  </div>
+                )}
               </div>
 
               {jiraIntegrations.length > 0 ? (
@@ -1179,8 +1273,8 @@ export default function IncidentBoardPage() {
                         const collapsed = !expandedNotes.has(key)
                         return (
                           <div key={`${activeIncident.id}-modal-note-${key}`} className="p-3 bg-sre-bg rounded-lg border border-sre-border flex gap-3 items-start">
-                            <div className="w-8 h-8 rounded-md bg-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold text-sm flex-shrink-0">
-                              {String(noteAuthorLabel || '').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase()}
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sre-primary/20 to-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold border border-sre-border/50 flex-shrink-0">
+                              {String(noteAuthorLabel || '').split(' ').map(s => s[0]).slice(0,1).join('').toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-3">
@@ -1195,7 +1289,7 @@ export default function IncidentBoardPage() {
                                     className="text-sre-text-muted hover:text-sre-text"
                                     onClick={() => setIncidentDrafts((prev) => ({
                                       ...prev,
-                                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}> ${note.text}\n\n` }
+                                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}"${note.text}" - ${noteAuthorLabel}\n\n` }
                                     }))}
                                   >
                                     <span className="text-xs">Quote</span>
@@ -1327,10 +1421,10 @@ export default function IncidentBoardPage() {
               <Button
                 onClick={() => handleSaveIncident(activeIncident)}
                 disabled={!canUpdateIncidents}
-                title={!canUpdateIncidents ? 'Missing update:incidents permission' : 'Save Changes'}
+                title={!canUpdateIncidents ? 'Missing update:incidents permission' : 'Save Changes (Ctrl+S)'}
               >
-                Save Changes
-                <HelpTooltip content="Save all incident updates and close modal" />
+                Save changes <span className="ml-2 text-xs text-sre-text-muted">Ctrl+S</span>
+                <HelpTooltip content="Save all incident updates and close modal (Ctrl+S)" />
               </Button>
             </div>
           </div>

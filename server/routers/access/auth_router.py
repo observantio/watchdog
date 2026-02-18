@@ -132,6 +132,9 @@ _AUDIT_SENSITIVE_KEYS = (
 
 def _audit_key_is_sensitive(key: str) -> bool:
     lowered = str(key or "").strip().lower()
+    # allow HTTP `status_code` to remain visible in audit details
+    if lowered == "status_code":
+        return False
     return any(marker in lowered for marker in _AUDIT_SENSITIVE_KEYS)
 
 
