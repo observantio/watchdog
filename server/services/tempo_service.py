@@ -307,13 +307,24 @@ class TempoService:
 
         if config.TEMPO_USE_METRICS_FOR_COUNT:
             try:
-                values = self._extract_metric_values(
+                raw_values = self._extract_metric_values(
                     await self._query_metrics_range(
                         self._build_count_promql(service, step), start, end, step, tenant_id=tenant_id
                     )
                 )
-                if values:
-                    result = {"data": {"result": [{"metric": {}, "values": values}]}}
+                if raw_values:
+                    # Normalize into fixed buckets covering [start, end) with step seconds.
+                    # Fill missing timestamps with "0" so the UI always receives a full series.
+                    start_s = int(start / 1_000_000)
+                    total_seconds = max(0, int((end - start) / 1_000_000))
+                    num_buckets = max(1, min(240, (total_seconds + step - 1) // step))
+                    expected_ts = [start_s + i * step for i in range(num_buckets)]
+
+                    # raw_values is a list of [ts, value_str]; build a map and fill missing
+                    ts_map = {int(ts): int(v) for ts, v in raw_values}
+                    normalized = [[ts, str(ts_map.get(ts, 0))] for ts in expected_ts]
+
+                    result = {"data": {"result": [{"metric": {}, "values": normalized}]}}
                     await self._volume_cache.set(cache_key, result, self._cache_ttl_seconds)
                     return result
             except Exception:

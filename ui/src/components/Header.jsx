@@ -151,15 +151,6 @@ export default function Header() {
     <header className="sticky top-0 z-50 bg-sre-surface/80 backdrop-blur-xl border-b border-sre-border shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg flex items-center">
-                <svg className="w-6 h-6 text-sre-primary eye-blink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zm11 3a3 3 0 100-6 3 3 0 000 6z" />
-                </svg>
-              </div>
-            </div>
-          </div>
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
             {visibleNavItems.map(item => (

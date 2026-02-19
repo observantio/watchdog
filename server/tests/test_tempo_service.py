@@ -61,6 +61,35 @@ def test_get_trace_volume_uses_metrics_query_range():
     assert values[0][1] == "5"
 
 
+def test_get_trace_volume_normalizes_sparse_metric_series_to_full_buckets():
+    """If the metrics backend returns a sparse series, ensure the service fills missing
+    buckets with zeros so the UI receives a complete time series of the requested
+    resolution (start/end/step).
+    """
+    service = TempoService(tempo_url="http://tempo.test")
+
+    async def fake_query_metrics(promql, start_us=None, end_us=None, step_s=300, tenant_id="default"):
+        # return values only for the 0th and 2nd buckets
+        start_s = int((start_us or int(__import__('time').time() * 1_000_000)) / 1_000_000)
+        vals = [[start_s, "2"], [start_s + 2 * step_s, "7"]]
+        return {"status": "success", "data": {"result": [{"metric": {}, "values": vals}]}}
+
+    service._query_metrics_range = fake_query_metrics
+
+    start = 1_700_000_000_000_000
+    end = start + (5 * 60 * 1_000_000)  # 5 minutes -> 5 buckets at step=60
+    result = asyncio.run(service.get_trace_volume(start=start, end=end, step=60))
+
+    values = result["data"]["result"][0]["values"]
+    # should return a value for every expected bucket
+    assert len(values) == 5
+    assert values[0][1] == "2"
+    assert values[1][1] == "0"
+    assert values[2][1] == "7"
+    # timestamps should be integer seconds
+    assert all(isinstance(v[0], int) for v in values)
+
+
 def test_get_trace_volume_falls_back_to_bucket_when_metrics_unavailable():
     service = TempoService(tempo_url="http://tempo.test")
 
