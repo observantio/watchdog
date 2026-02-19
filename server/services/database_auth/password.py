@@ -8,7 +8,7 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from passlib.context import CryptContext
+from passlib.context import CryptContext  # type: ignore[import-untyped]
 
 _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

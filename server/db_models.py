@@ -13,12 +13,14 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Boolean, DateTime, ForeignKey, Table, Text, JSON, Index, Integer, UniqueConstraint, event, text
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship, DeclarativeBase
 import uuid
 
 from config import config
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 USERS_ID = 'users.id'
 GROUPS_ID = 'groups.id'

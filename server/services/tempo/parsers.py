@@ -107,18 +107,18 @@ def build_summary_trace(trace_data: Dict[str, Any]) -> Optional[Trace]:
         duration_ms = None
 
     # Construct a proper Span object for the summary so types match
-    summary_span = Span(
-        span_id="root",
-        trace_id=trace_id,
-        parent_span_id=None,
-        operation_name=trace_data.get("rootTraceName") or "",
-        start_time=int(start_ns // 1000) if start_ns else 0,
-        duration=int(duration_ms * 1000) if duration_ms is not None else 0,
-        tags=[],
-        service_name=trace_data.get("rootServiceName") or trace_data.get("rootService") or "unknown",
-        attributes={},
-        process_id=trace_data.get("rootServiceName") or "unknown",
-        warnings=["Trace summary only"],
-    )
+    summary_span_obj = {
+        "spanID": "root",
+        "traceID": trace_id,
+        "parentSpanID": None,
+        "operationName": trace_data.get("rootTraceName") or "",
+        "startTime": int(start_ns // 1000) if start_ns else 0,
+        "duration": int(duration_ms * 1000) if duration_ms is not None else 0,
+        "tags": [],
+        "serviceName": trace_data.get("rootServiceName") or trace_data.get("rootService") or "unknown",
+        "attributes": {},
+        "processID": trace_data.get("rootServiceName") or "unknown",
+        "warnings": ["Trace summary only"],
+    }
 
-    return Trace(trace_id=trace_id, spans=[summary_span], processes={}, warnings=["Trace summary only"]) 
+    return Trace.parse_obj({"traceID": trace_id, "spans": [summary_span_obj], "processes": {}, "warnings": ["Trace summary only"]})
