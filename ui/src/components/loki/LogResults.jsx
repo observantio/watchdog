@@ -7,6 +7,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 `
 
 import { Badge, Spinner } from '../../components/ui'
+import React, { useState } from 'react'
 import PropTypes from 'prop-types'
 import { FixedSizeList as List } from 'react-window'
 import { formatNsToIso, formatRelativeTime, parseLogLine } from '../../utils/formatters'
@@ -80,13 +81,40 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
     )
   }
 
-  const visibleStreams = filteredStreams.slice(0, MAX_STREAMS_RENDER)
+  // pagination support (streamsPerPage prop overrides MAX_STREAMS_RENDER)
+  const [page, setPage] = useState(1)
+  const perPage = (typeof streamsPerPage === 'number' && streamsPerPage > 0) ? streamsPerPage : MAX_STREAMS_RENDER
+  const totalStreams = filteredStreams.length
+  const totalPages = Math.max(1, Math.ceil(totalStreams / perPage))
+  const startIndex = Math.min((page - 1) * perPage, Math.max(0, totalStreams - 1))
+  const endIndex = Math.min(startIndex + perPage, totalStreams)
+  const visibleStreams = filteredStreams.slice(startIndex, endIndex)
 
   return (
     <div className="space-y-4 overflow-auto scrollbar-thin h-[70rem] pr-4">
-      {filteredStreams.length > MAX_STREAMS_RENDER && (
-        <div className="text-xs text-sre-text-muted">
-          Showing first {MAX_STREAMS_RENDER} streams out of {filteredStreams.length}. Refine filters or reduce range for faster rendering.
+      {totalStreams > perPage && (
+        <div className="flex items-center justify-between text-xs text-sre-text-muted">
+          <div>Showing {totalStreams === 0 ? 0 : startIndex + 1}–{endIndex} of {totalStreams} streams</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              aria-label="Previous"
+              className="px-2 py-1 rounded border"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              aria-label="Next"
+              className="px-2 py-1 rounded border"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
 
@@ -228,4 +256,5 @@ LogResults.propTypes = {
   copyToClipboard: PropTypes.func.isRequired,
   handleTraceClick: PropTypes.func,
   handleStreamClick: PropTypes.func,
+  streamsPerPage: PropTypes.number,
 }

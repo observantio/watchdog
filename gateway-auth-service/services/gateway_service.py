@@ -6,16 +6,6 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Core business logic for the standalone gateway auth service.
-
-- rate limiting
-- IP allowlist enforcement
-- OTLP token extraction and DB-backed validation
-- small health check
-
-This mirrors the behaviour that previously lived in `main.py` but groups
-related responsibilities into a testable service class.
 """
 from __future__ import annotations
 

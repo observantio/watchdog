@@ -8,14 +8,28 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
   const [error, setError] = useState(null)
 
   const loadData = useCallback(async () => {
+    // DEBUG: verify API functions are available during tests
+    if (process.env.NODE_ENV === 'test') {
+      try { console.debug('useIncidentsData: getIncidents is', typeof getIncidents, 'getUsers is', typeof getUsers) } catch (e) {}
+    }
+
     setLoading(true)
     setError(null)
     try {
       if (showHiddenResolved) {
+        // wrap calls to allow debugging when a mocked API returns an unexpected value
+        const openPromise = getIncidents ? getIncidents(undefined, visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined) : undefined
+        const resolvedPromise = getIncidents ? getIncidents('resolved', visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined) : undefined
+        const usersPromise = canReadUsers ? (getUsers ? getUsers() : undefined) : Promise.resolve([])
+
+        if (process.env.NODE_ENV === 'test') {
+          console.debug('useIncidentsData: openPromise is', String(openPromise), 'resolvedPromise is', String(resolvedPromise), 'usersPromise is', String(usersPromise))
+        }
+
         const [openIncidents, resolvedIncidents, usersData] = await Promise.all([
-          getIncidents(undefined, visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined).catch(() => []),
-          getIncidents('resolved', visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined).catch(() => []),
-          canReadUsers ? getUsers().catch(() => []) : Promise.resolve([]),
+          openPromise?.catch ? openPromise.catch(() => []) : Promise.resolve([]),
+          resolvedPromise?.catch ? resolvedPromise.catch(() => []) : Promise.resolve([]),
+          usersPromise?.catch ? usersPromise.catch(() => []) : Promise.resolve([]),
         ])
         const mergedIncidents = []
         const seenIncidentIds = new Set()
@@ -32,9 +46,12 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
         setIncidents(mergedIncidents)
         setIncidentUsers(Array.isArray(usersData) ? usersData : [])
       } else {
+        const incidentsPromise = getIncidents ? getIncidents(undefined, visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined) : undefined
+        const usersPromise = canReadUsers ? (getUsers ? getUsers() : undefined) : Promise.resolve([])
+        if (process.env.NODE_ENV === 'test') console.debug('useIncidentsData: incidentsPromise is', String(incidentsPromise), 'usersPromise is', String(usersPromise))
         const [incidentsData, usersData] = await Promise.all([
-          getIncidents(undefined, visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined).catch(() => []),
-          canReadUsers ? getUsers().catch(() => []) : Promise.resolve([]),
+          incidentsPromise?.catch ? incidentsPromise.catch(() => []) : Promise.resolve([]),
+          usersPromise?.catch ? usersPromise.catch(() => []) : Promise.resolve([]),
         ])
         setIncidents(Array.isArray(incidentsData) ? incidentsData : [])
         setIncidentUsers(Array.isArray(usersData) ? usersData : [])
@@ -50,5 +67,5 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
     loadData()
   }, [loadData])
 
-  return { incidents, incidentUsers, loading, error, refresh: loadData, setIncidents, setIncidentUsers }
+  return { incidents, incidentUsers, loading, error, refresh: loadData, setIncidents, setIncidentUsers, setError }
 }

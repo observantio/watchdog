@@ -6,12 +6,6 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Standalone OTLP gateway auth servic.
-
-This file now only wires the FastAPI application and the startup
-(lifespan) checks.  Business logic, DB models and HTTP routes were moved
-into `db_models.py`, `services/` and `routers/` respectively.
 """
 
 from __future__ import annotations

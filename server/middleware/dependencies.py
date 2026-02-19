@@ -118,11 +118,9 @@ def _parse_ip_allowlist(allowlist: str | None) -> list:
 
 def enforce_ip_allowlist(request: Request, allowlist: str | None, *, scope: str) -> None:
     networks = _parse_ip_allowlist(allowlist)
-    # No allowlist configured -> preserve legacy permissive behaviour
     if not networks:
         if allowlist is None:
             return
-        # explicit-but-empty allowlist — require fail-open opt-in via config
         if config.ALLOWLIST_FAIL_OPEN:
             return
         raise HTTPException(

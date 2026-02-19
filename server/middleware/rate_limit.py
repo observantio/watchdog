@@ -10,7 +10,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 Simple in-process rate limiting helpers.
 
 This provides pragmatic spam protection without adding infrastructure.
+
 For true multi-instance scalability, replace the backing store with Redis
+
 or an API gateway rate limiter.
 """
 

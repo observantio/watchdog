@@ -1,6 +1,6 @@
 receivers:
   hostmetrics:
-    collection_interval: 1s
+    collection_interval: 60s
     scrapers:
       cpu:
       memory:
@@ -74,17 +74,17 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter]
-      exporters: [otlphttp/loki, debug]
+      exporters: [otlphttp/loki]
 
     traces:
       receivers: [otlp]
       processors: [memory_limiter]
-      exporters: [otlphttp/tempo, debug]
+      exporters: [otlphttp/tempo]
 
     metrics:
       receivers: [hostmetrics, otlp]
       processors: [memory_limiter]
-      exporters: [prometheusremotewrite/mimir, debug]
+      exporters: [prometheusremotewrite/mimir]
 
   telemetry:
     logs:

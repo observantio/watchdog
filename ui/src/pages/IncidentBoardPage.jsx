@@ -13,12 +13,12 @@ import {
   listJiraProjectsByIntegration, listJiraIssueTypes, listIncidentJiraComments, createIncidentJiraComment, syncIncidentJiraComments,
   listJiraIntegrations, getAlertsByFilter,
 } from '../api'
-import { Card, Button, Select, Badge, Spinner, Modal, Input } from '../components/ui'
+import { Card, Button, Select, Badge, Spinner, Modal, Input, Alert } from '../components/ui'
 import PageHeader from '../components/ui/PageHeader'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import HelpTooltip from '../components/HelpTooltip'
-import { useIncidentsData } from '../hooks'
+import { useIncidentsData, useLocalStorage } from '../hooks'
 
 export function clearDroppedState(prev, droppedId) {
   if (typeof droppedId === 'undefined' || droppedId === null || droppedId === '') return prev
@@ -32,8 +32,8 @@ export default function IncidentBoardPage() {
   const [incidentDrafts, setIncidentDrafts] = useState({})
   const [expandedNotes, setExpandedNotes] = useState(new Set())
   const [incidentModalTab, setIncidentModalTab] = useState('details')
-  const [incidentVisibilityTab, setIncidentVisibilityTab] = useState('public')
-  const [selectedGroup, setSelectedGroup] = useState('')
+  const [incidentVisibilityTab, setIncidentVisibilityTab] = useLocalStorage('incidents-visibility', 'public')
+  const [selectedGroup, setSelectedGroup] = useLocalStorage('incidents-selected-group', '')
   const [groups, setGroups] = useState([])
   const [incidentModal, setIncidentModal] = useState({ isOpen: false, incident: null })
   const [dropping, setDropping] = useState({})
@@ -50,7 +50,7 @@ export default function IncidentBoardPage() {
   const canReadUsers = hasPermission('read:users') || hasPermission('manage:users')
   const canUpdateIncidents = hasPermission('update:incidents')
 
-  const { incidents, incidentUsers, loading, error, refresh } = useIncidentsData({
+  const { incidents, incidentUsers, loading, error, refresh, setIncidents, setIncidentUsers, setError } = useIncidentsData({
     visibilityTab: incidentVisibilityTab,
     selectedGroup,
     showHiddenResolved,
@@ -131,36 +131,7 @@ export default function IncidentBoardPage() {
     }
   }
 
-  async function loadData() {
-    setLoading(true)
-    setError(null)
-    try {
-      if (showHiddenResolved) {
-        const [openIncidents, resolvedIncidents, usersData] = await Promise.all([
-          getIncidents(undefined, incidentVisibilityTab, incidentVisibilityTab === 'group' ? selectedGroup : undefined).catch(() => []),
-          getIncidents('resolved', incidentVisibilityTab, incidentVisibilityTab === 'group' ? selectedGroup : undefined).catch(() => []),
-          canReadUsers ? getUsers().catch(() => []) : Promise.resolve([])
-        ])
-        // merge, prefer the openIncidents entry when ids collide
-        const map = new Map()
-        for (const i of (resolvedIncidents || [])) map.set(i.id, i)
-        for (const i of (openIncidents || [])) map.set(i.id, i)
-        setIncidents(Array.from(map.values()))
-        setIncidentUsers(Array.isArray(usersData) ? usersData : [])
-      } else {
-        const [incidentsData, usersData] = await Promise.all([
-          getIncidents(undefined, incidentVisibilityTab, incidentVisibilityTab === 'group' ? selectedGroup : undefined).catch(() => []),
-          canReadUsers ? getUsers().catch(() => []) : Promise.resolve([])
-        ])
-        setIncidents(Array.isArray(incidentsData) ? incidentsData : [])
-        setIncidentUsers(Array.isArray(usersData) ? usersData : [])
-      }
-    } catch (e) {
-      setError(e.message || String(e))
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Data loading is handled by the `useIncidentsData` hook. Use `refresh()` when a reload is required.
 
   const incidentsByState = useMemo(() => {
     return {
@@ -454,7 +425,7 @@ export default function IncidentBoardPage() {
 
       await updateIncident(id, payload)
       setDropping((prev) => clearDroppedState(prev, droppedId))
-      await loadData()
+      await refresh()
     } catch (err) {
       setError(err?.body?.detail || err?.message || 'Unable to update incident')
       try { toast.error(err?.body?.detail || err?.message || 'Unable to update incident') } catch (_) {}
@@ -498,7 +469,7 @@ export default function IncidentBoardPage() {
         delete next[incident.id]
         return next
       })
-      await loadData()
+      await refresh()
     } catch (err) {
       setError(err?.body?.detail || err?.message || 'Unable to update incident')
       try { toast.error(err?.body?.detail || err?.message || 'Unable to update incident') } catch (_) {}
@@ -550,7 +521,7 @@ export default function IncidentBoardPage() {
     try {
       setDropping((prev) => ({ ...prev, [incidentId]: true }))
       await updateIncident(incidentId, { hideWhenResolved: false })
-      await loadData()
+      await refresh()
       try { toast.success('Incident unhidden') } catch (_) {}
     } catch (err) {
       setError(err?.body?.detail || err?.message || 'Unable to unhide incident')
@@ -1141,7 +1112,7 @@ export default function IncidentBoardPage() {
                         }))
                         try { toast.success(`Jira created: ${updated.jiraTicketKey}`) } catch (_) {}
                         await loadJiraComments(activeIncident.id)
-                        await loadData()
+                        await refresh()
                       } catch (err) {
                         try { toast.error(err?.body?.detail || err?.message || 'Failed to create Jira ticket') } catch (_) {}
                       } finally {
@@ -1347,7 +1318,7 @@ export default function IncidentBoardPage() {
                         onClick={async () => {
                           try {
                             await syncIncidentJiraComments(activeIncident.id)
-                            await loadData()
+                            await refresh()
                             await loadJiraComments(activeIncident.id)
                             toast.success('Synced Jira comments to incident notes')
                           } catch (e) {

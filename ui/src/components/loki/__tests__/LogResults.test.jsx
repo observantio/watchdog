@@ -3,7 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import LogResults from '../LogResults'
 
 function makeStream(i) {
-  return { stream: { service: `svc_${i}` }, values: [[`ts-${i}`, `log entry ${i}`]] }
+  // use a valid numeric nanoseconds timestamp string
+  const tsNs = String(Date.now() * 1e6 + i)
+  return { stream: { service: `svc_${i}` }, values: [[tsNs, `log entry ${i}`]] }
 }
 
 describe('LogResults pagination', () => {
@@ -15,7 +17,6 @@ describe('LogResults pagination', () => {
       <LogResults
         queryResult={queryResult}
         loading={false}
-        filterDisplayedLogs={() => []}
         searchText={''}
         viewMode="table"
         expandedLogs={{}}

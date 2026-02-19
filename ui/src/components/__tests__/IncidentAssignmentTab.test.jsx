@@ -5,7 +5,6 @@ import IncidentAssignmentTab from '../IncidentAssignmentTab'
 
 describe('IncidentAssignmentTab', () => {
   it('calls onAssign when a user or "Unassigned" is clicked', () => {
-    const onAssign = vi.fn()
     const setAssigneeSearch = vi.fn()
     const setIncidentDrafts = vi.fn()
 
@@ -23,19 +22,23 @@ describe('IncidentAssignmentTab', () => {
         setIncidentDrafts={setIncidentDrafts}
         filteredIncidentUsers={users}
         getUserLabel={(u) => `${u.username}${u.email ? ` ${u.email}` : ''}`}
-        onAssign={onAssign}
       />
     )
 
-    // click user
-    const userBtn = screen.getByText('alice')
+    // click user -> should call setIncidentDrafts updater
+    const userBtn = screen.getByText('alice a@example.com')
     fireEvent.click(userBtn)
-    expect(onAssign).toHaveBeenCalledWith('i1', 'u1')
+    expect(setIncidentDrafts).toHaveBeenCalled()
+    const userUpdater = setIncidentDrafts.mock.calls[0][0]
+    expect(typeof userUpdater).toBe('function')
+    expect(userUpdater({})).toEqual({ i1: { assignee: 'u1' } })
 
-    // click Unassigned
+    // click Unassigned -> should call setIncidentDrafts updater with empty assignee
     const unassignedBtn = screen.getByText('Unassigned')
     fireEvent.click(unassignedBtn)
-    expect(onAssign).toHaveBeenCalledWith('i1', '')
+    const unassignedUpdater = setIncidentDrafts.mock.calls[1][0]
+    expect(typeof unassignedUpdater).toBe('function')
+    expect(unassignedUpdater({})).toEqual({ i1: { assignee: '' } })
   })
 
   it('shows permission message when cannot read users', () => {

@@ -28,15 +28,7 @@ def with_retry(
     max_retries: int = config.MAX_RETRIES,
     backoff: float = config.RETRY_BACKOFF
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    """Decorator to retry failed async operations with exponential backoff.
-    
-    Args:
-        max_retries: Maximum number of retry attempts
-        backoff: Initial backoff time in seconds
-        
-    Returns:
-        Decorated function with retry logic
-    """
+    """Decorator to retry failed async operations with exponential backoff."""
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -46,13 +38,9 @@ def with_retry(
                 try:
                     return await func(*args, **kwargs)
                 except (httpx.HTTPError, asyncio.TimeoutError) as e:
-                    # Do not retry on deterministic client errors (4xx HTTP responses).
-                    # httpx raises an HTTPStatusError for non-2xx responses when
-                    # `response.raise_for_status()` is used by callers.
                     if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
                         status_code = e.response.status_code
                         if 400 <= status_code < 500:
-                            # Client error — fail fast and don't retry
                             logger.debug(
                                 "%s: non-retriable HTTPStatusError %s — failing fast",
                                 func.__name__, status_code
@@ -84,14 +72,7 @@ def with_retry(
 
 
 def with_timeout(timeout: float = config.DEFAULT_TIMEOUT) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    """Decorator to add timeout to async operations.
-    
-    Args:
-        timeout: Timeout in seconds
-        
-    Returns:
-        Decorated function with timeout
-    """
+    """Decorator to add timeout to async operations."""
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

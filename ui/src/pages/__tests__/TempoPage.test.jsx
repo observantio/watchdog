@@ -8,7 +8,7 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1
 vi.mock('../../contexts/ToastContext', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }))
 vi.mock('../../components/ui/PageHeader', () => ({ default: ({ children }) => <div>{children}</div> }))
 vi.mock('../../components/ui/AutoRefreshControl', () => ({ default: () => <div /> }))
-vi.mock('../../components/ui', () => ({ Card: ({ children }) => <div>{children}</div>, Button: ({ children }) => <button>{children}</button> }))
+vi.mock('../../components/ui', () => ({ Card: ({ children }) => <div>{children}</div>, Button: ({ children }) => <button>{children}</button>, Input: (props) => <input {...props} />, Select: ({ children }) => <select>{children}</select>, Spinner: () => <div>Loading</div> }))
 vi.mock('../../components/HelpTooltip', () => ({ default: () => <span /> }))
 
 vi.mock('../../api')
@@ -20,12 +20,13 @@ describe('TempoPage — fetch limit and pagination', () => {
 
   it('uses the configured maxTraces as the query limit', async () => {
     api.fetchTempoServices.mockResolvedValue([])
-    api.searchTraces.mockResolvedValue({ data: { data: [] } })
+    api.searchTraces.mockResolvedValue({ data: [] })
 
-    const { getByLabelText, getByText } = render(<TempoPage />)
+    const { getByText } = render(<TempoPage />)
 
-    // change Max traces to 100 and submit
-    const select = getByLabelText(/Max traces/i)
+    // change Page Size to 100 and submit
+    const label = getByText(/Page Size/i)
+    const select = label.parentElement.querySelector('select')
     fireEvent.change(select, { target: { value: '100' } })
 
     const searchBtn = getByText(/Search Traces/i)
