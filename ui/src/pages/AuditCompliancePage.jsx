@@ -6,7 +6,7 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 `
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/ui/PageHeader'
 import { Card, Input, Button, Select, Spinner, Badge } from '../components/ui'
 import { getAuditLogs, exportAuditLogs, getUsers } from '../api'
@@ -71,6 +71,9 @@ export default function AuditCompliancePage() {
   const [selected, setSelected] = useState(null)
   const [hasMore, setHasMore] = useState(false)
 
+  // prevent race conditions from overlapping requests (simple request-id guard)
+  const auditReqIdRef = useRef(0)
+
   const [filters, setFilters] = useState({
     start: '',
     end: '',
@@ -95,6 +98,7 @@ export default function AuditCompliancePage() {
 
   const loadAudit = useCallback(async (baseFilters, { commit = true } = {}) => {
     setLoading(true)
+    const reqId = ++auditReqIdRef.current // mark this request
     try {
       const queryFilters = baseFilters || {}
       const requestedLimit = Number(queryFilters.limit) || DEFAULT_LIMIT
@@ -104,7 +108,14 @@ export default function AuditCompliancePage() {
         end: toIso(queryFilters.end),
         limit: requestedLimit + 1,
       }
+
       const data = await getAuditLogs(params)
+
+      // if a newer request was started, ignore this response
+      if (reqId !== auditReqIdRef.current) {
+        return { items: [], hasMore: false }
+      }
+
       const list = Array.isArray(data) ? data : []
       const nextHasMore = list.length > requestedLimit
       const pageItems = list.slice(0, requestedLimit)
@@ -116,6 +127,8 @@ export default function AuditCompliancePage() {
 
       return { items: pageItems, hasMore: nextHasMore }
     } catch (err) {
+      // ignore stale errors (if newer request exists)
+      if (reqId !== auditReqIdRef.current) return null
       toast.error(err?.body?.detail || err?.message || 'Failed to load audit logs')
       if (commit) {
         setItems([])
@@ -123,7 +136,8 @@ export default function AuditCompliancePage() {
       }
       return null
     } finally {
-      setLoading(false)
+      // only clear loading for the most-recent request
+      if (reqId === auditReqIdRef.current) setLoading(false)
     }
   }, [toast])
 
@@ -139,7 +153,18 @@ export default function AuditCompliancePage() {
     return map
   }, [users])
 
-  const handleExportCsv = async () => {
+  const applyPage = useCallback(async (nextFilters, { allowEmpty = true } = {}) => {
+    const page = await loadAudit(nextFilters, { commit: false })
+    if (!page) return false
+    if (!allowEmpty && page.items.length === 0) return false
+    setFilters(nextFilters)
+    setItems(page.items)
+    setHasMore(page.hasMore)
+    return true
+  }, [loadAudit])
+
+  // stable handlers
+  const handleExportCsv = useCallback(async () => {
     setExporting(true)
     try {
       const text = await exportAuditLogs({
@@ -155,17 +180,32 @@ export default function AuditCompliancePage() {
     } finally {
       setExporting(false)
     }
-  }
+  }, [filters, toast])
 
-  const applyPage = useCallback(async (nextFilters, { allowEmpty = true } = {}) => {
-    const page = await loadAudit(nextFilters, { commit: false })
-    if (!page) return false
-    if (!allowEmpty && page.items.length === 0) return false
-    setFilters(nextFilters)
-    setItems(page.items)
-    setHasMore(page.hasMore)
-    return true
-  }, [loadAudit])
+  const clearFilter = useCallback((key) => {
+    const nextFilters = { ...filters, [key]: '', offset: 0 }
+    applyPage(nextFilters)
+  }, [filters, applyPage])
+
+  const clearAllFilters = useCallback(() => {
+    const nextFilters = { start: '', end: '', user_id: '', action: '', resource_type: '', q: '', limit: filters.limit, offset: 0 }
+    applyPage(nextFilters)
+  }, [filters.limit, applyPage])
+
+  const onPrev = useCallback(async () => {
+    if (loading || filters.offset === 0) return
+    const nextFilters = { ...filters, offset: Math.max(0, filters.offset - filters.limit) }
+    await applyPage(nextFilters)
+  }, [loading, filters, applyPage])
+
+  const onNext = useCallback(async () => {
+    if (loading || items.length === 0) return
+    const nextFilters = { ...filters, offset: filters.offset + filters.limit }
+    const moved = await applyPage(nextFilters, { allowEmpty: false })
+    if (!moved) {
+      toast.success('No more audit records')
+    }
+  }, [loading, filters, items.length, applyPage, toast])
 
   useEffect(() => {
     loadAudit(filters)
@@ -174,21 +214,6 @@ export default function AuditCompliancePage() {
   const onLimitChange = async (v) => {
     const nextFilters = { ...filters, limit: Number(v), offset: 0 }
     await applyPage(nextFilters)
-  }
-
-  const onPrev = async () => {
-    if (loading || filters.offset === 0) return
-    const nextFilters = { ...filters, offset: Math.max(0, filters.offset - filters.limit) }
-    await applyPage(nextFilters)
-  }
-
-  const onNext = async () => {
-    if (loading || items.length === 0) return
-    const nextFilters = { ...filters, offset: filters.offset + filters.limit }
-    const moved = await applyPage(nextFilters, { allowEmpty: false })
-    if (!moved) {
-      toast.success('No more audit records')
-    }
   }
 
   const canNext = !loading && items.length > 0
@@ -203,15 +228,52 @@ export default function AuditCompliancePage() {
     return ok
   }, [toast])
 
-  const clearFilter = (key) => {
-    const nextFilters = { ...filters, [key]: '', offset: 0 }
-    applyPage(nextFilters)
-  }
+  // precompute memoized table rows so hooks order is stable across renders
+  const memoizedRows = useMemo(() => items.map((row) => {
+    const details = row.details || {}
+    let detailsText
+    try { detailsText = JSON.stringify(details) } catch (err) { detailsText = String(details) }
+    const detailsTitle = detailsText.length > 200 ? `${detailsText.slice(0, 200)}…` : detailsText
+    const method = details.method || ''
+    const status = details.status_code || ''
+    const resource = row.resource_type ? `[${row.resource_type}]${row.resource_id ? ` (${row.resource_id})` : ''}` : '-'
 
-  const clearAllFilters = () => {
-    const nextFilters = { start: '', end: '', user_id: '', action: '', resource_type: '', q: '', limit: filters.limit, offset: 0 }
-    applyPage(nextFilters)
-  }
+    return (
+      <tr
+        key={row.id}
+        role="button"
+        aria-label={`Open audit details ${row.id}`}
+        className="align-top hover:bg-sre-surface/50"
+        tabIndex={0}
+        onClick={() => setSelected(row)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setSelected(row)
+          }
+        }}
+      >
+        <td className="py-3 px-4 whitespace-nowrap align-middle">{formatLocal(row.created_at)}</td>
+        <td className="py-3 px-4 align-middle truncate">{userLabelById[row.user_id] || row.username || row.user_id || 'system'}</td>
+        <td className="py-3 px-4 font-medium align-middle truncate">{highlight(row.action || '-', filters.q)}</td>
+        <td className="py-3 px-4 align-middle truncate max-w-[240px]">{resource}</td>
+        <td className="py-3 px-4 align-middle">
+          {method && <span className="inline-block px-2 py-0.5 mr-2 rounded text-xs bg-sre-surface-variant">{method}</span>}
+          {status && <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">{status}</span>}
+        </td>
+        <td className="py-3 px-4 align-middle">{row.ip_address || '-'}</td>
+        <td className="py-3 px-4 align-middle max-w-[420px] truncate" title={detailsTitle}>
+          <div className="flex items-center gap-2">
+            <div className="truncate text-xs text-sre-text-muted flex-1">{highlight(detailsText, filters.q)}</div>
+            <div className="flex-shrink-0 flex gap-2">
+              <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); setSelected(row) }}>View</button>
+              <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); copyText(prettyJson(details)) }}>Copy</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    )
+  }), [items, filters.q, userLabelById, copyText])
 
   if (!canView) {
     return <div className="text-center py-12 text-sre-text-muted">You do not have permission to view audit logs.</div>
@@ -339,47 +401,7 @@ export default function AuditCompliancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {items.map((row) => {
-                  const details = row.details || {}
-                  const method = details.method || ''
-                  const status = details.status_code || ''
-                  const resource = row.resource_type ? `[${row.resource_type}]${row.resource_id ? ` (${row.resource_id})` : ''}` : '-'
-                  return (
-                    <tr
-                      key={row.id}
-                      role="button"
-                      aria-label={`Open audit details ${row.id}`}
-                      className="align-top hover:bg-sre-surface/50"
-                      tabIndex={0}
-                      onClick={() => setSelected(row)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setSelected(row)
-                        }
-                      }}
-                    >
-                      <td className="py-3 px-4 whitespace-nowrap align-middle">{formatLocal(row.created_at)}</td>
-                      <td className="py-3 px-4 align-middle truncate">{userLabelById[row.user_id] || row.username || row.user_id || 'system'}</td>
-                      <td className="py-3 px-4 font-medium align-middle truncate">{highlight(row.action || '-', filters.q)}</td>
-                      <td className="py-3 px-4 align-middle truncate max-w-[240px]">{resource}</td>
-                      <td className="py-3 px-4 align-middle">
-                        {method && <span className="inline-block px-2 py-0.5 mr-2 rounded text-xs bg-sre-surface-variant">{method}</span>}
-                        {status && <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">{status}</span>}
-                      </td>
-                      <td className="py-3 px-4 align-middle">{row.ip_address || '-'}</td>
-                      <td className="py-3 px-4 align-middle max-w-[420px] truncate" title={JSON.stringify(details)}>
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-xs text-sre-text-muted flex-1">{highlight(JSON.stringify(details), filters.q)}</div>
-                          <div className="flex-shrink-0 flex gap-2">
-                            <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); setSelected(row) }}>View</button>
-                            <button className="px-2 py-1 rounded-md text-sre-text-muted hover:text-sre-text hover:bg-sre-surface cursor-pointer text-xs" onClick={(e) => { e.stopPropagation(); copyText(prettyJson(details)) }}>Copy</button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {memoizedRows}
 
                 {items.length === 0 && (
                   <tr>
