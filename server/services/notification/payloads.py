@@ -14,18 +14,28 @@ from models.alerting.alerts import Alert
 
 NO_VALUE = "(none)"
 
+PD_SEVERITY_MAP = {
+    "critical": "critical",
+    "high": "critical",
+    "error": "error",
+    "warning": "warning",
+    "info": "info",
+}
+
+
+def _fmt(value) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value) if value is not None else "unknown"
+
 
 def get_label(alert: Alert, key: str, default: str = "") -> str:
-    labels = alert.labels or {}
-    return str(labels.get(key, default))
+    return str((alert.labels or {}).get(key, default))
 
 
 def get_annotation(alert: Alert, key: str) -> Optional[str]:
-    annotations = alert.annotations or {}
-    value = annotations.get(key)
-    if value is None:
-        return None
-    return str(value)
+    value = (alert.annotations or {}).get(key)
+    return str(value) if value is not None else None
 
 
 def get_alert_text(alert: Alert) -> str:
@@ -37,19 +47,20 @@ def get_alert_text(alert: Alert) -> str:
 
 
 def format_alert_body(alert: Alert, action: str) -> str:
-    summary = get_annotation(alert, "summary")
-    description = get_annotation(alert, "description")
+    summary = get_annotation(alert, "summary") or "No summary"
+    description = get_annotation(alert, "description") or "No description"
+
     lines = [
         f"Alert: {get_label(alert, 'alertname', 'Unknown')}",
         f"Status: {action}",
         f"Severity: {get_label(alert, 'severity', 'unknown')}",
-        f"Started: {alert.starts_at}",
+        f"Started: {_fmt(alert.starts_at)}",
         "",
         "Summary:",
-        summary or "No summary",
+        summary,
         "",
         "Description:",
-        description or "No description",
+        description,
         "",
         "Labels:",
     ]
@@ -61,30 +72,50 @@ def format_alert_body(alert: Alert, action: str) -> str:
 
 
 def build_slack_payload(alert: Alert, action: str) -> dict:
-    color = "danger" if action == "firing" else "good"
-    if get_label(alert, "severity") == "warning":
+    severity = get_label(alert, "severity").lower()
+
+    if action == "firing":
+        color = "danger"
+    elif severity == "warning":
         color = "warning"
-    return {
-        "attachments": [{
-            "color": color,
-            "title": f"[{action.upper()}] {get_label(alert, 'alertname', 'Alert')}",
-            "text": get_alert_text(alert),
-            "fields": [
-                {"title": "Severity", "value": get_label(alert, 'severity', 'unknown'), "short": True},
-                {"title": "Status", "value": action, "short": True},
-                {"title": "Summary", "value": get_annotation(alert, 'summary') or NO_VALUE, "short": False},
-                {"title": "Description", "value": get_annotation(alert, 'description') or NO_VALUE, "short": False},
-            ],
-            "footer": f"Started: {alert.starts_at}",
-            "ts": int(datetime.now().timestamp()),
-        }]
+    else:
+        color = "good"
+
+    ts = (
+        int(alert.starts_at.timestamp())
+        if isinstance(alert.starts_at, datetime)
+        else None
+    )
+
+    attachment = {
+        "color": color,
+        "title": f"[{action.upper()}] {get_label(alert, 'alertname', 'Alert')}",
+        "text": get_alert_text(alert),
+        "fields": [
+            {"title": "Severity", "value": severity or "unknown", "short": True},
+            {"title": "Status", "value": action, "short": True},
+            {"title": "Summary", "value": get_annotation(alert, "summary") or NO_VALUE, "short": False},
+            {"title": "Description", "value": get_annotation(alert, "description") or NO_VALUE, "short": False},
+        ],
+        "footer": f"Started: {_fmt(alert.starts_at)}",
     }
+
+    if ts is not None:
+        attachment["ts"] = ts
+
+    return {"attachments": [attachment]}
 
 
 def build_teams_payload(alert: Alert, action: str) -> dict:
-    theme_color = "FF0000" if action == "firing" else "00FF00"
-    if get_label(alert, "severity") == "warning":
+    severity = get_label(alert, "severity").lower()
+
+    if action == "firing":
+        theme_color = "FF0000"
+    elif severity == "warning":
         theme_color = "FFA500"
+    else:
+        theme_color = "00FF00"
+
     return {
         "@type": "MessageCard",
         "@context": "https://schema.org/extensions",
@@ -93,11 +124,11 @@ def build_teams_payload(alert: Alert, action: str) -> dict:
         "text": get_alert_text(alert),
         "sections": [{
             "facts": [
-                {"name": "Severity", "value": get_label(alert, 'severity', 'unknown')},
+                {"name": "Severity", "value": severity or "unknown"},
                 {"name": "Status", "value": action},
-                {"name": "Started", "value": alert.starts_at},
-                {"name": "Summary", "value": get_annotation(alert, 'summary') or NO_VALUE},
-                {"name": "Description", "value": get_annotation(alert, 'description') or NO_VALUE},
+                {"name": "Started", "value": _fmt(alert.starts_at)},
+                {"name": "Summary", "value": get_annotation(alert, "summary") or NO_VALUE},
+                {"name": "Description", "value": get_annotation(alert, "description") or NO_VALUE},
             ]
         }]
     }
@@ -105,16 +136,24 @@ def build_teams_payload(alert: Alert, action: str) -> dict:
 
 def build_pagerduty_payload(alert: Alert, action: str, routing_key: str) -> dict:
     event_action = "trigger" if action == "firing" else "resolve"
+
+    raw_severity = get_label(alert, "severity", "warning").lower()
+    severity = PD_SEVERITY_MAP.get(raw_severity, "warning")
+
     summary = get_annotation(alert, "summary")
     description = get_annotation(alert, "description")
+
     return {
         "routing_key": routing_key,
         "event_action": event_action,
-        "dedup_key": alert.fingerprint,
+        "dedup_key": alert.fingerprint or get_label(alert, "alertname", "alert"),
         "payload": {
-            "summary": summary or description or get_label(alert, 'alertname', 'Alert'),
-            "severity": get_label(alert, 'severity', 'warning'),
-            "source": get_label(alert, 'instance', 'unknown'),
-            "custom_details": {"labels": alert.labels or {}, "annotations": alert.annotations or {}, "summary": summary, "description": description},
+            "summary": summary or description or get_label(alert, "alertname", "Alert"),
+            "severity": severity,
+            "source": get_label(alert, "instance", "unknown"),
+            "custom_details": {
+                "labels": alert.labels or {},
+                "annotations": alert.annotations or {},
+            },
         },
     }

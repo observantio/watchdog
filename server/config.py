@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 logger = logging.getLogger(__name__)
 
 
-def _to_bool(value: str, default: bool = False) -> bool:
+def _to_bool(value: Optional[str], default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in ("1", "true", "yes", "on")
