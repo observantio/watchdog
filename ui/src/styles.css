@@ -182,7 +182,35 @@ select.text-xs {
   transform: scale(1.05) !important;
 }
 
+/* Fix: ensure ReactFlow controls are visible and usable in dark theme */
+.react-flow__controls {
+  z-index: 40 !important; /* sit above minimap/canvas */
+}
+
+.react-flow__controls-button {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  color: var(--sre-text) !important; /* ensure icon inherits readable color */
+}
+
+/* Force SVG icons to use currentColor so they adapt to theme */
+.react-flow__controls-button svg,
+.react-flow__controls-button path,
+.react-flow__controls-button circle,
+.react-flow__controls-button line {
+  stroke: currentColor !important;
+  fill: currentColor !important;
+  color: inherit !important;
+}
+
+.react-flow__controls-button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* Ensure controls are not covered by the minimap */
 .react-flow__minimap {
+  z-index: 20 !important;
   background: var(--sre-surface) !important;
   border: 1px solid var(--sre-border) !important;
   border-radius: 8px !important;
