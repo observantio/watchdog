@@ -231,15 +231,15 @@ export default function ServiceGraphAsync({ traces }) {
     <>
       <style>{`
         .react-flow__minimap {
-          background: #0f172a !important;
+          background: #727272 !important;
           border-radius: 10px !important;
           overflow: hidden;
         }
         .react-flow__minimap svg {
-          background: #0f172a !important;
+          background: #727272 !important;
         }
         .react-flow__minimap-mask {
-          fill: rgba(15,23,42,0.55) !important;
+          fill: #727272 !important;
         }
         .react-flow__minimap-node {
           stroke: none !important;

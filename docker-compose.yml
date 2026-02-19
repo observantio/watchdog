@@ -58,9 +58,9 @@ services:
       start_period: 10s
 
   otlp-gateway:
-    image: nginx:1.27-alpine
+    image: envoyproxy/envoy:v1.32-latest
     volumes:
-      - ./configs/otlp-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./configs/envoy.yaml:/etc/envoy/envoy.yaml:ro
     depends_on:
       gateway-auth:
         condition: service_healthy
@@ -74,7 +74,7 @@ services:
     ports:
       - "4320:4320"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:4320/health"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9901'"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -94,6 +94,12 @@ services:
         condition: service_started
     networks: [obs]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4321/api/gateway/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   redis:
     image: redis:7-alpine

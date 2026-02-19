@@ -8,8 +8,6 @@ receivers:
       filesystem:
       network:
       paging:
-      process:
-      system:
 
   otlp:
     protocols:

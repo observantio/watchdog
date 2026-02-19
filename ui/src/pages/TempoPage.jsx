@@ -37,6 +37,7 @@ export default function TempoPage() {
   const [selectedTrace, setSelectedTrace] = useState(null)
   const [selectedTraceIds, setSelectedTraceIds] = useState(new Set())
   const [graphTraces, setGraphTraces] = useState([])
+  const [graphLoading, setGraphLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [viewMode, setViewMode] = useState('list')
@@ -109,6 +110,11 @@ export default function TempoPage() {
       return
     }
 
+    // Immediately switch to dependency map and show a loading state
+    setViewMode('graph')
+    setGraphLoading(true)
+    setGraphTraces([])
+
     const ids = Array.from(selectedTraceIds)
     const concurrency = Math.min(8, ids.length)
     const queue = ids.slice()
@@ -126,13 +132,16 @@ export default function TempoPage() {
       }
     }
 
-    await Promise.all(Array.from({ length: concurrency }).map(() => worker()))
-    if (results.length === 0) {
-      toast && toast.error && toast.error('Failed to load any selected traces')
-      return
+    try {
+      await Promise.all(Array.from({ length: concurrency }).map(() => worker()))
+      if (results.length === 0) {
+        toast && toast.error && toast.error('Failed to load any selected traces')
+        return
+      }
+      setGraphTraces(results)
+    } finally {
+      setGraphLoading(false)
     }
-    setGraphTraces(results)
-    setViewMode('graph')
   }
 
   async function onSearch(e) {
@@ -444,14 +453,21 @@ export default function TempoPage() {
         <Card
           title="Dependency Map"
           subtitle={
-            graphTraces.length
-              ? `Showing relationships between ${new Set(graphTraces.flatMap(t => t.spans?.map(s => getServiceName(s)).filter(Boolean) || [])).size} services (selected)`
-              : filteredTraces.length
-                ? `Showing relationships between ${new Set(filteredTraces.flatMap(t => t.spans?.map(s => getServiceName(s)).filter(Boolean) || [])).size} services`
-                : 'Run a search to see the dependency map'
+            graphLoading
+              ? 'Building dependency map for selected traces…'
+              : graphTraces.length
+                ? `Showing relationships between ${new Set(graphTraces.flatMap(t => t.spans?.map(s => getServiceName(s)).filter(Boolean) || [])).size} services (selected)`
+                : filteredTraces.length
+                  ? `Showing relationships between ${new Set(filteredTraces.flatMap(t => t.spans?.map(s => getServiceName(s)).filter(Boolean) || [])).size} services`
+                  : 'Run a search to see the dependency map'
           }
         >
-          {(graphTraces.length ? graphTraces : filteredTraces).length > 0 ? (
+          {graphLoading ? (
+            <div className="py-24 flex flex-col items-center">
+              <Spinner size="lg" />
+              <p className="text-sre-text-muted mt-4">Building dependency map…</p>
+            </div>
+          ) : ( (graphTraces.length ? graphTraces : filteredTraces).length > 0 ? (
             <ServiceGraph traces={graphTraces.length ? graphTraces : filteredTraces} />
           ) : (
             <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
@@ -461,7 +477,7 @@ export default function TempoPage() {
                 Try adjusting your search criteria, expanding the time range, or selecting traces from the list and clicking "Show selected on Map".
               </p>
             </div>
-          )}
+          ))}
         </Card>
       )}
 

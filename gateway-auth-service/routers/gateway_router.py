@@ -6,11 +6,6 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-FastAPI router for the gateway auth endpoints.
-
-Only contains HTTP routing and thin request validation; business logic and
-DB access live in `services.gateway_service.GatewayAuthService`.
 """
 import logging
 
@@ -26,8 +21,9 @@ router = APIRouter(prefix="/api/gateway", tags=["gateway"])
 _service = GatewayAuthService()
 
 
-@router.get("/validate")
-async def validate_otlp_token(request: Request):
+@router.api_route("/validate", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+@router.api_route("/validate/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def validate_otlp_token(request: Request, path: str = ""):
     _service.enforce_ip_allowlist(request)
     _service.enforce_rate_limit(request)
 
@@ -48,7 +44,7 @@ async def validate_otlp_token(request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or disabled OTLP token")
 
     response = Response(status_code=200)
-    response.headers["X-Org-Id"] = org_id
+    response.headers["X-Scope-OrgID"] = org_id
     return response
 
 

@@ -1,12 +1,10 @@
 import PropTypes from 'prop-types'
-import { FixedSizeList as List } from 'react-window'
-import { Badge } from '../ui'
-import { formatDuration, formatNsToIso, formatRelativeTime } from '../../utils/formatters'
+import { Badge, Spinner } from '../ui'
+import { formatDuration } from '../../utils/formatters'
 import { getServiceName, hasSpanError } from '../../utils/helpers'
 
-function TraceRow({ index, style, data }) {
-  const { traces, handleTraceClick, viewMode, selectedIds, onToggleSelect } = data
-  const t = traces[index]
+function TraceCard({ trace, handleTraceClick, selectedIds, onToggleSelect }) {
+  const t = trace
   const rootSpan = t.spans?.find(s => !s.parentSpanId && !s.parentSpanID) || t.spans?.[0]
   const duration = rootSpan?.duration || 0
   const traceHasError = t.spans?.some(hasSpanError)
@@ -17,21 +15,22 @@ function TraceRow({ index, style, data }) {
   const isSelected = selectedIds && selectedIds.has && selectedIds.has(traceId)
 
   return (
-    <div style={style} className="p-4 bg-sre-surface/50 border-b border-sre-border group w-full text-left">
-      <div className="w-full text-left flex items-start justify-between">
-        <div className="flex items-start gap-3">
+    <div className="p-5 bg-sre-surface/60 border border-sre-border rounded-xl group hover:shadow-lg transition-shadow flex flex-col justify-between min-h-[150px]">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4 flex-1">
           <input
             type="checkbox"
             checked={!!isSelected}
             onChange={(e) => onToggleSelect && onToggleSelect(traceId, e.target.checked)}
-            className="mt-2"
+            className="mt-1"
+            aria-label={`Select trace ${traceId}`}
           />
           <button
             onClick={() => handleTraceClick(traceId)}
             type="button"
-            className="text-left"
+            className="text-left flex-1"
           >
-            <div className="flex-1">
+            <div>
               <div className="flex items-center gap-3 mb-2">
                 <span className={`material-icons ${traceHasError ? 'text-red-500' : 'text-green-500'} group-hover:scale-110 transition-transform`}>{traceHasError ? 'error' : 'check_circle'}</span>
                 <span className="font-mono text-sm text-sre-text font-semibold">{traceId?.substring(0, 16)}...</span>
@@ -39,24 +38,24 @@ function TraceRow({ index, style, data }) {
                 <Badge variant="info">{t.spans?.length || 0} spans</Badge>
                 <Badge variant="default">{serviceCount} service{serviceCount !== 1 ? 's' : ''}</Badge>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-sre-text-muted leading-relaxed">
                 <div>
-                  <span className="text-sre-text-muted">Service: </span>
-                  <span className="text-sre-text font-semibold">{rootServiceName}</span>
+                  <div className="text-xs">Service</div>
+                  <div className="font-semibold text-sre-text truncate max-w-xs">{rootServiceName}</div>
                 </div>
                 {rootSpan?.operationName && (
                   <div>
-                    <span className="text-sre-text-muted">Operation: </span>
-                    <span className="text-sre-text font-semibold">{rootSpan.operationName}</span>
+                    <div className="text-xs">Operation</div>
+                    <div className="font-semibold text-sre-text truncate max-w-xs">{rootSpan.operationName}</div>
                   </div>
                 )}
                 <div>
-                  <span className="text-sre-text-muted">Duration: </span>
-                  <span className="text-sre-text font-semibold font-mono">{formatDuration(duration)}</span>
+                  <div className="text-xs">Duration</div>
+                  <div className="font-mono font-semibold text-sre-text">{formatDuration(duration)}</div>
                 </div>
                 <div>
-                  <span className="text-sre-text-muted">Started: </span>
-                  <span className="text-sre-text font-semibold">{new Date(rootSpan?.startTime / 1000).toLocaleTimeString()}</span>
+                  <div className="text-xs">Started</div>
+                  <div className="font-semibold text-sre-text">{new Date(rootSpan?.startTime / 1000).toLocaleTimeString()}</div>
                 </div>
               </div>
             </div>
@@ -68,17 +67,18 @@ function TraceRow({ index, style, data }) {
   )
 }
 
-TraceRow.propTypes = {
-  index: PropTypes.number.isRequired,
-  style: PropTypes.object.isRequired,
-  data: PropTypes.object.isRequired,
+TraceCard.propTypes = {
+  trace: PropTypes.object.isRequired,
+  handleTraceClick: PropTypes.func.isRequired,
+  selectedIds: PropTypes.object,
+  onToggleSelect: PropTypes.func,
 }
 
 export default function TraceResults({ traces, loading, handleTraceClick, viewMode = 'list', selectedIds = new Set(), onToggleSelect = null }) {
   if (loading) {
     return (
       <div className="py-12 flex flex-col items-center">
-        <div className="loader" />
+        <Spinner size="lg" />
         <p className="text-sre-text-muted mt-4">Searching traces...</p>
       </div>
     )
@@ -94,20 +94,18 @@ export default function TraceResults({ traces, loading, handleTraceClick, viewMo
     )
   }
 
-  const itemSize = 120
-  const height = Math.min(traces.length, 12) * itemSize
-
+  // Responsive grid for trace cards — two cards per row on medium+ screens for better spacing
   return (
-    <div>
-      <List
-        height={height}
-        itemCount={traces.length}
-        itemSize={itemSize}
-        width="100%"
-        itemData={{ traces, handleTraceClick, viewMode, selectedIds, onToggleSelect }}
-      >
-        {TraceRow}
-      </List>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {traces.map((t) => (
+        <TraceCard
+          key={t.traceID || t.traceId || t.id}
+          trace={t}
+          handleTraceClick={handleTraceClick}
+          selectedIds={selectedIds}
+          onToggleSelect={onToggleSelect}
+        />
+      ))}
     </div>
   )
 }
