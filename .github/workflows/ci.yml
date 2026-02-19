@@ -88,6 +88,7 @@ jobs:
         run: npm ci
         working-directory: ui
 
-      - name: Run UI dependency audit
-        run: npm audit --audit-level=high
+      - name: Run UI dependency audit (production-only)
+        # only audit production deps — dev tooling (vite/eslint/stylelint) can show dev-only vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
         working-directory: ui
