@@ -32,13 +32,11 @@ class DatabaseUnavailable(Exception):
     pass
 
 
-# rate-limiter and token-cache moved to their own modules to improve separation of concerns.
 from .rate_limit import TokenRateLimiter, HybridTokenRateLimiter, make_default_rate_limiter
 from .token_cache import TokenCache
 
-# backward-compatible aliases (module-level names used previously)
 _InMemoryRateLimiter = TokenRateLimiter
-_RedisRateLimiter = None  # kept for historical reference (use RedisTokenRateLimiter in rate_limit.py)
+_RedisRateLimiter = None 
 _RateLimiter = make_default_rate_limiter
 _TokenCache = TokenCache
 
@@ -62,11 +60,8 @@ class GatewayAuthService:
         rate_limit = rate_limit_per_minute if rate_limit_per_minute is not None else _RATE_LIMIT
         backend = rate_limit_backend if rate_limit_backend is not None else _RL_BACKEND
         redis_url = rate_limit_redis_url if rate_limit_redis_url is not None else _RL_REDIS_URL
-
-        # create a rate limiter according to configured backend
         self._rate_limiter = make_default_rate_limiter(rate_limit, backend, redis_url)
 
-        # parse allowlist (constructor arg takes precedence over env)
         allowlist = ip_allowlist if ip_allowlist is not None else _IP_ALLOWLIST
         self._networks = _parse_networks(allowlist)
 

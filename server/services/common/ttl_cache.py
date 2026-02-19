@@ -67,7 +67,6 @@ class TTLCache:
                 return True
         except Exception as exc:
             logger.warning("Redis TTL cache unreachable; falling back to in-memory cache: %s", exc)
-            # abandon redis client and fall back
             self._redis_client = None
             return False
         return False
@@ -77,7 +76,6 @@ class TTLCache:
 
     async def get(self, key: str) -> Optional[Any]:
         async with self._lock:
-            # Try Redis first (on-demand)
             if await self._ensure_redis():
                 try:
                     raw = await self._redis_client.get(self._redis_key(key))
@@ -88,7 +86,6 @@ class TTLCache:
                     logger.warning("Redis TTL cache GET failed; falling back to memory: %s", exc)
                     self._redis_client = None
 
-            # in-memory fallback
             entry = self._data.get(key)
             if not entry:
                 return None

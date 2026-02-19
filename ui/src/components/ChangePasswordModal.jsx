@@ -176,16 +176,16 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
             <label htmlFor="newPassword" className="block text-sm font-medium text-sre-text">
               New Password
             </label>
-            <HelpTooltip text="Choose a strong password with at least 8 characters, including uppercase, lowercase, numbers, and special characters." />
+            <HelpTooltip text="Choose a strong password with at least 12 characters, including uppercase, lowercase, numbers, and special characters." />
           </div>
           <Input
             id="newPassword"
             type="password"
             value={formData.newPassword}
             onChange={(e) => handleChange('newPassword', e.target.value)}
-            placeholder="Enter new password (min 8 characters)"
+            placeholder="Enter new password (min 12 characters)"
             required
-            minLength={8}
+            minLength={12}
           />
         </div>
 

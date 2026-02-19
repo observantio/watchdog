@@ -2,9 +2,7 @@
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
@@ -25,6 +23,8 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
+_ALLOWED_ALGORITHMS = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
+
 
 def _jwk_to_verification_key(jwk_key: Dict[str, Any], alg: str):
     jwk_json = json.dumps(jwk_key)
@@ -36,13 +36,13 @@ def _jwk_to_verification_key(jwk_key: Dict[str, Any], alg: str):
 
 
 class OIDCService:
-    """Minimal OIDC client for token verification and auth flows."""
-
     def __init__(self):
         self._well_known_cache: Optional[Dict[str, Any]] = None
         self._well_known_cache_at: float = 0
         self._jwks_cache: Optional[Dict[str, Any]] = None
         self._jwks_cache_at: float = 0
+        self._admin_token_cache: Optional[str] = None
+        self._admin_token_expires_at: float = 0
         self._cache_lock = threading.RLock()
         self._cache_ttl_seconds = 600
         self._timeout = max(float(config.DEFAULT_TIMEOUT), 5.0)
@@ -58,51 +58,52 @@ class OIDCService:
             if self._well_known_cache and self._is_fresh(self._well_known_cache_at):
                 return self._well_known_cache
 
-        issuer = (config.OIDC_ISSUER_URL or "").rstrip("/")
-        if not issuer:
-            raise ValueError("OIDC_ISSUER_URL is required for OIDC auth")
+            issuer = (config.OIDC_ISSUER_URL or "").rstrip("/")
+            if not issuer:
+                raise ValueError("OIDC_ISSUER_URL is required for OIDC auth")
 
-        url = f"{issuer}/.well-known/openid-configuration"
-        with httpx.Client(timeout=self._timeout) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            payload = response.json()
+            url = f"{issuer}/.well-known/openid-configuration"
+            with httpx.Client(timeout=self._timeout) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                payload = response.json()
 
-        with self._cache_lock:
             self._well_known_cache = payload
             self._well_known_cache_at = time.time()
-        return payload
+            return payload
 
     def _get_jwks(self) -> Dict[str, Any]:
         with self._cache_lock:
             if self._jwks_cache and self._is_fresh(self._jwks_cache_at):
                 return self._jwks_cache
 
-        jwks_url = config.OIDC_JWKS_URL
-        if not jwks_url:
-            well_known = self._get_well_known()
-            jwks_url = well_known.get("jwks_uri")
-        if not jwks_url:
-            raise ValueError("OIDC JWKS URI is not configured")
+            jwks_url = config.OIDC_JWKS_URL
+            if not jwks_url:
+                well_known = self._get_well_known()
+                jwks_url = well_known.get("jwks_uri")
+            if not jwks_url:
+                raise ValueError("OIDC JWKS URI is not configured")
 
-        with httpx.Client(timeout=self._timeout) as client:
-            response = client.get(jwks_url)
-            response.raise_for_status()
-            payload = response.json()
+            with httpx.Client(timeout=self._timeout) as client:
+                response = client.get(jwks_url)
+                response.raise_for_status()
+                payload = response.json()
 
-        with self._cache_lock:
             self._jwks_cache = payload
             self._jwks_cache_at = time.time()
-        return payload
+            return payload
 
     def verify_access_token(self, token: str) -> Optional[Dict[str, Any]]:
         if not token:
             return None
 
         try:
+            alg = config.OIDC_TOKEN_ALGORITHM or "RS256"
+            if alg not in _ALLOWED_ALGORITHMS:
+                raise ValueError(f"Unsupported OIDC token algorithm in config: {alg}")
+
             unverified_header = jwt.get_unverified_header(token)
             kid = unverified_header.get("kid")
-            alg = unverified_header.get("alg", "RS256")
 
             jwks = self._get_jwks()
             keys = jwks.get("keys") or []
@@ -133,10 +134,10 @@ class OIDCService:
             claims = jwt.decode(token, verification_key, **decode_kwargs)
             return claims if isinstance(claims, dict) else None
         except jwt.PyJWTError as exc:
-            logger.error("OIDC token validation failed: %s", exc)
+            logger.warning("OIDC token validation failed: %s", type(exc).__name__)
             return None
         except Exception as exc:
-            logger.error("OIDC token validation error: %s", exc)
+            logger.error("OIDC token validation error: %s", type(exc).__name__)
             return None
 
     def exchange_password(self, username: str, password: str) -> Dict[str, Any]:
@@ -186,16 +187,14 @@ class OIDCService:
         if not auth_endpoint:
             raise ValueError("OIDC authorization endpoint not available")
 
-        query = urlencode(
-            {
-                "response_type": "code",
-                "client_id": config.OIDC_CLIENT_ID,
-                "redirect_uri": redirect_uri,
-                "scope": config.OIDC_SCOPES,
-                "state": state,
-                "nonce": nonce,
-            }
-        )
+        query = urlencode({
+            "response_type": "code",
+            "client_id": config.OIDC_CLIENT_ID,
+            "redirect_uri": redirect_uri,
+            "scope": config.OIDC_SCOPES,
+            "state": state,
+            "nonce": nonce,
+        })
         return f"{auth_endpoint}?{query}"
 
     def _get_admin_token(self) -> Optional[str]:
@@ -207,20 +206,29 @@ class OIDCService:
         ):
             return None
 
-        token_url = (
-            f"{config.KEYCLOAK_ADMIN_URL.rstrip('/')}/realms/{config.KEYCLOAK_ADMIN_REALM}"
-            "/protocol/openid-connect/token"
-        )
-        payload = {
-            "grant_type": "client_credentials",
-            "client_id": config.KEYCLOAK_ADMIN_CLIENT_ID,
-            "client_secret": config.KEYCLOAK_ADMIN_CLIENT_SECRET,
-        }
-        with httpx.Client(timeout=self._timeout) as client:
-            response = client.post(token_url, data=payload)
-            response.raise_for_status()
-            body = response.json()
-            return body.get("access_token")
+        with self._cache_lock:
+            if self._admin_token_cache and time.time() < self._admin_token_expires_at:
+                return self._admin_token_cache
+
+            token_url = (
+                f"{config.KEYCLOAK_ADMIN_URL.rstrip('/')}/realms/{config.KEYCLOAK_ADMIN_REALM}"
+                "/protocol/openid-connect/token"
+            )
+            payload = {
+                "grant_type": "client_credentials",
+                "client_id": config.KEYCLOAK_ADMIN_CLIENT_ID,
+                "client_secret": config.KEYCLOAK_ADMIN_CLIENT_SECRET,
+            }
+            with httpx.Client(timeout=self._timeout) as client:
+                response = client.post(token_url, data=payload)
+                response.raise_for_status()
+                body = response.json()
+
+            token = body.get("access_token")
+            expires_in = int(body.get("expires_in", 60))
+            self._admin_token_cache = token
+            self._admin_token_expires_at = time.time() + expires_in - 10
+            return token
 
     def create_keycloak_user(
         self,
@@ -276,11 +284,10 @@ class OIDCService:
                 )
                 query.raise_for_status()
                 users = query.json() or []
-                if users:
-                    return users[0].get("id")
-                return None
+                return users[0].get("id") if users else None
 
             location = response.headers.get("Location") or ""
             if "/users/" in location:
-                return location.rsplit("/users/", 1)[1]
+                user_id = location.rsplit("/users/", 1)[1].strip("/")
+                return user_id if user_id else None
             return None

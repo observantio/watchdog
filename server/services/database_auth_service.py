@@ -2,7 +2,9 @@
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
+
 you may not use this file except in compliance with the License.
+
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
@@ -105,6 +107,7 @@ _MFA_REQUIRED_RESPONSE = "mfa_required"
 
 class DatabaseAuthService:
     _MFA_SETUP_RESPONSE = "mfa_setup_required"
+    _MFA_REQUIRED_RESPONSE = "mfa_required"
 
     """Enterprise authentication service backed by PostgreSQL."""
 
@@ -129,10 +132,6 @@ class DatabaseAuthService:
             except (SQLAlchemyError, ValueError) as exc:
                 logger.warning("Failed to initialize auth service: %s", exc)
 
-    # -------------------------------------------------------------------------
-    # Bootstrap / setup
-    # -------------------------------------------------------------------------
-
     def _ensure_default_setup(self):
         return db_bootstrap.ensure_default_setup(self)
 
@@ -142,19 +141,12 @@ class DatabaseAuthService:
     def _ensure_default_api_key(self, db: Session, user: User):
         return db_bootstrap.ensure_default_api_key(self, db, user)
 
-    # -------------------------------------------------------------------------
-    # Password helpers
-    # -------------------------------------------------------------------------
 
     def hash_password(self, password: str) -> str:
         return db_password.hash_password(self, password)
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return db_password.verify_password(self, plain_password, hashed_password)
-
-    # -------------------------------------------------------------------------
-    # TOTP / MFA
-    # -------------------------------------------------------------------------
 
     def _get_fernet(self) -> Optional[Fernet]:
         return db_mfa._get_fernet(self)
@@ -208,10 +200,6 @@ class DatabaseAuthService:
     def _needs_mfa_setup(self, user: User) -> bool:
         return db_mfa._needs_mfa_setup(self, user)
 
-    # -------------------------------------------------------------------------
-    # Token management
-    # -------------------------------------------------------------------------
-
     def create_access_token(self, user: User) -> Token:
         return create_access_token_op(self, user)
 
@@ -220,10 +208,6 @@ class DatabaseAuthService:
 
     def decode_token(self, token: str) -> Optional[TokenData]:
         return db_token.decode_token(self, token)
-
-    # -------------------------------------------------------------------------
-    # Authentication / login
-    # -------------------------------------------------------------------------
 
     def authenticate_user(self, username: str, password: str) -> Optional[User]:
         if self.is_external_auth_enabled() and not self.is_password_auth_enabled():
@@ -246,9 +230,6 @@ class DatabaseAuthService:
     ) -> Optional[str]:
         return db_auth.provision_external_user(self, email=email, username=username, full_name=full_name)
 
-    # -------------------------------------------------------------------------
-    # OIDC user sync
-    # -------------------------------------------------------------------------
 
     def _extract_permissions_from_oidc_claims(self, claims: Dict[str, Any]) -> List[str]:
         return db_oidc.extract_permissions_from_oidc_claims(self, claims)
@@ -271,9 +252,6 @@ class DatabaseAuthService:
     ):
         return db_oidc.update_oidc_user(self, db, user, email, full_name, subject)
 
-    # -------------------------------------------------------------------------
-    # Permissions
-    # -------------------------------------------------------------------------
 
     def get_user_permissions(self, user: User) -> List[str]:
         return db_permissions.get_user_permissions(self, user)
@@ -286,10 +264,6 @@ class DatabaseAuthService:
 
     def list_all_permissions(self) -> List[Dict[str, Any]]:
         return db_permissions.list_all_permissions(self)
-
-    # -------------------------------------------------------------------------
-    # Schema converters
-    # -------------------------------------------------------------------------
 
     def _to_user_schema(self, user: User) -> UserSchema:
         return db_schema.to_user_schema(self, user)
@@ -342,10 +316,6 @@ class DatabaseAuthService:
             raise ValueError("Password updates are managed by the external identity provider")
         return update_password_op(self, user_id, password_update, tenant_id)
 
-    # -------------------------------------------------------------------------
-    # API key CRUD
-    # -------------------------------------------------------------------------
-
     def list_api_keys(self, user_id: str) -> List[ApiKey]:
         return list_api_keys_op(self, user_id)
 
@@ -382,9 +352,6 @@ class DatabaseAuthService:
     def backfill_otlp_tokens(self):
         backfill_otlp_tokens_op(self)
 
-    # -------------------------------------------------------------------------
-    # Group CRUD
-    # -------------------------------------------------------------------------
 
     def create_group(self, group_create: GroupCreate, tenant_id: str, creator_id: str = None) -> GroupSchema:
         return create_group_op(self, group_create, tenant_id, creator_id)
@@ -411,10 +378,7 @@ class DatabaseAuthService:
     def update_group_members(self, group_id: str, user_ids: List[str], tenant_id: str) -> bool:
         return update_group_members_op(self, group_id, user_ids, tenant_id)
 
-    # -------------------------------------------------------------------------
-    # Audit
-    # -------------------------------------------------------------------------
-
+        
     def _log_audit(
         self,
         db: Session,

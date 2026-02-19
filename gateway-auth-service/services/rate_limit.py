@@ -1,23 +1,41 @@
+"""
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
+
 from __future__ import annotations
 
 import logging
 import time
 from threading import Lock
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import HTTPException, status
 
 try:
     import redis
-except Exception:  # pragma: no cover - optional dependency
+except Exception:
     redis = None
 
 logger = logging.getLogger(__name__)
 
+_MAX_IN_MEMORY_KEYS = 50_000
+
+
+def _sanitize_redis_url(url: str) -> str:
+    try:
+        p = urlparse(url)
+        host = f"{p.hostname}:{p.port}" if p.port else (p.hostname or "")
+        return urlunparse(p._replace(netloc=host))
+    except Exception:
+        return "<redis-url>"
+
 
 class TokenRateLimiter:
-    """In-memory token-based rate limiter (per-minute buckets)."""
-
     def __init__(self, limit_per_minute: int):
         self._limit = max(1, int(limit_per_minute))
         self._hits: dict[str, tuple[float, int]] = {}
@@ -32,6 +50,10 @@ class TokenRateLimiter:
                 cutoff = now - 120
                 self._hits = {k: v for k, v in self._hits.items() if v[0] >= cutoff}
 
+            if key not in self._hits and len(self._hits) >= _MAX_IN_MEMORY_KEYS:
+                oldest = min(self._hits, key=lambda k: self._hits[k][0])
+                self._hits.pop(oldest, None)
+
             start, count = self._hits.get(key, (now, 0))
             if now - start >= 60:
                 start, count = now, 0
@@ -43,13 +65,23 @@ class TokenRateLimiter:
 
 
 class RedisTokenRateLimiter:
-    """Redis-backed per-minute token bucket implementation."""
-
     def __init__(self, limit_per_minute: int, url: str):
         if redis is None:
             raise RuntimeError("redis library not available")
         self._limit = max(1, int(limit_per_minute))
-        self._client = redis.from_url(url, socket_timeout=0.25, socket_connect_timeout=0.25, decode_responses=True)
+        self._client = redis.from_url(
+            url,
+            socket_timeout=0.25,
+            socket_connect_timeout=0.25,
+            decode_responses=True,
+        )
+        try:
+            if not self._client.ping():
+                raise RuntimeError("redis ping returned falsy response")
+        except Exception as exc:
+            raise RuntimeError(
+                f"unable to connect to Redis at {_sanitize_redis_url(url)}: {type(exc).__name__}"
+            ) from exc
 
     def enforce(self, key: str) -> None:
         bucket = f"beobs:rl:{key}:{int(time.time()) // 60}"
@@ -62,17 +94,10 @@ class RedisTokenRateLimiter:
 
 
 class HybridTokenRateLimiter:
-    """Primary/fallback wrapper that prefers `primary` and falls back to `fallback`.
-
-    The `primary` argument may be any object implementing `enforce(key)`.
-    This class is intentionally small and used by tests to inject failing primaries.
-    """
-
     def __init__(self, primary, fallback):
         self._primary = primary
         self._fallback = fallback
         self._last_warn = 0.0
-        self._logger = logging.getLogger(__name__)
 
     def enforce(self, key: str) -> None:
         if self._primary:
@@ -84,14 +109,17 @@ class HybridTokenRateLimiter:
             except Exception as exc:
                 now = time.monotonic()
                 if now - self._last_warn > 30:
-                    self._logger.warning("Redis rate limiter unavailable, falling back: %s", exc)
+                    logger.warning(
+                        "Redis rate limiter unavailable, falling back: %s",
+                        type(exc).__name__,
+                    )
                     self._last_warn = now
         self._fallback.enforce(key)
 
 
 def make_default_rate_limiter(limit: int, backend: str = "auto", redis_url: str | None = None):
-    """Factory used by `GatewayAuthService` to pick the backend at runtime."""
     backend = (backend or "auto").strip().lower()
+
     if backend in ("memory", "in-memory", "inmemory") or not redis_url:
         if backend == "redis" and not redis_url:
             logger.warning("GATEWAY_RATE_LIMIT_BACKEND=redis but URL not set; using in-memory")
@@ -100,8 +128,11 @@ def make_default_rate_limiter(limit: int, backend: str = "auto", redis_url: str 
 
     try:
         primary = RedisTokenRateLimiter(limit, redis_url)
-        logger.info("Gateway rate limiting backend: redis")
+        logger.info("Gateway rate limiting backend: redis (%s)", _sanitize_redis_url(redis_url))
         return HybridTokenRateLimiter(primary, TokenRateLimiter(limit))
     except Exception as exc:
-        logger.warning("Redis rate limiter init failed, using in-memory: %s", exc)
+        logger.warning(
+            "Redis rate limiter init failed (%s), using in-memory fallback",
+            type(exc).__name__,
+        )
         return TokenRateLimiter(limit)

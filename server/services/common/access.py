@@ -2,18 +2,17 @@
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
+import logging
 from typing import List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from db_models import Group, User
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,41 +25,60 @@ def _is_tenant_admin(db: Session, tenant_id: str, user_id: Optional[str]) -> boo
 
 
 def _resolve_groups(
-    db: Session, tenant_id: str, group_ids: List[str], *,
+    db: Session,
+    tenant_id: str,
+    group_ids: List[str],
+    *,
     actor_user_id: Optional[str] = None,
     actor_group_ids: Optional[List[str]] = None,
     enforce_membership: bool = True,
 ) -> List[Group]:
-    normalized = [s for gid in (group_ids or []) if (s := str(gid).strip())]
+    normalized = [s for gid in (group_ids or []) if gid is not None and (s := str(gid).strip())]
     if not normalized:
         return []
 
     groups = db.query(Group).filter(Group.tenant_id == tenant_id, Group.id.in_(normalized)).all()
-    missing = sorted(set(normalized) - {g.id for g in groups})
-    if missing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid group ids: {missing}")
+    if len(groups) != len(normalized):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more group ids are invalid")
 
     if enforce_membership and not _is_tenant_admin(db, tenant_id, actor_user_id):
         actor_groups = set(actor_group_ids or [])
-        unauthorized = sorted({gid for gid in normalized if gid not in actor_groups})
+        unauthorized = [gid for gid in normalized if gid not in actor_groups]
         if unauthorized:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"User not member of groups: {unauthorized}")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is not a member of one or more specified groups")
 
     return groups
 
 
-def _assign_shared_groups(db_obj, db: Session, tenant_id: str, visibility: str, group_ids: Optional[List[str]], *, actor_user_id: str, actor_group_ids: Optional[List[str]]):
-    if group_ids is None:
+def _assign_shared_groups(
+    db_obj,
+    db: Session,
+    tenant_id: str,
+    visibility: str,
+    group_ids: Optional[List[str]],
+    *,
+    actor_user_id: str,
+    actor_group_ids: Optional[List[str]],
+):
+    if visibility != "group":
+        db_obj.shared_groups = []
         return
-    db_obj.shared_groups = (
-        _resolve_groups(db, tenant_id, group_ids, actor_user_id=actor_user_id, actor_group_ids=actor_group_ids)
-        if visibility == "group" else []
+    if group_ids is None:
+        raise ValueError("group_ids is required when visibility is 'group'")
+    db_obj.shared_groups = _resolve_groups(
+        db, tenant_id, group_ids,
+        actor_user_id=actor_user_id,
+        actor_group_ids=actor_group_ids,
     )
 
 
 def _has_access(
-    visibility: str, created_by: Optional[str], user_id: str,
-    shared_group_ids: List[str], user_group_ids: List[str], require_write: bool = False,
+    visibility: str,
+    created_by: Optional[str],
+    user_id: str,
+    shared_group_ids: List[str],
+    user_group_ids: List[str],
+    require_write: bool = False,
 ) -> bool:
     if created_by == user_id:
         return True
@@ -68,6 +86,7 @@ def _has_access(
         return False
     if visibility in ("public", "tenant"):
         return True
-    if visibility == "group" and user_group_ids:
+    if visibility == "group":
         return bool(set(shared_group_ids) & set(user_group_ids))
+    logger.warning("Unknown visibility value %r encountered in access check", visibility)
     return False

@@ -2,27 +2,17 @@
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Request size and concurrency limit middleware for FastAPI.
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from typing import Callable, Awaitable, Optional
 import logging
+from typing import Callable, Awaitable, Optional
+
 from starlette.responses import PlainTextResponse
-
-
-@dataclass(frozen=True)
-class _TooLarge(Exception):
-    max_bytes: int
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +31,19 @@ def _inc_concurrency_busy() -> int:
     _concurrency_busy_total += 1
     return _concurrency_busy_total
 
-class RequestSizeLimitMiddleware:
-    """Reject requests whose body exceeds *max_bytes*.
 
-    - Uses Content-Length when available (fast path).
-    - Enforces a hard cap while reading the body when Content-Length is
-      missing or incorrect.
+class _TooLarge(Exception):
+    def __init__(self, max_bytes: int) -> None:
+        super().__init__(f"Request body exceeds {max_bytes} bytes")
+        self.max_bytes = max_bytes
+
+
+class RequestSizeLimitMiddleware:
+    """Reject requests whose body exceeds max_bytes.
+
+    Uses Content-Length when available (fast path).
+    Enforces a hard cap while reading the body when Content-Length is
+    missing or incorrect.
     """
 
     def __init__(self, app, max_bytes: int = 1_048_576) -> None:
@@ -58,20 +55,27 @@ class RequestSizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+        headers = {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in scope.get("headers", [])
+        }
         content_length = headers.get("content-length")
         if content_length:
             try:
                 if int(content_length) > self.max_bytes:
                     total = _inc_request_size_rejections()
-                    logger.warning("request_size_rejected total=%s content_length=%s max_bytes=%s", total, content_length, self.max_bytes)
+                    logger.warning(
+                        "request_size_rejected total=%s content_length=%s max_bytes=%s",
+                        total, content_length, self.max_bytes,
+                    )
                     resp = PlainTextResponse("Request body too large", status_code=413)
                     await resp(scope, receive, send)
                     return
             except ValueError:
-                logger.warning("Invalid content-length header")
+                logger.warning("Invalid content-length header value: %r", content_length)
 
         received = 0
+        response_started = False
 
         async def limited_receive():
             nonlocal received
@@ -83,19 +87,26 @@ class RequestSizeLimitMiddleware:
                     raise _TooLarge(self.max_bytes)
             return message
 
+        async def tracking_send(message):
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
-            await self.app(scope, limited_receive, send)
+            await self.app(scope, limited_receive, tracking_send)
         except _TooLarge:
             total = _inc_request_size_rejections()
             logger.warning("request_size_rejected total=%s max_bytes=%s", total, self.max_bytes)
-            resp = PlainTextResponse("Request body too large", status_code=413)
-            await resp(scope, receive, send)
+            if not response_started:
+                resp = PlainTextResponse("Request body too large", status_code=413)
+                await resp(scope, receive, send)
 
 
 class ConcurrencyLimitMiddleware:
     """Apply backpressure by limiting concurrent in-flight requests.
 
-    If the semaphore cannot be acquired within *acquire_timeout*, return 503.
+    If the semaphore cannot be acquired within acquire_timeout, return 503.
     """
 
     def __init__(
@@ -105,8 +116,14 @@ class ConcurrencyLimitMiddleware:
         acquire_timeout: float = 1.0,
     ) -> None:
         self.app = app
-        self._sem = asyncio.Semaphore(int(max_concurrent))
+        self._max_concurrent = int(max_concurrent)
         self._timeout = float(acquire_timeout)
+        self._sem: Optional[asyncio.Semaphore] = None
+
+    def _get_semaphore(self) -> asyncio.Semaphore:
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self._max_concurrent)
+        return self._sem
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
@@ -114,7 +131,7 @@ class ConcurrencyLimitMiddleware:
             return
 
         try:
-            await asyncio.wait_for(self._sem.acquire(), timeout=self._timeout)
+            await asyncio.wait_for(self._get_semaphore().acquire(), timeout=self._timeout)
         except asyncio.TimeoutError:
             total = _inc_concurrency_busy()
             logger.warning("concurrency_limit_busy total=%s timeout=%s", total, self._timeout)
@@ -125,5 +142,4 @@ class ConcurrencyLimitMiddleware:
         try:
             await self.app(scope, receive, send)
         finally:
-            self._sem.release()
-
+            self._get_semaphore().release()

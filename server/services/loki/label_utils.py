@@ -25,8 +25,6 @@ def _parse_pairs(s: str) -> Dict[str, str]:
     n = len(s)
 
     while i < n:
-        # find key
-        # skip leading separators
         while i < n and s[i] in ", \t":
             i += 1
         start = i
@@ -34,31 +32,25 @@ def _parse_pairs(s: str) -> Dict[str, str]:
             i += 1
         key = s[start:i].strip()
         if not key or not _KEY_RE.fullmatch(key):
-            # skip until next comma
             while i < n and s[i] != ",":
                 i += 1
             continue
 
-        # skip to '='
         while i < n and s[i] != "=":
             i += 1
         if i >= n or s[i] != "=":
             break
         i += 1
-        # expect opening quote
         if i >= n or s[i] != '"':
             break
         i += 1
 
-        # parse quoted value with simple escape handling
         val_chars: List[str] = []
         while i < n:
             ch = s[i]
             if ch == "\\":
-                # consume escape
                 if i + 1 < n:
                     nxt = s[i + 1]
-                    # unescape common escapes, otherwise keep raw next char
                     if nxt == '"':
                         val_chars.append('"')
                     elif nxt == "\\":
@@ -74,7 +66,6 @@ def _parse_pairs(s: str) -> Dict[str, str]:
                     i += 2
                     continue
                 else:
-                    # trailing backslash — treat literally
                     val_chars.append('\\')
                     i += 1
                     continue
@@ -86,7 +77,6 @@ def _parse_pairs(s: str) -> Dict[str, str]:
 
         pairs[key] = "".join(val_chars)
 
-        # skip any trailing separators to next pair
         while i < n and s[i] in ", \t":
             i += 1
 
@@ -113,8 +103,6 @@ def normalize_label_value(label_key: str, value: Any) -> Tuple[Optional[str], Op
     - If only a truncation marker is present (\",) returns the truncated string and None
     """
     if not isinstance(value, str) or '="' not in value or '",'+"" not in value:
-        # mirror original guard: require both '="' and '\",' to attempt structured parsing
-        # (this keeps behaviour consistent with existing callers)
         return None, None
 
     parsed = parse_labelset_value(label_key, value)

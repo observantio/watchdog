@@ -2,18 +2,14 @@
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Shared FastAPI dependency helpers (moved from routers).
-
-This module centralizes authentication and scoped rate-limit dependencies for use by route handlers and other middleware.
 """
 
+import logging
 from hmac import compare_digest
 from ipaddress import ip_address, ip_network
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -22,6 +18,7 @@ from middleware.rate_limit import enforce_rate_limit, enforce_ip_rate_limit, cli
 from models.access.auth_models import Permission, TokenData
 from services.database_auth_service import DatabaseAuthService
 
+logger = logging.getLogger(__name__)
 
 auth_service = DatabaseAuthService()
 security = HTTPBearer(auto_error=False)
@@ -33,33 +30,21 @@ def _extract_bearer_token(
 ) -> str | None:
     if credentials and getattr(credentials, "credentials", None):
         return credentials.credentials
-
     cookie_token = request.cookies.get("beobservant_token")
     if cookie_token:
         return cookie_token
-
     return None
 
 
 def resolve_tenant_id(request: Request, current_user: TokenData) -> str:
-    """Resolve tenant from request headers with scoped authorization checks.
-
-    Rules:
-    - No header -> use user's org_id fallback.
-    - Superusers may target any org_id via header.
-    - Regular users may target only their own org_id or one of their API key values.
-    """
     default_org_id = getattr(current_user, "org_id", config.DEFAULT_ORG_ID)
     header_value = request.headers.get("x-scope-orgid") or request.headers.get("X-Scope-OrgID")
     if not header_value:
         return default_org_id
 
     candidate_org_id = header_value.strip()
-    if not candidate_org_id:
+    if not candidate_org_id or candidate_org_id == default_org_id:
         return default_org_id
-
-    if candidate_org_id == default_org_id:
-        return candidate_org_id
 
     if getattr(current_user, "is_superuser", False):
         return candidate_org_id
@@ -84,7 +69,6 @@ def resolve_tenant_id(request: Request, current_user: TokenData) -> str:
 
 
 def apply_scoped_rate_limit(current_user: TokenData, scope: str) -> None:
-    """Apply per-user scoped rate limiting for an API subsystem."""
     enforce_rate_limit(
         key=f"user:{current_user.user_id}:{scope}",
         limit=config.RATE_LIMIT_USER_PER_MINUTE,
@@ -95,7 +79,6 @@ def apply_scoped_rate_limit(current_user: TokenData, scope: str) -> None:
 def _parse_ip_allowlist(allowlist: str | None) -> list:
     if not allowlist:
         return []
-
     networks = []
     for raw in allowlist.split(","):
         entry = raw.strip()
@@ -108,11 +91,12 @@ def _parse_ip_allowlist(allowlist: str | None) -> list:
                 ip = ip_address(entry)
                 suffix = 32 if ip.version == 4 else 128
                 networks.append(ip_network(f"{entry}/{suffix}", strict=False))
-        except ValueError as exc:
+        except ValueError:
+            logger.error("Invalid IP allowlist entry %r — failing closed", entry)
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Invalid IP allowlist entry: {entry}",
-            ) from exc
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: server misconfiguration",
+            )
     return networks
 
 
@@ -125,7 +109,7 @@ def enforce_ip_allowlist(request: Request, allowlist: str | None, *, scope: str)
             return
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied for {scope}: source IP not allowed (empty allowlist)",
+            detail=f"Access denied for {scope}: source IP not allowed",
         )
 
     client = client_ip(request)
@@ -161,7 +145,6 @@ def enforce_public_endpoint_security(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Access denied for {scope}: client IP resolution failed",
         )
-
     enforce_ip_rate_limit(
         request,
         scope=scope,
@@ -193,11 +176,6 @@ def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> TokenData:
-    """Decode JWT, validate the user, and resolve fresh permissions in a single pass.
-
-    Kept intentionally identical to the previous implementation to avoid
-    behavioral changes when moving the dependency.
-    """
     token = _extract_bearer_token(request, credentials)
     if not token:
         raise HTTPException(
@@ -225,6 +203,13 @@ def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+    if getattr(token_data, "is_mfa_setup", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MFA setup token cannot be used for this endpoint",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user = auth_service.get_user_by_id(token_data.user_id)
     if user is None or not user.is_active:
         raise HTTPException(
@@ -234,9 +219,11 @@ def get_current_user(
 
     token_data.org_id = getattr(user, "org_id", token_data.org_id)
     token_data.permissions = auth_service.get_user_permissions(user)
-    live_group_ids = getattr(user, "group_ids", None)
-    if isinstance(live_group_ids, list):
-        token_data.group_ids = [str(group_id) for group_id in live_group_ids if str(group_id).strip()]
+
+    live_groups = getattr(user, "groups", None)
+    if isinstance(live_groups, list):
+        token_data.group_ids = [str(g.id) for g in live_groups if getattr(g, "id", None)]
+
     enforce_rate_limit(
         key=f"user:{token_data.user_id}",
         limit=config.RATE_LIMIT_USER_PER_MINUTE,
@@ -250,12 +237,6 @@ def get_current_user_or_mfa_setup(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> TokenData:
-    """Allow either a fully-authenticated token or a short-lived MFA-setup token.
-
-    Used by `/api/auth/mfa/*` endpoints so a freshly-logged-in admin can
-    use the provided setup token to enroll/verify TOTP without having full
-    application sessions yet.
-    """
     token = _extract_bearer_token(request, credentials)
     if not token:
         raise HTTPException(
@@ -265,7 +246,6 @@ def get_current_user_or_mfa_setup(
         )
 
     token_data = auth_service.decode_token(token)
-
     if token_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -277,7 +257,7 @@ def get_current_user_or_mfa_setup(
         user = auth_service.get_user_by_id(token_data.user_id)
         if not user or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
-        if getattr(user, 'mfa_enabled', False):
+        if getattr(user, "mfa_enabled", False):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="MFA setup not permitted for this user")
         return token_data
 
@@ -285,10 +265,6 @@ def get_current_user_or_mfa_setup(
 
 
 def require_permission(permission: Permission | str):
-    """FastAPI dependency that enforces a specific permission.
-
-    Accepts either a Permission enum member or a raw string permission name.
-    """
     perm_value = permission.value if hasattr(permission, "value") else str(permission)
 
     def permission_checker(current_user: TokenData = Depends(get_current_user)):
@@ -316,12 +292,12 @@ def require_permission_with_scope(permission: Permission | str, scope: str):
 
 
 def require_any_permission(permissions: list[Permission | str]):
-    perm_values = [permission.value if hasattr(permission, "value") else str(permission) for permission in permissions]
+    perm_values = [p.value if hasattr(p, "value") else str(p) for p in permissions]
 
     def permission_checker(current_user: TokenData = Depends(get_current_user)):
         if current_user.is_superuser:
             return current_user
-        if any(perm_value in current_user.permissions for perm_value in perm_values):
+        if any(pv in current_user.permissions for pv in perm_values):
             return current_user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
