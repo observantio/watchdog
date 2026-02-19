@@ -56,7 +56,7 @@ export function useGrafanaState() {
     try {
       const groupsData = await getGroups().catch(() => [])
       setGroups(groupsData)
-    } catch { /* silent */ }
+    } catch (e) { /* silent */ void e }
   }
 
   const loadData = useCallback(async () => {

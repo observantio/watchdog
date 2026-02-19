@@ -30,6 +30,7 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
             const isActive = index === currentStep
             const isCompleted = index < currentStep
 
+            return (
                 <div className="flex flex-col items-center">
                   <div
                     className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
@@ -54,15 +55,14 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
                       {step.description}
                     </div>
                   </div>
+                  {index < steps.length - 1 && (
+                    <div
+                      className={`flex-1 h-0.5 mx-4 transition-colors duration-300 ${
+                        isCompleted ? 'bg-sre-success' : 'bg-sre-border'
+                      }`}
+                    />
+                  )}
                 </div>
-                {index < steps.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 mx-4 transition-colors duration-300 ${
-                      isCompleted ? 'bg-sre-success' : 'bg-sre-border'
-                    }`}
-                  />
-                )}
-              </div>
             )
           })}
         </div>

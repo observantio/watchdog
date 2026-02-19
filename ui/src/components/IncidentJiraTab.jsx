@@ -72,7 +72,8 @@ export default function IncidentJiraTab({
                   } else {
                     setJiraIssueTypes([])
                   }
-                } catch {
+                } catch (e) {
+                  void e
                   setJiraProjects([])
                   setJiraIssueTypes([])
                 }
@@ -127,7 +128,7 @@ export default function IncidentJiraTab({
               onClick={async () => {
                 // create Jira ticket using server endpoint
                 if (!canUpdateIncidents) {
-                  try { toast.error('Missing update:incidents permission') } catch (_) {}
+                  try { toast.error('Missing update:incidents permission') } catch (e) { void e }
                   return
                 }
                 const draft = incidentDrafts[activeIncident.id] || {}
@@ -137,11 +138,11 @@ export default function IncidentJiraTab({
                 const summary = (draft.jiraSummary && draft.jiraSummary.trim()) || activeIncident.alertName
                 const description = `Incident: ${activeIncident.alertName}\n\nLabels: ${JSON.stringify(activeIncident.labels || {})}\nAnnotations: ${JSON.stringify(activeIncident.annotations || {})}`
                 if (!integrationId) {
-                  try { toast.error('Choose a Jira integration first') } catch (_) {}
+                  try { toast.error('Choose a Jira integration first') } catch (e) { void e }
                   return
                 }
                 if (!projectKey) {
-                  try { toast.error('Choose a Jira project first') } catch (_) {}
+                  try { toast.error('Choose a Jira project first') } catch (e) { void e }
                   return
                 }
                 try {
@@ -152,11 +153,11 @@ export default function IncidentJiraTab({
                     ...prev,
                     [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraTicketKey: updated.jiraTicketKey || '', jiraTicketUrl: updated.jiraTicketUrl || '', jiraIntegrationId: integrationId }
                   }))
-                  try { toast.success(`Jira created: ${updated.jiraTicketKey}`) } catch (_) {}
+                  try { toast.success(`Jira created: ${updated.jiraTicketKey}`) } catch (e) { void e }
                   await loadJiraComments(activeIncident.id)
                   await loadData()
                 } catch (err) {
-                  try { toast.error(err?.body?.detail || err?.message || 'Failed to create Jira ticket') } catch (_) {}
+                  try { toast.error(err?.body?.detail || err?.message || 'Failed to create Jira ticket') } catch (e) { void e }
                 } finally {
                   setJiraCreating((s) => ({ ...s, [activeIncident.id]: false }))
                 }

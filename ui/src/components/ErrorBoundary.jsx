@@ -17,7 +17,7 @@ export default class ErrorBoundary extends React.Component {
     this.handleReset = this.handleReset.bind(this)
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(/* error */) {
     return { hasError: true }
   }
 

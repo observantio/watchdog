@@ -2,7 +2,19 @@
 
 > A unified observability platform — metrics, logs, traces, and alerts in one place.
 
+![alt text](assets/observant-home.png)
+
 Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be Observant is a production-ready observability control plane with enterprise-grade security, multi-tenancy, and a clean REST API.
+
+## Distributed Tracing
+
+With Tempo as the backbone, Be Observant Proxies and scopes Traces based on the API key to enforce multi-tenacy
+
+![alt text](assets/traces-summary.png)
+
+With visualization of spans and multiple traces using React flow
+
+![alt text](assets/dependency-maps.png)
 
 ---
 
@@ -21,7 +33,6 @@ Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be O
 | `alertmanager` | Alert routing and silences | internal |
 | `postgres` | Primary database | internal |
 | `redis` | Rate limiting and caching | internal |
-| `ui` | Frontend interface | `5173` |
 
 ---
 

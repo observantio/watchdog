@@ -303,6 +303,15 @@ export default function IntegrationsPage() {
     return 'notifications'
   }
 
+  const channelColorForType = (type) => {
+    const t = (type || '').toLowerCase()
+    if (t.includes('slack')) return 'from-emerald-100 to-emerald-50 text-emerald-700 dark:from-emerald-900/20 dark:text-emerald-300'
+    if (t.includes('email')) return 'from-yellow-100 to-yellow-50 text-amber-700 dark:from-yellow-900/20 dark:text-amber-300'
+    if (t.includes('webhook') || t.includes('web')) return 'from-sky-100 to-sky-50 text-sky-700 dark:from-sky-900/20 dark:text-sky-300'
+    if (t.includes('sms') || t.includes('pager')) return 'from-orange-100 to-orange-50 text-orange-700 dark:from-orange-900/20 dark:text-orange-300'
+    return 'from-gray-100 to-gray-50 text-gray-700 dark:from-gray-900/20 dark:text-gray-300'
+  }
+
   const navigate = useNavigate()
 
   const openCreateChannel = () => {
@@ -350,47 +359,53 @@ export default function IntegrationsPage() {
   /* Local presentational components to reduce duplication and improve readability */
   function ChannelCard({ channel }) {
     const isOwner = channel.createdBy === userId
+    const typeIcon = channelIconForType(channel.type)
+    const colorClasses = channelColorForType(channel.type)
+
     return (
-      <div className="p-4 rounded-xl border border-sre-border bg-white/5 shadow-sm hover:shadow-md transition-all hover:border-sre-primary/30">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <div className="font-semibold text-sre-text truncate mb-1">{channel.name}</div>
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                channel.enabled
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-              }`}>
-                {channel.enabled ? 'Enabled' : 'Disabled'}
-              </span>
-              <span className="px-2 py-1 rounded-full text-xs font-medium bg-sre-surface/50 text-sre-text-muted border border-sre-border/30 capitalize">
-                {channel.type}
-              </span>
+      <div className="group relative p-4 rounded-xl border border-sre-border bg-gradient-to-br from-white/3 to-white/6 shadow-sm hover:shadow-lg transition-all transform hover:-translate-y-0.5">
+        <div className="flex items-start gap-4">
+          <div className={`w-12 h-12 rounded-lg flex items-center justify-center bg-gradient-to-br ${colorClasses} font-semibold`}>
+            <span className="material-icons text-lg leading-none">{typeIcon}</span>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="font-semibold text-sre-text truncate">{channel.name}</div>
+                  <div className="text-xs text-sre-text-muted rounded px-2 py-1 bg-sre-surface/40 border border-sre-border/30">{channel.visibility || 'private'}</div>
+                </div>
+                <div className="text-xs text-sre-text-muted mt-2 truncate">{channel.description || '—'}</div>
+              </div>
+
+              <div className="flex flex-col items-end gap-2">
+                <div className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs font-medium ${channel.enabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                  <span className={`w-2 h-2 rounded-full ${channel.enabled ? 'bg-green-600' : 'bg-gray-400'}`} />
+                  {channel.enabled ? 'Enabled' : 'Disabled'}
+                </div>
+
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {isOwner && (
+                    <Button size="sm" variant="ghost" aria-label="Test channel" title="Test channel" onClick={() => handleTestChannel(channel.id)} className="p-1 hover:bg-sre-primary/10">
+                      <span className="material-icons text-base">play_arrow</span>
+                    </Button>
+                  )}
+                  {isOwner && (
+                    <Button size="sm" variant="ghost" aria-label="Edit channel" title="Edit channel" onClick={() => openEditChannel(channel)} className="p-1 hover:bg-sre-primary/10">
+                      <span className="material-icons text-base">edit</span>
+                    </Button>
+                  )}
+                  {isOwner && (
+                    <Button size="sm" variant="ghost" aria-label="Delete channel" title="Delete channel" onClick={() => setDeleteConfirm({ show: true, type: 'channel', id: channel.id, name: channel.name })} className="p-1 hover:bg-sre-primary/10">
+                      <span className="material-icons text-base">delete</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-
-          <div className="flex items-center gap-1">
-            {isOwner && (
-              <Button size="sm" variant="ghost" aria-label="Test channel" title="Test channel" onClick={() => handleTestChannel(channel.id)} className="p-1 hover:bg-sre-primary/10">
-                <span className="material-icons text-base">play_arrow</span>
-              </Button>
-            )}
-            {isOwner && (
-              <Button size="sm" variant="ghost" aria-label="Edit channel" title="Edit channel" onClick={() => openEditChannel(channel)} className="p-1 hover:bg-sre-primary/10">
-                <span className="material-icons text-base">edit</span>
-              </Button>
-            )}
-            {isOwner && (
-              <Button size="sm" variant="ghost" aria-label="Delete channel" title="Delete channel" onClick={() => setDeleteConfirm({ show: true, type: 'channel', id: channel.id, name: channel.name })} className="p-1 hover:bg-sre-primary/10">
-                <span className="material-icons text-base">delete</span>
-              </Button>
-            )}
-          </div>
         </div>
-
-        {channel.description && (
-          <div className="text-xs text-sre-text-muted truncate">{channel.description}</div>
-        )}
       </div>
     )
   }
@@ -578,11 +593,16 @@ export default function IntegrationsPage() {
           <div className="space-y-4">
             {visibleChannels.length === 0 ? (
               <div className="text-center py-12">
-                <div className="mx-auto w-32 h-32 bg-sre-surface/60 flex items-center justify-center mb-4">
-                  <span className="material-icons text-4xl text-sre-text-muted">notifications_off</span>
+                <div className="mx-auto w-36 h-36 rounded-full bg-gradient-to-br from-sre-surface/50 to-sre-surface/30 flex items-center justify-center mb-4 shadow-inner">
+                  <span className="material-icons text-5xl text-sre-text-muted">notifications_off</span>
                 </div>
                 <h3 className="text-lg font-semibold text-sre-text mb-2">No channels in this scope</h3>
-                <p className="text-sm text-sre-text-muted max-w-[28rem] mx-auto mb-4">Configure notification channels here and assign them to alerts. Channels can be scoped to private, groups, or organization.</p>
+                <p className="text-sm text-sre-text-muted max-w-[34rem] mx-auto mb-6">No notification channels are configured for this scope yet. Create a channel to start sending alerts to Slack, Email, Webhooks or other destinations.</p>
+                <div className="flex items-center justify-center gap-3">
+                  <Button onClick={openCreateChannel} variant="primary" className="px-4 py-2">
+                    <span className="material-icons mr-2">add</span>Create channel
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

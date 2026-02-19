@@ -10,7 +10,7 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
   const loadData = useCallback(async () => {
     // DEBUG: verify API functions are available during tests
     if (process.env.NODE_ENV === 'test') {
-      try { console.debug('useIncidentsData: getIncidents is', typeof getIncidents, 'getUsers is', typeof getUsers) } catch (e) {}
+      try { console.debug('useIncidentsData: getIncidents is', typeof getIncidents, 'getUsers is', typeof getUsers) } catch (e) { void e }
     }
 
     setLoading(true)
@@ -57,7 +57,7 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
         setIncidentUsers(Array.isArray(usersData) ? usersData : [])
       }
     } catch (e) {
-      try { console.error('useIncidentsData.loadData error', e) } catch (err) {}
+      try { console.error('useIncidentsData.loadData error', e) } catch (err) { void err }
       setError(e.message || String(e))
     } finally {
       setLoading(false)

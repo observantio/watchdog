@@ -19,7 +19,7 @@ export function useAgentActivity() {
         setLoadingAgents(true)
         const res = await getActiveAgents()
         setAgentActivity(Array.isArray(res) ? res : [])
-      } catch {
+      } catch (e) { void e
         setAgentActivity([])
       } finally {
         setLoadingAgents(false)
