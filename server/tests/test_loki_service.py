@@ -251,6 +251,17 @@ def test_query_logs_limits_fallback_candidates():
 
     service._timed_get_json = fake_get_json
 
+    async def fake_run_fallback(endpoint, base_params, headers, query_str):
+        return {
+            "status": "success",
+            "data": {
+                "resultType": "streams",
+                "result": [{"stream": {"service_name": "api"}, "values": [["1", "ok"]]}],
+            },
+        }
+
+    service._run_fallback_queries = fake_run_fallback
+
     query = LogQuery(query='{service.name="api"}', limit=100)
     result = asyncio.run(service.query_logs(query))
 
