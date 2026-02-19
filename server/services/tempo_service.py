@@ -17,6 +17,7 @@ from config import config
 from middleware.resilience import with_retry, with_timeout
 from models.observability.tempo_models import Span, Trace, TraceQuery, TraceResponse
 from services.common.http_client import create_async_client
+from services.common.ttl_cache import TTLCache
 
 from services.tempo import parsers as tempo_parsers
 from services.tempo import promql as tempo_promql
@@ -37,8 +38,9 @@ class TempoService:
         self.timeout = config.DEFAULT_TIMEOUT
         self._client = create_async_client(self.timeout)
         self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
-        self._services_cache: Dict[str, Dict[str, Any]] = {}
-        self._volume_cache: Dict[str, Dict[str, Any]] = {}
+        # replace ad-hoc dict caches with shared async-safe TTLCache
+        self._services_cache = TTLCache()
+        self._volume_cache = TTLCache()
         self._metrics_enabled = True
         self._metrics: Dict[str, float] = {
             "tempo_search_total": 0,
@@ -190,64 +192,68 @@ class TempoService:
     @with_retry()
     @with_timeout()
     async def get_services(self, tenant_id: str = config.DEFAULT_ORG_ID) -> List[str]:
-        now = time.monotonic()
-        cached = self._services_cache.get(tenant_id)
-        if isinstance(cached, dict) and float(cached.get("expires", 0.0)) > now:
-            return list(cached.get("data", []))
+        # try fast path via TTLCache
+        cached = await self._services_cache.get(tenant_id)
+        if cached is not None:
+            return list(cached)
 
         headers = self._get_headers(tenant_id)
-        try:
-            data = await self._timed_get_json(f"{self.tempo_url}/api/search/tags", headers=headers)
-            logger.debug("Tempo /api/search/tags response: %s", data)
 
-            tag_names: List[str] = []
-            if isinstance(data, dict):
-                tag_names = (
-                    data.get("tagNames")
-                    or (data.get("data") or {}).get("tagNames")
-                    or []
-                )
-            elif isinstance(data, list):
-                tag_names = [item.get("tagName") for item in data if isinstance(item, dict)]
+        async def _fetch_services():
+            try:
+                data = await self._timed_get_json(f"{self.tempo_url}/api/search/tags", headers=headers)
+                logger.debug("Tempo /api/search/tags response: %s", data)
 
-            services: List[str] = []
-            for tag in tag_names:
-                if tag not in _SERVICE_KEYS:
-                    continue
-                try:
-                    resp = await self._client.get(
-                        f"{self.tempo_url}/api/search/tag/{tag}/values", headers=headers
+                tag_names: List[str] = []
+                if isinstance(data, dict):
+                    tag_names = (
+                        data.get("tagNames")
+                        or (data.get("data") or {}).get("tagNames")
+                        or []
                     )
-                    resp.raise_for_status()
-                    vd = resp.json()
-                    if isinstance(vd, dict):
-                        services.extend(
-                            vd.get("tagValues") or vd.get("values") or vd.get("data") or []
+                elif isinstance(data, list):
+                    tag_names = [item.get("tagName") for item in data if isinstance(item, dict)]
+
+                services: List[str] = []
+                for tag in tag_names:
+                    if tag not in _SERVICE_KEYS:
+                        continue
+                    try:
+                        resp = await self._client.get(
+                            f"{self.tempo_url}/api/search/tag/{tag}/values", headers=headers
                         )
-                    elif isinstance(vd, list):
-                        services.extend(vd)
-                except httpx.HTTPError as e:
-                    logger.warning("Failed to fetch tag values for %s: %s", tag, e)
+                        resp.raise_for_status()
+                        vd = resp.json()
+                        if isinstance(vd, dict):
+                            services.extend(
+                                vd.get("tagValues") or vd.get("values") or vd.get("data") or []
+                            )
+                        elif isinstance(vd, list):
+                            services.extend(vd)
+                    except httpx.HTTPError as e:
+                        logger.warning("Failed to fetch tag values for %s: %s", tag, e)
 
-            if not services:
-                logger.debug("No services from tags, inferring from recent traces")
-                try:
-                    resp = await self.search_traces(TraceQuery(limit=50), tenant_id=tenant_id)
-                    services = [
-                        span.service_name
-                        for trace in resp.data
-                        for span in trace.spans
-                        if span.service_name
-                    ]
-                except Exception as e:
-                    logger.warning("Failed to infer services from traces: %s", e)
+                if not services:
+                    logger.debug("No services from tags, inferring from recent traces")
+                    try:
+                        resp = await self.search_traces(TraceQuery(limit=50), tenant_id=tenant_id)
+                        services = [
+                            span.service_name
+                            for trace in resp.data
+                            for span in trace.spans
+                            if span.service_name
+                        ]
+                    except Exception as e:
+                        logger.warning("Failed to infer services from traces: %s", e)
 
-            result = sorted(set(filter(None, map(str, services))))
-            self._services_cache[tenant_id] = {"expires": now + self._cache_ttl_seconds, "data": result}
-            return result
-        except httpx.HTTPError as e:
-            logger.error("Error fetching services: %s", e)
-            return []
+                result = sorted(set(filter(None, map(str, services))))
+                return result
+            except httpx.HTTPError as e:
+                logger.error("Error fetching services: %s", e)
+                return None
+
+        services = await self._services_cache.get_or_set(tenant_id, _fetch_services, self._cache_ttl_seconds)
+        return list(services) if services else []
 
     async def get_operations(self, service: str, tenant_id: str = config.DEFAULT_ORG_ID) -> List[str]:
         response = await self.search_traces(TraceQuery(service=service, limit=100), tenant_id=tenant_id)
@@ -295,9 +301,10 @@ class TempoService:
         start = start or (end - 60 * 60 * 1_000_000)
         step = max(1, step)
         cache_key = f"{tenant_id}:{service or '__all__'}:{start}:{end}:{step}"
-        cached = self._volume_cache.get(cache_key)
-        if isinstance(cached, dict) and float(cached.get("expires", 0.0)) > time.monotonic():
-            return cached.get("data")
+        cached = await self._volume_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         if config.TEMPO_USE_METRICS_FOR_COUNT:
             try:
                 values = self._extract_metric_values(
@@ -307,7 +314,7 @@ class TempoService:
                 )
                 if values:
                     result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                    self._volume_cache[cache_key] = {"expires": time.monotonic() + self._cache_ttl_seconds, "data": result}
+                    await self._volume_cache.set(cache_key, result, self._cache_ttl_seconds)
                     return result
             except Exception:
                 logger.debug("Metrics-based volume query failed, falling back", exc_info=True)
@@ -327,7 +334,7 @@ class TempoService:
                     for i in range(num_buckets)
                 ]
                 result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                self._volume_cache[cache_key] = {"expires": time.monotonic() + self._cache_ttl_seconds, "data": result}
+                await self._volume_cache.set(cache_key, result, self._cache_ttl_seconds)
                 return result
         except Exception:
             logger.debug("Failed to estimate trace volume from totals", exc_info=True)
@@ -338,7 +345,7 @@ class TempoService:
             for i in range(num_buckets)
         ]
         result = {"data": {"result": [{"metric": {}, "values": values}]}}
-        self._volume_cache[cache_key] = {"expires": time.monotonic() + self._cache_ttl_seconds, "data": result}
+        await self._volume_cache.set(cache_key, result, self._cache_ttl_seconds)
         return result
 
     async def count_traces(self, query: TraceQuery, tenant_id: str = config.DEFAULT_ORG_ID) -> int:

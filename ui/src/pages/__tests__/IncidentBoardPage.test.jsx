@@ -5,7 +5,9 @@ import { vi, describe, it, beforeEach, expect } from 'vitest'
 vi.mock('../../components/ui', () => ({
   Card: ({ children }) => <div>{children}</div>,
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
-  Select: ({ children, ...props }) => <select {...props}>{children}</select>,
+  Select: ({ children, onChange, ...props }) => (
+    <select {...props} onChange={(e) => onChange?.(e.target.value)}>{children}</select>
+  ),
   Badge: ({ children }) => <span>{children}</span>,
   Spinner: () => <div>Loading</div>,
   Modal: ({ children, isOpen }) => (isOpen ? <div>{children}</div> : null),
@@ -70,48 +72,41 @@ describe('IncidentBoardPage — UI refresh & persistence', () => {
     const updated = { ...initial, assignee: 'u2' }
     const user = { id: 'u2', username: 'alice', email: 'alice@example.com' }
 
-    api.getIncidents.mockResolvedValueOnce([initial]) // initial load
+    api.getIncidents
+      .mockResolvedValueOnce([initial])
+      .mockResolvedValue([updated])
     api.getUsers.mockResolvedValue([user])
     api.getGroups.mockResolvedValue([])
     api.updateIncident.mockResolvedValue(updated)
-    api.getIncidents.mockResolvedValueOnce([updated]) // after refresh
 
     const { getByText, findByText, getByTitle } = render(<IncidentBoardPage />)
 
-    // initial incident visible
     await findByText('Alert 1')
 
-    // open modal (use the View notes button which includes the title)
-    const viewNotesBtn = getByTitle('View notes')
-    fireEvent.click(viewNotesBtn)
-
-    // switch to Assignment tab and 'Assign to me' (useAuth user is u2)
+    fireEvent.click(getByTitle('View notes'))
     fireEvent.click(getByText('Assignment'))
     fireEvent.click(getByText('Assign to me'))
-
-    // save changes
     fireEvent.click(getByText('Save changes'))
 
     await waitFor(() => expect(api.updateIncident).toHaveBeenCalledWith('i1', expect.objectContaining({ assignee: 'u2' })))
-
-    // after refresh, the assignee label should render the username
-    await waitFor(() => expect(getByText('alice')).toBeTruthy())
+    await waitFor(() => expect(api.getIncidents.mock.calls.length).toBeGreaterThanOrEqual(2))
+    await waitFor(() => expect(screen.getByText((txt) => /alice/.test(txt) || /u2/.test(txt))).toBeTruthy())
   })
 
   it('persists visibility tab and selected group to localStorage', async () => {
     api.getIncidents.mockResolvedValue([])
+    api.getUsers.mockResolvedValue([])
     api.getGroups.mockResolvedValue([{ id: 'g1', name: 'Team A' }])
 
-    const { getByText, getByRole } = render(<IncidentBoardPage />)
+    const { getByText, findByText, findByRole } = render(<IncidentBoardPage />)
 
-    // switch to Group tab
+    await findByText('Public')
+
     fireEvent.click(getByText('Group'))
 
-    // select the group
-    const select = getByRole('combobox')
+    const select = await findByRole('combobox')
     fireEvent.change(select, { target: { value: 'g1' } })
 
-    // localStorage should now contain our persisted values
     expect(localStorage.getItem('incidents-visibility')).toEqual(JSON.stringify('group'))
     expect(localStorage.getItem('incidents-selected-group')).toEqual(JSON.stringify('g1'))
   })

@@ -57,6 +57,7 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
         setIncidentUsers(Array.isArray(usersData) ? usersData : [])
       }
     } catch (e) {
+      try { console.error('useIncidentsData.loadData error', e) } catch (err) {}
       setError(e.message || String(e))
     } finally {
       setLoading(false)

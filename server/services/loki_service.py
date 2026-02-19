@@ -25,6 +25,15 @@ from models.observability.loki_models import (
     LogResponse,
 )
 from services.common.http_client import create_async_client
+from services.common.ttl_cache import TTLCache
+from services.loki.label_utils import (
+    parse_labelset_value,
+    normalize_label_value,
+    normalize_label_dict,
+    normalize_label_values,
+)
+from services.loki.http_client import LokiHttpClient
+from services.loki.fallback import build_service_fallback_queries, run_fallback_queries
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +51,14 @@ class LokiService:
         self.timeout = config.DEFAULT_TIMEOUT
         self._client = create_async_client(self.timeout)
         self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
-        self._labels_cache: Dict[str, Any] = {}
         self._metrics: Dict[str, float] = {
             "loki_query_total": 0,
             "loki_query_errors_total": 0,
             "loki_query_fallbacks_total": 0,
             "loki_query_duration_sum_seconds": 0.0,
         }
+        self._labels_cache = TTLCache()
+        self._http_client = LokiHttpClient(self._metrics)
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
     def _observe(self, metric: str, value: float = 1.0) -> None:
@@ -57,32 +67,14 @@ class LokiService:
     async def _timed_get_json(
         self, url: str, *, params: Dict[str, Any], headers: Dict[str, str]
     ) -> Dict[str, Any]:
-        started = time.perf_counter()
-        try:
-            response = await self._client.get(url, params=params, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        finally:
-            self._observe("loki_query_total")
-            self._observe("loki_query_duration_sum_seconds", time.perf_counter() - started)
+        # delegate to helper so tests can replace `self._client` dynamically
+        return await self._http_client.timed_get_json(self._client, url, params=params, headers=headers)
 
     async def _safe_get_json(
         self, url: str, *, params: Dict[str, Any], headers: Dict[str, str], quiet: bool = False
     ) -> Optional[Dict[str, Any]]:
-        try:
-            return await self._timed_get_json(url, params=params, headers=headers)
-        except httpx.HTTPStatusError as e:
-            status = getattr(e.response, "status_code", None)
-            self._observe("loki_query_errors_total")
-            if quiet or (status and 400 <= status < 500):
-                logger.debug("Loki error %s for %s", status, url)
-            else:
-                logger.warning("Loki server error %s for %s", status, url)
-            return None
-        except httpx.HTTPError as e:
-            self._observe("loki_query_errors_total")
-            (logger.debug if quiet else logger.warning)("Loki request failed for %s: %s", url, e)
-            return None
+        # delegate to the shared http helper (keeps metrics/logging consistent)
+        return await self._http_client.safe_get_json(self._client, url, params=params, headers=headers, quiet=quiet)
 
     def _get_headers(self, tenant_id: str = config.DEFAULT_ORG_ID) -> Dict[str, str]:
         return {"X-Scope-OrgID": tenant_id}
@@ -107,35 +99,13 @@ class LokiService:
         )
 
     def _build_service_fallback_queries(self, query_str: str) -> List[str]:
-        candidates: List[str] = []
-        normalized = self._normalize_service_label_query(query_str)
-        if normalized != query_str:
-            candidates.append(normalized)
-        expanded_original = self._expand_service_label_matchers(query_str)
-        if expanded_original != query_str:
-            candidates.append(expanded_original)
-        expanded_normalized = self._expand_service_label_matchers(normalized)
-        if expanded_normalized not in (query_str, expanded_original):
-            candidates.append(expanded_normalized)
-        return candidates
+        return build_service_fallback_queries(query_str)
 
     def _parse_labelset_value(self, label_key: str, raw_value: str) -> Optional[Dict[str, str]]:
-        if not isinstance(raw_value, str) or '="' not in raw_value:
-            return None
-        candidate = raw_value if f'{label_key}="' in raw_value else f'{label_key}="{raw_value}'
-        pairs = _LABELSET_PAIR_RE.findall(candidate)
-        return dict(pairs) if pairs else None
+        return parse_labelset_value(label_key, raw_value)
 
-    def _normalize_label_value(
-        self, label_key: str, value: Any
-    ) -> tuple[Optional[str], Optional[Dict[str, str]]]:
-        if not isinstance(value, str) or '="' not in value or '",' not in value:
-            return None, None
-        parsed = self._parse_labelset_value(label_key, value)
-        if parsed:
-            return parsed.get(label_key, value), parsed
-        cut_index = value.find('",')
-        return (value[:cut_index], None) if cut_index > 0 else (None, None)
+    def _normalize_label_value(self, label_key: str, value: Any) -> tuple[Optional[str], Optional[Dict[str, str]]]:
+        return normalize_label_value(label_key, value)
 
     def _normalize_label_dict(self, labels: Dict[str, Any]) -> Dict[str, str]:
         extra: Dict[str, str] = {}
@@ -154,18 +124,7 @@ class LokiService:
                 labels.update(self._normalize_label_dict(labels))
 
     def _normalize_label_values(self, label: str, values: List[str]) -> List[str]:
-        cleaned: List[str] = []
-        for value in values:
-            if not isinstance(value, str):
-                cleaned.append(value)
-                continue
-            parsed = self._parse_labelset_value(label, value)
-            if parsed and label in parsed:
-                cleaned.append(parsed[label])
-                continue
-            cut_index = value.find('",')
-            cleaned.append(value[:cut_index] if cut_index > 0 else value)
-        return cleaned
+        return normalize_label_values(label, values)
 
     def _build_query_params(self, query: LogQuery) -> Dict[str, Any]:
         params: Dict[str, Any] = {
@@ -220,26 +179,21 @@ class LokiService:
         headers: Dict[str, str],
         query_str: str,
     ) -> Optional[Dict[str, Any]]:
-        candidates = self._build_service_fallback_queries(query_str)[
-            : max(0, config.LOKI_MAX_FALLBACK_QUERIES)
-        ]
+        candidates = self._build_service_fallback_queries(query_str)[: max(0, config.LOKI_MAX_FALLBACK_QUERIES)]
         if not candidates:
             return None
-
+        # keep metrics emission local and delegate the concurrency + fetch orchestration
         self._observe("loki_query_fallbacks_total", len(candidates))
-        semaphore = asyncio.Semaphore(max(1, config.LOKI_FALLBACK_CONCURRENCY))
-
-        async def _query(candidate: str):
-            async with semaphore:
-                return candidate, await self._safe_get_json(
-                    endpoint, params={**base_params, "query": candidate}, headers=headers
-                )
-
-        for task in asyncio.as_completed([_query(c) for c in candidates]):
-            _, payload = await task
-            if isinstance(payload, dict) and payload.get("data", {}).get("result"):
-                return payload
-        return None
+        return await run_fallback_queries(
+            endpoint=endpoint,
+            base_params=base_params,
+            headers=headers,
+            query_str=query_str,
+            client=self._client,
+            http_client=self._http_client,
+            max_fallbacks=config.LOKI_MAX_FALLBACK_QUERIES,
+            concurrency=config.LOKI_FALLBACK_CONCURRENCY,
+        )
 
     @with_retry()
     @with_timeout()
@@ -308,31 +262,26 @@ class LokiService:
         end: Optional[int] = None,
         tenant_id: str = config.DEFAULT_ORG_ID,
     ) -> LogLabelsResponse:
-        now = time.monotonic()
         cache_key = f"{tenant_id}:{start}:{end}"
-        cached = self._labels_cache.get(cache_key)
-        if isinstance(cached, dict) and cached.get("expires", 0) > now:
-            return LogLabelsResponse(status="success", data=list(cached.get("data", [])))
 
-        params: Dict[str, Any] = {}
-        if start:
-            params["start"] = start
-        if end:
-            params["end"] = end
-
-        try:
+        async def _fetch_labels():
+            params: Dict[str, Any] = {}
+            if start:
+                params["start"] = start
+            if end:
+                params["end"] = end
             payload = await self._safe_get_json(
                 f"{self.loki_url}/loki/api/v1/labels",
                 params=params,
                 headers=self._get_headers(tenant_id),
             )
-            if not payload:
+            return list(payload.get("data", [])) if isinstance(payload, dict) and payload.get("data") is not None else None
+
+        try:
+            cached = await self._labels_cache.get_or_set(cache_key, _fetch_labels, self._cache_ttl_seconds)
+            if cached is None:
                 return LogLabelsResponse(status="error", data=[])
-            self._labels_cache[cache_key] = {
-                "expires": now + self._cache_ttl_seconds,
-                "data": list(payload.get("data", [])),
-            }
-            return LogLabelsResponse(status=payload.get("status", "success"), data=payload.get("data", []))
+            return LogLabelsResponse(status="success", data=list(cached))
         except httpx.HTTPError as e:
             logger.error("Error fetching labels: %s", e)
             return LogLabelsResponse(status="error", data=[])
@@ -347,6 +296,7 @@ class LokiService:
         query: Optional[str] = None,
         tenant_id: str = config.DEFAULT_ORG_ID,
     ) -> LogLabelValuesResponse:
+        original_start, original_end = start, end
         now_ns = int(datetime.now().timestamp() * 1e9)
         end = end or now_ns
         start = start or int((datetime.now() - timedelta(hours=1)).timestamp() * 1e9)
@@ -366,43 +316,44 @@ class LokiService:
         if query:
             params["query"] = query
 
-        cache_key = f"label_values:{tenant_id}:{label}:{start}:{end}:{query or ''}"
-        now = time.monotonic()
-        cached = self._labels_cache.get(cache_key)
-        if isinstance(cached, dict) and cached.get("expires", 0) > now:
-            return LogLabelValuesResponse(status="success", data=list(cached.get("data", [])))
+        if original_start is None and original_end is None:
+            range_key = "default"
+        else:
+            range_key = f"{start}:{end}"
+        cache_key = f"label_values:{tenant_id}:{label}:{range_key}:{query or ''}"
 
-        def _cache_and_return(values: List[str]) -> LogLabelValuesResponse:
+        async def _fetch_values():
+            payload = await self._safe_get_json(
+                f"{self.loki_url}/loki/api/v1/label/{label}/values",
+                params=params,
+                headers=self._get_headers(tenant_id),
+                quiet=True,
+            )
+            if isinstance(payload, dict) and payload.get("data") is not None:
+                values = payload.get("data", [])
+            else:
+                self._observe("loki_query_fallbacks_total")
+                if isinstance(query, str) and query.strip().startswith("{"):
+                    selector = query
+                else:
+                    selector = '{' + f'{label}=~".+"' + '}'
+                log_response = await self.query_logs(
+                    LogQuery(query=selector, limit=1000, start=start, end=end),
+                    tenant_id=tenant_id,
+                )
+                results = log_response.data.get("result") if isinstance(log_response.data, dict) else None
+                values = list(dict.fromkeys(
+                    stream["stream"][label]
+                    for stream in (results or [])
+                    if isinstance(stream.get("stream"), dict) and stream["stream"].get(label)
+                ))
+
             normalized = list(dict.fromkeys(self._normalize_label_values(label, values)))
-            self._labels_cache[cache_key] = {"expires": time.monotonic() + self._cache_ttl_seconds, "data": normalized}
-            return LogLabelValuesResponse(status="success", data=normalized)
-
-        payload = await self._safe_get_json(
-            f"{self.loki_url}/loki/api/v1/label/{label}/values",
-            params=params,
-            headers=self._get_headers(tenant_id),
-            quiet=True,
-        )
-        if isinstance(payload, dict) and payload.get("data") is not None:
-            return _cache_and_return(payload.get("data", []))
+            return normalized
 
         try:
-            self._observe("loki_query_fallbacks_total")
-            if isinstance(query, str) and query.strip().startswith("{"):
-                selector = query
-            else:
-                selector = '{' + f'{label}=~".+"' + '}'
-            log_response = await self.query_logs(
-                LogQuery(query=selector, limit=1000, start=start, end=end),
-                tenant_id=tenant_id,
-            )
-            results = log_response.data.get("result") if isinstance(log_response.data, dict) else None
-            values = list(dict.fromkeys(
-                stream["stream"][label]
-                for stream in (results or [])
-                if isinstance(stream.get("stream"), dict) and stream["stream"].get(label)
-            ))
-            return _cache_and_return(values)
+            values = await self._labels_cache.get_or_set(cache_key, _fetch_values, self._cache_ttl_seconds)
+            return LogLabelValuesResponse(status="success", data=values or [])
         except Exception as e:
             logger.error("Error during label-values fallback: %s", e)
             return LogLabelValuesResponse(status="error", data=[])

@@ -1,6 +1,15 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import PropTypes from 'prop-types'
-import ReactFlow, { Background, Controls, MiniMap, Handle, Position, useNodesState, useEdgesState } from 'reactflow'
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  Handle,
+  Position,
+  useNodesState,
+  useEdgesState,
+  MarkerType,
+} from 'reactflow'
 import 'reactflow/dist/style.css'
 import { formatDuration } from '../../utils/formatters'
 import {
@@ -11,311 +20,398 @@ import {
   layoutServiceGraph,
 } from '../../utils/serviceGraphUtils'
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const STATUS_COLOR = (errorRate, isPain) => {
+  if (isPain || errorRate > 5) return { hex: '#ef4444', ring: 'border-red-500/60', bar: 'bg-red-500', soft: 'bg-red-500/10' }
+  if (errorRate > 1)           return { hex: '#f59e0b', ring: 'border-yellow-500/40', bar: 'bg-yellow-500', soft: 'bg-yellow-500/10' }
+  return                              { hex: '#22c55e', ring: 'border-emerald-500/30', bar: 'bg-emerald-500', soft: 'bg-emerald-500/10' }
+}
+
+const EDGE_COLOR = (errorRate) => {
+  if (errorRate > 5) return '#ef4444'
+  if (errorRate > 1) return '#f59e0b'
+  return '#818cf8'
+}
+
+// ---------------------------------------------------------------------------
+// ServiceNode
+// ---------------------------------------------------------------------------
+const Stat = ({ label, value, highlight }) => (
+  <div className="flex flex-col gap-0.5">
+    <span className="text-[10px] text-sre-text-muted uppercase tracking-wider">{label}</span>
+    <span className={`text-xs font-semibold tabular-nums ${highlight ?? 'text-sre-text'}`}>{value}</span>
+  </div>
+)
+Stat.propTypes = { label: PropTypes.string, value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), highlight: PropTypes.string }
+
 const ServiceNode = ({ data }) => {
-  const { name, stats, colorClass } = data
-  const isPain = stats.pain
-  const errorRate = stats.errorRateNum
+  const { name, stats, isActive, isHovered } = data
+  const isPain     = stats.pain
+  const errorRate  = stats.errorRateNum
+  const c          = STATUS_COLOR(errorRate, isPain)
+  const p95Hi      = stats.p95?.includes('ms') && parseFloat(stats.p95) > 1000 ? 'text-red-400' : undefined
+  const errHi      = errorRate > 5 ? 'text-red-400' : errorRate > 1 ? 'text-yellow-400' : 'text-emerald-400'
 
   return (
-    <div className={`rounded-xl border-2 bg-gradient-to-br from-sre-surface to-sre-surface/80 px-4 py-3 shadow-lg min-w-[240px] transition-all duration-300 hover:shadow-xl hover:scale-105 ${colorClass} ${isPain ? 'border-red-500/50' : 'border-sre-border'}`}>
-      <Handle type="target" position={Position.Left} className="!bg-sre-primary/70 !w-3 !h-3 !border-2 !border-sre-bg hover:!bg-sre-primary hover:!scale-110 transition-all" />
-      <Handle type="source" position={Position.Right} className="!bg-sre-primary/70 !w-3 !h-3 !border-2 !border-sre-bg hover:!bg-sre-primary hover:!scale-110 transition-all" />
+    <div className={[
+      'relative rounded-2xl border bg-sre-surface/95 backdrop-blur-sm px-4 py-3 min-w-[220px] max-w-[260px] shadow-lg transition-all duration-150',
+      isActive  ? 'ring-2 ring-sre-primary/70 shadow-xl scale-[1.03]' : '',
+      isHovered && !isActive ? 'shadow-xl scale-[1.02]' : '',
+      c.ring,
+      isActive || isHovered ? 'border-opacity-100' : 'border-sre-border/50',
+    ].filter(Boolean).join(' ')}>
 
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-3 h-3 rounded-full ${isPain ? 'bg-red-500' : errorRate > 1 ? 'bg-yellow-500' : 'bg-green-500'} animate-pulse`}></div>
-        <div className="font-bold text-sre-text truncate flex-1">{name}</div>
-        {isPain && <span className="material-icons text-red-500 text-sm animate-bounce">warning</span>}
-        {stats.inbound === 0 && <span className="ml-2 px-2 py-0.5 text-[10px] rounded bg-sre-primary text-white">Start</span>}
-        {stats.outbound === 0 && <span className="ml-2 px-2 py-0.5 text-[10px] rounded bg-sre-surface text-sre-text-muted border">End</span>}
+      <Handle type="target" position={Position.Left}
+        className="!w-2.5 !h-2.5 !border-2 !border-sre-bg !bg-sre-primary/60 hover:!bg-sre-primary transition-colors" />
+      <Handle type="source" position={Position.Right}
+        className="!w-2.5 !h-2.5 !border-2 !border-sre-bg !bg-sre-primary/60 hover:!bg-sre-primary transition-colors" />
+
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: c.hex, boxShadow: `0 0 7px ${c.hex}bb` }} />
+        <span className="font-semibold text-sre-text text-sm truncate flex-1 leading-tight">{name}</span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {stats.inbound  === 0 && <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-sre-primary/20 text-sre-primary border border-sre-primary/30 uppercase tracking-wide">Entry</span>}
+          {stats.outbound === 0 && <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-sre-surface text-sre-text-muted border border-sre-border/50 uppercase tracking-wide">Leaf</span>}
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="flex justify-between">
-          <span className="text-sre-text-muted">Traces:</span>
-          <span className="text-sre-text font-medium">{stats.traces}</span>
+      <div className="grid grid-cols-3 gap-x-3 gap-y-2 mb-2.5">
+        <Stat label="Traces" value={stats.traces} />
+        <Stat label="P50"    value={stats.p50} />
+        <Stat label="P95"    value={stats.p95} highlight={p95Hi} />
+        <Stat label="Spans"  value={stats.spans} />
+        <Stat label="Error"  value={stats.errorRate} highlight={errHi} />
+        <Stat label="I/O"    value={`${stats.inbound}/${stats.outbound}`} />
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <div className="h-1 flex-1 rounded-full bg-sre-border/30 overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-700 ${c.bar}`}
+            style={{ width: `${Math.max(8, 100 - errorRate * 4)}%` }} />
         </div>
-        <div className="flex justify-between">
-          <span className="text-sre-text-muted">Spans:</span>
-          <span className="text-sre-text font-medium">{stats.spans}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-sre-text-muted">P50:</span>
-          <span className="text-sre-text font-medium">{stats.p50}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-sre-text-muted">P95:</span>
-          <span className={`font-medium ${stats.p95.includes('ms') && parseFloat(stats.p95) > 1000 ? 'text-red-400' : 'text-sre-text'}`}>{stats.p95}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-sre-text-muted">Error:</span>
-          <span className={`font-medium ${errorRate > 5 ? 'text-red-400' : errorRate > 1 ? 'text-yellow-400' : 'text-green-400'}`}>{stats.errorRate}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-sre-text-muted">I/O:</span>
-          <span className="text-sre-text font-medium">{stats.inbound}/{stats.outbound}</span>
-        </div>
+        <span className="text-[9px] text-sre-text-muted uppercase tracking-wide">Health</span>
       </div>
 
       {isPain && (
-        <div className="mt-3 text-[10px] px-2 py-1.5 rounded-lg bg-gradient-to-r from-red-500/20 to-red-600/20 text-red-300 border border-red-500/30 animate-pulse">
-          <span className="material-icons text-xs mr-1 align-middle">local_fire_department</span>
-          Pain point: high latency or error rate
+        <div className={`mt-2 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg ${c.soft} text-red-300 border border-red-500/20`}>
+          <span className="material-icons text-[12px]">local_fire_department</span>
+          High latency or error rate
         </div>
       )}
-
-      <div className="mt-2 flex items-center gap-1">
-        <div className={`h-1.5 flex-1 rounded-full ${isPain ? 'bg-red-500/20' : errorRate > 1 ? 'bg-yellow-500/20' : 'bg-green-500/20'}`}>
-          <div
-            className={`h-full rounded-full transition-all duration-1000 ${isPain ? 'bg-red-500' : errorRate > 1 ? 'bg-yellow-500' : 'bg-green-500'}`}
-            style={{ width: `${Math.max(10, 100 - errorRate * 2)}%` }}
-          ></div>
-        </div>
-        <span className="text-[10px] text-sre-text-muted">Health</span>
-      </div>
     </div>
   )
 }
-
 ServiceNode.propTypes = {
-  data: PropTypes.shape({
-    name: PropTypes.string.isRequired,
-    stats: PropTypes.object.isRequired,
-    colorClass: PropTypes.string.isRequired,
-  }).isRequired,
+  data: PropTypes.shape({ name: PropTypes.string.isRequired, stats: PropTypes.object.isRequired, isActive: PropTypes.bool, isHovered: PropTypes.bool }).isRequired,
 }
 
+const NODE_TYPES = { service: ServiceNode }
+
+const toEdges = (rawEdges) =>
+  rawEdges.map(e => {
+    const color = EDGE_COLOR(e.data?.errorRateNum ?? 0)
+    return {
+      ...e,
+      animated: true,
+      markerEnd: { type: MarkerType.ArrowClosed, color, width: 12, height: 12 },
+      style: { stroke: color, strokeWidth: 1 },
+    }
+  })
+
+const StatCard = ({ label, children, empty }) => (
+  <div className="p-3 rounded-xl border border-sre-border/40 bg-sre-bg/40 flex flex-col gap-1.5 min-w-0">
+    <div className="text-[10px] font-semibold uppercase tracking-widest text-sre-text-muted">{label}</div>
+    {empty ? <div className="text-xs text-sre-text-muted/60 italic">{empty}</div> : children}
+  </div>
+)
+StatCard.propTypes = { label: PropTypes.string, children: PropTypes.node, empty: PropTypes.string }
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 export default function ServiceGraphAsync({ traces }) {
   const [activeNodeId, setActiveNodeId] = useState(null)
   const [activeEdgeId, setActiveEdgeId] = useState(null)
-  const [hoverNodeId, setHoverNodeId] = useState(null)
+  const [hoverNodeId,  setHoverNodeId]  = useState(null)
 
-  // Service graph requires full trace data with multiple spans per trace.
-  // Summary traces (from efficient list view) often only contain a single
-  // synthetic root span and will not produce meaningful edges. Require at
-  // least one trace with more than one span before attempting to render
-  // the dependency graph.
-  const hasSpanData = traces && traces.length > 0 && traces.some(t => t.spans && t.spans.length > 1)
-  const graphData = useMemo(() => hasSpanData ? buildServiceGraphData(traces) : { services: new Map(), edges: new Map() }, [traces, hasSpanData])
+  const hasSpanData = traces?.length > 0 && traces.some(t => t.spans?.length > 1)
 
-  const initialNodes = useMemo(
-    () => buildServiceGraphNodes(graphData, activeNodeId, hoverNodeId),
-    [graphData, activeNodeId, hoverNodeId]
+  const graphData = useMemo(
+    () => hasSpanData ? buildServiceGraphData(traces) : { services: new Map(), edges: new Map() },
+    [traces, hasSpanData],
   )
 
-  const insights = useMemo(() => buildServiceGraphInsights(graphData), [graphData])
+  const structuralNodes = useMemo(() => buildServiceGraphNodes(graphData, null, null), [graphData])
+  const structuralEdges = useMemo(() => toEdges(buildServiceGraphEdges(graphData, null, null)), [graphData])
+  const insights        = useMemo(() => buildServiceGraphInsights(graphData), [graphData])
+  const layouted        = useMemo(() => layoutServiceGraph(structuralNodes, structuralEdges), [structuralNodes, structuralEdges])
 
-  const initialEdges = useMemo(
-    () => buildServiceGraphEdges(graphData, activeEdgeId, activeNodeId),
-    [graphData, activeEdgeId, activeNodeId]
-  )
-
-  const layouted = useMemo(() => layoutServiceGraph(initialNodes, initialEdges), [initialNodes, initialEdges])
-
-  // Manage nodes/edges as React Flow state so user can drag nodes and edges
-  // will update automatically based on node positions.
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const prevKeyRef = useRef(null)
+
+  // Reset only when topology changes; preserve dragged positions
+  useEffect(() => {
+    const key = [
+      ...Array.from(graphData.services.keys()).sort(),
+      '|',
+      ...Array.from(graphData.edges.keys()).sort(),
+    ].join(',')
+    if (prevKeyRef.current === key) return
+    const posById = new Map(nodes.map(n => [n.id, n.position]))
+    setNodes(layouted.nodes.map(n => {
+      const p = posById.get(n.id)
+      return p && typeof p.x === 'number' ? { ...n, position: p } : n
+    }))
+    setEdges(layouted.edges)
+    prevKeyRef.current = key
+  }, [graphData, layouted]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply active/hover purely as data mutation — never touches position
+  useEffect(() => {
+    setNodes(prev => prev.map(n => ({
+      ...n,
+      data: { ...n.data, isActive: n.id === activeNodeId, isHovered: n.id === hoverNodeId },
+    })))
+  }, [activeNodeId, hoverNodeId, setNodes])
 
   useEffect(() => {
-    // initialize / reset when layout changes (e.g., different traces)
-    setNodes(layouted.nodes)
-    setEdges(layouted.edges)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layouted.nodes, layouted.edges])
+    setEdges(prev => prev.map(e => {
+      const isActive      = e.id === activeEdgeId
+      const isHighlighted = activeNodeId ? (e.source === activeNodeId || e.target === activeNodeId) : false
+      const dimmed        = (activeEdgeId || activeNodeId) && !isActive && !isHighlighted
+      const color         = EDGE_COLOR(e.data?.errorRateNum ?? 0)
+      return {
+        ...e,
+        selected: isActive,
+        style: {
+          stroke: color,
+          strokeWidth: isActive ? 2 : 1,
+          opacity: dimmed ? 0.15 : 1,
+        },
+      }
+    }))
+  }, [activeEdgeId, activeNodeId, setEdges])
+
+  const handlePaneClick      = useCallback(() => { setActiveNodeId(null); setActiveEdgeId(null) }, [])
+  const handleNodeClick      = useCallback((_, n) => { setActiveNodeId(n.id); setActiveEdgeId(null) }, [])
+  const handleEdgeClick      = useCallback((_, e) => { setActiveEdgeId(e.id); setActiveNodeId(null) }, [])
+  const handleNodeMouseEnter = useCallback((_, n) => setHoverNodeId(n.id), [])
+  const handleNodeMouseLeave = useCallback(() => setHoverNodeId(null), [])
+
+  // Minimap: use inline style background so canvas has guaranteed dark bg
+  // nodeColor must return a fully-opaque hex — no CSS variables, no opacity
+  const miniMapNodeColor = useCallback((node) => {
+    const err = node?.data?.stats?.errorRateNum
+    if (err == null || Number.isNaN(+err)) return '#94a3b8'
+    if (err > 5)  return '#f87171'
+    if (err > 1)  return '#fbbf24'
+    return '#4ade80'
+  }, [])
 
   if (layouted.nodes.length === 0) {
-    if (!hasSpanData) {
-      return (
-        <div className="bg-gradient-to-br from-sre-surface/30 to-sre-surface/10 border-2 border-sre-border/50 rounded-xl p-8 text-center">
-          <span className="material-icons text-5xl text-sre-text-muted mb-4 block">info</span>
-          <h3 className="text-lg font-semibold text-sre-text mb-2">Service Graph Requires Full Trace Data</h3>
-          <p className="text-sre-text-muted text-sm max-w-md mx-auto">
-            The dependency map requires full trace details with spans. Click on individual traces to load them with full span data, or try a new search with a smaller time range.
-          </p>
-        </div>
-      )
-    }
-    return null
+    return !hasSpanData ? (
+      <div className="border-2 border-dashed border-sre-border/40 rounded-2xl p-10 text-center">
+        <span className="material-icons text-4xl text-sre-text-muted/40 block mb-3">hub</span>
+        <p className="text-sm font-medium text-sre-text mb-1">Full trace data required</p>
+        <p className="text-xs text-sre-text-muted max-w-sm mx-auto">
+          The service graph needs traces with multiple spans. Try loading individual traces or narrowing your time range.
+        </p>
+      </div>
+    ) : null
   }
 
   const activeNode = insights.serviceStats.find(s => s.name === activeNodeId)
   const activeEdge = insights.edgeStats.find(e => e.id === activeEdgeId)
-  const activeDirection = activeEdge ? `${activeEdge.source} → ${activeEdge.target}` : null
 
   return (
-    <div className="bg-gradient-to-br from-sre-surface/30 to-sre-surface/10 border-2 border-sre-border/50 rounded-xl p-6 shadow-lg">
-      {/* (content copied from original) */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-bold text-sre-text flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sre-primary to-sre-primary-light flex items-center justify-center">
-            <span className="material-icons text-white text-sm">hub</span>
-          </div>
-          Service Dependency Map
-          <span className="text-sm font-normal text-sre-text-muted">(pain points highlighted)</span>
-        </h3>
-        <div className="flex items-center gap-2">
-          <div className="text-xs text-sre-text-muted bg-sre-surface px-2 py-1 rounded-lg border">
-            {nodes.length} services • {edges.length} connections
-          </div>
-        </div>
-      </div>
+    <>
+      <style>{`
+        .react-flow__minimap {
+          background: #0f172a !important;
+          border-radius: 10px !important;
+          overflow: hidden;
+        }
+        .react-flow__minimap svg {
+          background: #0f172a !important;
+        }
+        .react-flow__minimap-mask {
+          fill: rgba(15,23,42,0.55) !important;
+        }
+        .react-flow__minimap-node {
+          stroke: none !important;
+        }
+      `}</style>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 mb-4">
-        <div className="p-4 bg-sre-surface/60 rounded-xl border border-sre-border/60">
-          <div className="text-xs text-sre-text-muted mb-2">Insights</div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 rounded-lg border border-sre-border/50 bg-sre-surface/60">
-              <div className="text-sre-text-muted mb-1">Top Pain Services</div>
-              {insights.painServices.length ? insights.painServices.map(s => (
-                <div key={s.name} className="flex items-center justify-between text-sre-text">
-                  <button
-                    type="button"
-                    onClick={() => { setActiveNodeId(s.name); setActiveEdgeId(null) }}
-                    className="truncate hover:text-sre-primary"
-                  >
-                    {s.name}
-                  </button>
-                  <span className="text-red-400">{formatDuration(s.p95)}</span>
-                </div>
-              )) : (
-                <div className="text-sre-text-muted">No pain points</div>
-              )}
-            </div>
-            <div className="p-3 rounded-lg border border-sre-border/50 bg-sre-surface/60">
-              <div className="text-sre-text-muted mb-1">Busiest Flows</div>
-              {insights.topCalls.length ? insights.topCalls.map(e => (
-                <div key={e.id} className="flex items-center justify-between text-sre-text">
-                  <button
-                    type="button"
-                    onClick={() => { setActiveEdgeId(e.id); setActiveNodeId(null) }}
-                    className="truncate hover:text-sre-primary"
-                  >
-                    {e.source} → {e.target}
-                  </button>
-                  <span className="text-sre-text-muted">{e.count}</span>
-                </div>
-              )) : (
-                <div className="text-sre-text-muted">No flows</div>
-              )}
-            </div>
-            <div className="p-3 rounded-lg border border-sre-border/50 bg-sre-surface/60">
-              <div className="text-sre-text-muted mb-1">Highest Error Rate</div>
-              {insights.topErrors.length ? insights.topErrors.map(e => (
-                <div key={e.id} className="flex items-center justify-between text-sre-text">
-                  <button
-                    type="button"
-                    onClick={() => { setActiveEdgeId(e.id); setActiveNodeId(null) }}
-                    className="truncate hover:text-sre-primary"
-                  >
-                    {e.source} → {e.target}
-                  </button>
-                  <span className="text-yellow-400">{e.errorRateNum.toFixed(1)}%</span>
-                </div>
-              )) : (
-                <div className="text-sre-text-muted">No errors</div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-sre-surface/60 rounded-xl border border-sre-border/60">
-          <div className="text-xs text-sre-text-muted mb-2">Selection</div>
-          {activeNode && (
-            <div className="text-sm text-sre-text space-y-1">
-              <div className="font-semibold">{activeNode.name}</div>
-              <div className="text-xs text-sre-text-muted">Traces: {activeNode.traces} · Spans: {activeNode.spans}</div>
-              <div className="text-xs text-sre-text-muted">P95: {formatDuration(activeNode.p95)} · Error: {activeNode.errorRateNum.toFixed(1)}%</div>
-              <div className="text-xs text-sre-text-muted">Inbound: {activeNode.inbound} · Outbound: {activeNode.outbound}</div>
-            </div>
-          )}
-          {activeEdge && (
-            <div className="text-sm text-sre-text space-y-1">
-              <div className="font-semibold">{activeEdge.source} → {activeEdge.target}</div>
-              <div className="text-xs text-sre-text-muted">Direction: {activeDirection}</div>
-              <div className="text-xs text-sre-text-muted">Calls: {activeEdge.count}</div>
-              <div className="text-xs text-sre-text-muted">P95: {formatDuration(activeEdge.p95)} · Error: {activeEdge.errorRateNum.toFixed(1)}%</div>
-            </div>
-          )}
-          {!activeNode && !activeEdge && (
-            <div className="text-xs text-sre-text-muted">Click a node or edge to focus and see details.</div>
-          )}
-        </div>
-      </div>
+      <div className="flex flex-col gap-3">
 
-      <div className="h-[600px] rounded-xl overflow-hidden border-2 border-sre-border bg-gradient-to-br from-sre-bg to-sre-surface/20 shadow-inner">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={{ service: ServiceNode }}
-          fitView
-          minZoom={0.1}
-          maxZoom={2}
-          defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-          className="react-flow-interactive"
-          onPaneClick={() => { setActiveNodeId(null); setActiveEdgeId(null) }}
-          onNodeClick={(_, node) => {
-            setActiveNodeId(node.id)
-            setActiveEdgeId(null)
-          }}
-          onEdgeClick={(_, edge) => {
-            setActiveEdgeId(edge.id)
-            setActiveNodeId(null)
-          }}
-          onNodeMouseEnter={(_, node) => setHoverNodeId(node.id)}
-          onNodeMouseLeave={() => setHoverNodeId(null)}
-        >
-          <MiniMap
-            zoomable
-            pannable
-            nodeColor={(node) => {
-              const err = node?.data?.stats?.errorRateNum ?? 0
-              return err > 5 ? '#ef4444' : err > 1 ? '#f59e0b' : '#10b981'
-            }}
-            nodeStrokeColor={(node) => (node?.data?.colorClass?.includes('red') ? '#ef4444' : '#1f2937')}
-            nodeBorderRadius={6}
-            style={{ background: 'var(--sre-surface)' }}
-          />
-          <Controls
-            showZoom
-            showFitView
-            showInteractive
-            className="react-flow-controls-custom"
-          />
-          <Background
-            gap={20}
-            color="var(--sre-border)"
-            variant="dots"
-          />
-        </ReactFlow>
-      </div>
-
-      <div className="mt-4 p-4 bg-sre-surface/50 rounded-lg border border-sre-border/50">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-sre-text-muted">Healthy</span>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-sre-primary/15 border border-sre-primary/20 flex items-center justify-center">
+              <span className="material-icons text-sre-primary text-sm">hub</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></div>
-              <span className="text-sre-text-muted">Warning</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500 animate-bounce"></div>
-              <span className="text-sre-text-muted">Pain Point</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-0.5 bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded"></div>
-              <span className="text-sre-text-muted">Flow Direction</span>
+            <div>
+              <h3 className="text-sm font-semibold text-sre-text leading-none">Service Dependency Map</h3>
+              <p className="text-[11px] text-sre-text-muted mt-0.5">Pain points highlighted</p>
             </div>
           </div>
-          <div className="text-xs text-sre-text-muted">
-            Edge labels: call count • p95 latency • error rate • animated direction
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-sre-text-muted bg-sre-surface/80 px-2.5 py-1 rounded-lg border border-sre-border/40">{nodes.length} services</span>
+            <span className="text-[11px] text-sre-text-muted bg-sre-surface/80 px-2.5 py-1 rounded-lg border border-sre-border/40">{edges.length} connections</span>
           </div>
         </div>
+
+        {/* Insights + Selection */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-3">
+          <div className="grid grid-cols-3 gap-2">
+            <StatCard label="Top Pain Services" empty={!insights.painServices.length ? 'No pain points' : undefined}>
+              {insights.painServices.map(s => (
+                <button key={s.name} type="button"
+                  onClick={() => { setActiveNodeId(s.name); setActiveEdgeId(null) }}
+                  className="flex items-center justify-between gap-2 text-xs hover:text-sre-primary transition-colors w-full text-left">
+                  <span className="text-sre-text truncate">{s.name}</span>
+                  <span className="text-red-400 flex-shrink-0 tabular-nums">{formatDuration(s.p95)}</span>
+                </button>
+              ))}
+            </StatCard>
+            <StatCard label="Busiest Flows" empty={!insights.topCalls.length ? 'No flows' : undefined}>
+              {insights.topCalls.map(e => (
+                <button key={e.id} type="button"
+                  onClick={() => { setActiveEdgeId(e.id); setActiveNodeId(null) }}
+                  className="flex items-center justify-between gap-2 text-xs hover:text-sre-primary transition-colors w-full text-left">
+                  <span className="text-sre-text truncate">{e.source} → {e.target}</span>
+                  <span className="text-sre-text-muted flex-shrink-0 tabular-nums">{e.count}</span>
+                </button>
+              ))}
+            </StatCard>
+            <StatCard label="Highest Error Rate" empty={!insights.topErrors.length ? 'No errors' : undefined}>
+              {insights.topErrors.map(e => (
+                <button key={e.id} type="button"
+                  onClick={() => { setActiveEdgeId(e.id); setActiveNodeId(null) }}
+                  className="flex items-center justify-between gap-2 text-xs hover:text-sre-primary transition-colors w-full text-left">
+                  <span className="text-sre-text truncate">{e.source} → {e.target}</span>
+                  <span className="text-yellow-400 flex-shrink-0 tabular-nums">{e.errorRateNum.toFixed(1)}%</span>
+                </button>
+              ))}
+            </StatCard>
+          </div>
+
+          <div className="p-3 rounded-xl border border-sre-border/40 bg-sre-bg/40 flex flex-col gap-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-sre-text-muted">Selection</div>
+            {activeNode && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: STATUS_COLOR(activeNode.errorRateNum, activeNode.pain).hex }} />
+                  <span className="text-sm font-semibold text-sre-text truncate">{activeNode.name}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                  <Stat label="Traces" value={activeNode.traces} />
+                  <Stat label="Spans"  value={activeNode.spans} />
+                  <Stat label="P95"    value={formatDuration(activeNode.p95)} />
+                  <Stat label="Error"  value={`${activeNode.errorRateNum.toFixed(1)}%`} />
+                  <Stat label="In/Out" value={`${activeNode.inbound}/${activeNode.outbound}`} />
+                </div>
+              </div>
+            )}
+            {activeEdge && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-semibold text-sre-text truncate">{activeEdge.source} → {activeEdge.target}</span>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                  <Stat label="Calls" value={activeEdge.count} />
+                  <Stat label="P95"   value={formatDuration(activeEdge.p95)} />
+                  <Stat label="Error" value={`${activeEdge.errorRateNum.toFixed(1)}%`} />
+                </div>
+              </div>
+            )}
+            {!activeNode && !activeEdge && (
+              <p className="text-xs text-sre-text-muted/60 italic mt-1">Click a node or edge to inspect.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Canvas */}
+        <div className="rounded-2xl overflow-hidden border border-sre-border/50" style={{ height: 560 }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            minZoom={0.1}
+            maxZoom={2.5}
+            defaultViewport={{ x: 0, y: 0, zoom: 0.85 }}
+            onPaneClick={handlePaneClick}
+            onNodeClick={handleNodeClick}
+            onEdgeClick={handleEdgeClick}
+            onNodeMouseEnter={handleNodeMouseEnter}
+            onNodeMouseLeave={handleNodeMouseLeave}
+            proOptions={{ hideAttribution: true }}
+          >
+            {/*
+              Minimap fix:
+              - background is set via inline style to a guaranteed solid hex (no CSS var)
+              - nodeColor returns solid hex strings — the MiniMap canvas cannot resolve
+                Tailwind CSS variables or rgba() reliably
+              - nodeStrokeWidth=0 removes the stroke that can obscure small nodes
+              - maskColor is semi-transparent so viewport rect is visible but nodes show through
+            */}
+            <MiniMap
+              zoomable
+              pannable
+              width={210}
+              height={140}
+              nodeColor={miniMapNodeColor}
+              nodeStrokeWidth={0}
+              nodeBorderRadius={3}
+              maskColor="rgba(15,23,42,0.55)"
+            />
+            <Controls showZoom showFitView showInteractive />
+            <Background gap={24} size={1} color="rgba(255,255,255,0.03)" variant="dots" />
+          </ReactFlow>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-5 text-[11px] text-sre-text-muted">
+            {[
+              { color: '#4ade80', label: 'Healthy' },
+              { color: '#fbbf24', label: 'Warning' },
+              { color: '#f87171', label: 'Pain Point' },
+            ].map(({ color, label }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                {label}
+              </div>
+            ))}
+            <div className="flex items-center gap-1.5">
+              <svg width="22" height="8" viewBox="0 0 22 8" fill="none">
+                <defs>
+                  <linearGradient id="lgFlow" x1="0" x2="1">
+                    <stop offset="0%"   stopColor="#4ade80" />
+                    <stop offset="50%"  stopColor="#6366f1" />
+                    <stop offset="100%" stopColor="#f87171" />
+                  </linearGradient>
+                  <marker id="lgArrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+                    <path d="M0,0.5 L4.5,2.5 L0,4.5 Z" fill="url(#lgFlow)" />
+                  </marker>
+                </defs>
+                <line x1="0" y1="4" x2="17" y2="4" stroke="url(#lgFlow)" strokeWidth="2.5" markerEnd="url(#lgArrow)" />
+              </svg>
+              Flow direction
+            </div>
+          </div>
+          <span className="text-[10px] text-sre-text-muted/50">Edge labels: calls · p95 · error%</span>
+        </div>
+
       </div>
-    </div>
+    </>
   )
 }
 

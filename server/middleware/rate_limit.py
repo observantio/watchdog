@@ -108,12 +108,24 @@ class RedisFixedWindowRateLimiter:
         if redis is None:
             raise RuntimeError("redis package is not installed")
         self._key_prefix = key_prefix
-        self._client = redis.from_url(
+
+        # Create client and verify connectivity immediately so startup logs reflect availability.
+        client = redis.from_url(
             redis_url,
             socket_timeout=socket_timeout,
             socket_connect_timeout=socket_timeout,
             decode_responses=True,
         )
+
+        try:
+            # ensure we can reach Redis now (raises on failure)
+            if not client.ping():
+                raise RuntimeError("redis ping returned falsy response")
+        except Exception as exc:
+            raise RuntimeError(f"unable to connect to Redis at {redis_url}: {exc}") from exc
+
+        self._client = client
+        logger.info("Connected to Redis for rate limiting: %s", redis_url)
 
     def hit(self, key: str, *, limit: int, window_seconds: int) -> RateLimitHitResult:
         if limit <= 0:

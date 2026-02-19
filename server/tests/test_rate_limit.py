@@ -14,6 +14,8 @@ import os
 import sys
 import time
 import unittest
+import types
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -84,6 +86,25 @@ class RateLimitTests(unittest.TestCase):
 
         with self.assertRaises(HTTPException):
             module.enforce_rate_limit(key="user:test-deny", limit=1, window_seconds=60, fallback_mode="deny")
+
+    def test_redis_rate_limiter_initializes_and_logs_on_success(self):
+        os.environ.update(SAFE_ENV)
+        os.environ["RATE_LIMIT_BACKEND"] = "redis"
+        os.environ["RATE_LIMIT_REDIS_URL"] = "redis://redis:6379/0"
+
+        class _FakeClient:
+            def ping(self):
+                return True
+
+        fake_redis_mod = types.SimpleNamespace(from_url=lambda url, **kwargs: _FakeClient())
+
+        with patch.dict(sys.modules, {"redis": fake_redis_mod}):
+            with self.assertLogs("middleware.rate_limit", level="INFO") as cm:
+                module = _reload_rate_limit_module()
+
+        # should log connectivity / usage and choose Redis-backed limiter
+        self.assertTrue(any("Connected to Redis for rate limiting" in m or "Using Redis-backed rate limiter" in m for m in cm.output))
+        self.assertIsNotNone(module.rate_limiter._redis_limiter)
 
     def test_client_ip_uses_forwarded_header_when_proxy_trusted(self):
         module = _reload_rate_limit_module()
