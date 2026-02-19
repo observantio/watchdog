@@ -196,7 +196,6 @@ export default function AuditCompliancePage() {
   const pageEnd = items.length ? Math.min(filters.offset + items.length, filters.offset + filters.limit) : 0
   const pageLabel = `Showing ${pageStart} - ${pageEnd} (limit ${filters.limit})`
 
-  // use shared helper so behavior is consistent across the app
   const copyText = useCallback(async (text) => {
     const ok = await copyToClipboard(typeof text === 'string' ? text : JSON.stringify(text))
     if (ok) toast.success('Copied to clipboard')
@@ -223,14 +222,14 @@ export default function AuditCompliancePage() {
       <PageHeader icon="policy" title="Audit & Compliance" subtitle="Who viewed what, who changed resources, and token lifecycle events." />
 
       <Card className="mb-4">
-        <div className="flex flex-col xl:flex-row gap-4 xl:items-end xl:justify-between">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full xl:max-w-5xl">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full">
             <div>
               <Input
                 type="datetime-local"
                 label="Start"
                 helperText="dd/mm/yyyy, hh:mm"
-                className="h-10"
+                className="h-10 max-w-full"
                 value={filters.start}
                 onChange={(e) => setFilters((prev) => ({ ...prev, start: e.target.value }))}
               />
@@ -241,7 +240,7 @@ export default function AuditCompliancePage() {
                 type="datetime-local"
                 label="End"
                 helperText="dd/mm/yyyy, hh:mm"
-                className="h-10"
+                className="h-10 max-w-full"
                 value={filters.end}
                 onChange={(e) => setFilters((prev) => ({ ...prev, end: e.target.value }))}
               />
@@ -251,7 +250,7 @@ export default function AuditCompliancePage() {
               <Select
                 label="User"
                 value={filters.user_id}
-                className="h-10"
+                className="h-10 max-w-full"
                 onChange={(e) => setFilters((prev) => ({ ...prev, user_id: e.target.value }))}
               >
                 <option value="">All users</option>
@@ -261,35 +260,35 @@ export default function AuditCompliancePage() {
               </Select>
             </div>
 
-            <Input label="Action" className="h-10" placeholder="e.g. api_key.create" value={filters.action} onChange={(e) => setFilters((prev) => ({ ...prev, action: e.target.value }))} />
+            <Input label="Action" className="h-10 " placeholder="e.g. api_key.create" value={filters.action} onChange={(e) => setFilters((prev) => ({ ...prev, action: e.target.value }))} />
             <Input label="Resource type" className="h-10" placeholder="e.g. api_keys" value={filters.resource_type} onChange={(e) => setFilters((prev) => ({ ...prev, resource_type: e.target.value }))} />
             <Input label="Search details" className="h-10" placeholder="Text in details JSON" value={filters.q} onChange={(e) => setFilters((prev) => ({ ...prev, q: e.target.value }))} />
-          </div>
 
-          <div className="w-full flex flex-wrap gap-2 items-end justify-start xl:justify-end px-4 mt-2 xl:mt-0">
-            <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className="h-10 min-w-[72px]">
-              {LIMIT_OPTIONS.map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </Select>
+            {/* Controls: placed inside the same grid so they align with filter inputs */}
+            <div className="col-span-1 md:col-span-2 xl:col-span-3 flex items-end justify-start gap-6 mt-5">
+              <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className="h-10 w-20">
+                {LIMIT_OPTIONS.map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </Select>
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="min-w-[110px] h-10"
-                onClick={async () => {
-                  const nextFilters = { ...filters, offset: 0 }
-                  await applyPage(nextFilters)
-                }}
-              >
-                Apply filters
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="min-w-[110px] h-10"
+                  onClick={async () => {
+                    const nextFilters = { ...filters, offset: 0 }
+                    await applyPage(nextFilters)
+                  }}
+                >
+                  Apply
+                </Button>
 
-              <Button size="sm" variant="secondary" className="min-w-[110px] h-10" onClick={handleExportCsv} disabled={exporting}>
-                {exporting ? <span className="inline-flex items-center gap-2"><Spinner size="xs" /> Exporting...</span> : 'Export CSV'}
-              </Button>
-
-              <Button size="sm" variant="ghost" className="h-10" onClick={clearAllFilters}>Clear</Button>
+                <Button size="sm" variant="secondary" className="min-w-[110px] h-10" onClick={handleExportCsv} disabled={exporting}>
+                  {exporting ? <span className="inline-flex items-center gap-2"><Spinner size="xs" /> Exporting...</span> : 'Export'}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-10" onClick={clearAllFilters}>Clear</Button>
+              </div>
             </div>
           </div>
         </div>
@@ -326,7 +325,7 @@ export default function AuditCompliancePage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-sre-border scrollbar-track-transparent">
             <table className="min-w-full table-fixed text-left text-sm">
               <thead>
                 <tr className="bg-sre-surface text-sre-text-muted text-xs uppercase tracking-wide sticky top-0 z-10">
