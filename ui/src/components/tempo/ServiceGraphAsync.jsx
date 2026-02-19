@@ -168,7 +168,7 @@ export default function ServiceGraphAsync({ traces }) {
     }))
     setEdges(layouted.edges)
     prevKeyRef.current = key
-  }, [graphData, layouted]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [graphData, layouted])
 
   // Apply active/hover purely as data mutation — never touches position
   useEffect(() => {

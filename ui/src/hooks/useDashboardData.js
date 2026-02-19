@@ -128,7 +128,7 @@ export function useDashboardData() {
         } catch (e) {
           setLogVolumeSeries([])
         }
-      } catch {
+      } catch (e) { void e
         // On error fetching logs, show 0 instead of leaving the metric as N/A
         setLogVolume(0)
         setLogVolumeSeries([])
@@ -220,7 +220,7 @@ export function useDashboardData() {
         setLoadingSystemMetrics(false)
       }
     })()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   return {

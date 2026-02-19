@@ -129,7 +129,6 @@ export default function AuditCompliancePage() {
 
   useEffect(() => {
     loadUsers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const userLabelById = useMemo(() => {
@@ -170,7 +169,6 @@ export default function AuditCompliancePage() {
 
   useEffect(() => {
     loadAudit(filters)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const onLimitChange = async (v) => {
