@@ -480,9 +480,21 @@ export function Sparkline({ data = [], width = 200, height = 40, stroke = 'curre
   }
 
   const safeValues = values.length === 1 ? [values[0], values[0]] : values
-  const min = Math.min(...safeValues)
-  const max = Math.max(...safeValues)
-  const range = max - min || 1
+  let min = Math.min(...safeValues)
+  let max = Math.max(...safeValues)
+  let range = max - min || 1
+
+  // Prevent tiny numeric ranges from mapping to full-height visual swings.
+  // For small ranges (e.g. counts of 36 vs 37) expand the visual range so the
+  // sparkline appears stable instead of jumping between top/bottom pixels.
+  const MIN_VISUAL_RANGE = 3
+  if (range < MIN_VISUAL_RANGE) {
+    const mid = (min + max) / 2
+    const half = MIN_VISUAL_RANGE / 2
+    min = mid - half
+    max = mid + half
+    range = max - min || 1
+  }
 
   const points = safeValues.map((v, i) => {
     const denom = safeValues.length > 1 ? (safeValues.length - 1) : 1

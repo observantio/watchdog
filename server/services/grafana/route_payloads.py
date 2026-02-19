@@ -38,7 +38,7 @@ def parse_dashboard_create_payload(payload: Dict) -> DashboardCreate:
         return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)), message=payload.get("message"))
 
     dashboard_obj = Dashboard.parse_obj(payload)
-    return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)))
+    return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)), message=payload.get("message"))
 
 
 def parse_dashboard_update_payload(payload: Dict) -> DashboardUpdate:

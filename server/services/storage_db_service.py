@@ -12,7 +12,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -530,10 +530,13 @@ class DatabaseStorageService:
                 .offset(capped_offset).limit(capped_limit)
                 .all()
             )
-            return [
-                (_rule_to_pydantic(r), r.created_by) for r in rules
-                if _has_access(r.visibility or "private", r.created_by, user_id, _get_shared_group_ids(r), group_ids)
-            ]
+            results: List[Tuple[AlertRulePydantic, str]] = []
+            for r in rules:
+                vis = cast(str, r.visibility or "private")
+                created_by = cast(str, r.created_by)
+                if _has_access(vis, created_by, user_id, _get_shared_group_ids(r), group_ids):
+                    results.append((_rule_to_pydantic(r), created_by))
+            return results
 
     def get_alert_rule_raw(self, rule_id: str, tenant_id: str) -> Optional[AlertRuleDB]:
         with get_db_session() as db:
@@ -559,7 +562,9 @@ class DatabaseStorageService:
                 .filter(AlertRuleDB.id == rule_id, AlertRuleDB.tenant_id == tenant_id)
                 .first()
             )
-            if not r or not _has_access(r.visibility or "private", r.created_by, user_id, _get_shared_group_ids(r), group_ids):
+            if not r:
+                return None
+            if not _has_access(cast(str, r.visibility or "private"), cast(str, r.created_by), user_id, _get_shared_group_ids(r), group_ids):
                 return None
             return _rule_to_pydantic(r)
 
@@ -579,7 +584,8 @@ class DatabaseStorageService:
                 enabled=rule_create.enabled, notification_channels=rule_create.notification_channels or [],
                 visibility=rule_create.visibility or "private",
             )
-            _assign_shared_groups(rule, db, tenant_id, rule.visibility, rule_create.shared_group_ids, actor_user_id=user_id, actor_group_ids=group_ids)
+            vis = cast(str, rule.visibility or "private")
+            _assign_shared_groups(rule, db, tenant_id, vis, rule_create.shared_group_ids, actor_user_id=user_id, actor_group_ids=group_ids)
             db.add(rule)
             db.flush()
             logger.info("Created alert rule %s (%s) org_id=%s visibility=%s", rule.name, rule.id, rule.org_id, rule.visibility)
@@ -615,7 +621,8 @@ class DatabaseStorageService:
             r.enabled = rule_update.enabled
             r.notification_channels = rule_update.notification_channels or []
             r.visibility = rule_update.visibility or "private"
-            _assign_shared_groups(r, db, tenant_id, r.visibility, rule_update.shared_group_ids, actor_user_id=user_id, actor_group_ids=group_ids)
+            vis = cast(str, r.visibility or "private")
+            _assign_shared_groups(r, db, tenant_id, vis, rule_update.shared_group_ids, actor_user_id=user_id, actor_group_ids=group_ids)
             db.flush()
             logger.info("Updated alert rule %s (%s) org_id=%s", r.name, rule_id, r.org_id)
             return _rule_to_pydantic(r)

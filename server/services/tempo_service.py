@@ -307,11 +307,19 @@ class TempoService:
 
         if config.TEMPO_USE_METRICS_FOR_COUNT:
             try:
-                raw_values = self._extract_metric_values(
-                    await self._query_metrics_range(
-                        self._build_count_promql(service, step), start, end, step, tenant_id=tenant_id
-                    )
-                )
+                raw_values: list = []
+
+                # Query selector candidates one-by-one and use the first non-empty
+                # time series we receive. This prevents double-counting when
+                # multiple selectors match overlapping metric series.
+                for sel in self._build_promql_selector(service):
+                    promql = f"sum(count_over_time({sel}[{step}s]))"
+                    resp = await self._query_metrics_range(promql, start, end, step, tenant_id=tenant_id)
+                    vals = self._extract_metric_values(resp)
+                    if vals:
+                        raw_values = vals
+                        break
+
                 if raw_values:
                     # Normalize into fixed buckets covering [start, end) with step seconds.
                     # Fill missing timestamps with "0" so the UI always receives a full series.

@@ -136,10 +136,12 @@ def test_get_trace_volume_tries_label_candidates_in_order():
 
     async def fake_query_metrics(promql, start_us=None, end_us=None, step_s=300, tenant_id="default"):
         called.append(promql)
-        # New implementation combines selectors into one expression; just return
-        # a synthetic non-empty result for the combined query.
-        ts = int((start_us or int(__import__('time').time() * 1_000_000)) / 1_000_000)
-        return {"status": "success", "data": {"result": [{"metric": {}, "values": [[ts, "3"]]}]}}
+        # Simulate the first selector returning a non-empty result; others should
+        # not be called in that case.
+        if 'resource.service.name' in promql:
+            ts = int((start_us or int(__import__('time').time() * 1_000_000)) / 1_000_000)
+            return {"status": "success", "data": {"result": [{"metric": {}, "values": [[ts, "3"]]}]}}
+        return {"status": "success", "data": {"result": []}}
 
     service._query_metrics_range = fake_query_metrics
 
@@ -147,10 +149,42 @@ def test_get_trace_volume_tries_label_candidates_in_order():
     end = start + (60 * 1_000_000)
     result = asyncio.run(service.get_trace_volume(service="svc", start=start, end=end, step=60))
 
-    # ensure we tried at least the first candidate and then a succeeding candidate
+    # ensure we tried the first candidate, did not use a combined '+' expression,
+    # and stopped after finding the first non-empty selector
     assert any("resource.service.name" in p for p in called)
+    assert all(" + " not in p for p in called)
+    assert len(called) == 1
     values = result["data"]["result"][0]["values"]
     assert values[0][1] == "3"
+
+
+def test_get_trace_volume_uses_first_non_empty_selector():
+    service = TempoService(tempo_url="http://tempo.test")
+
+    called = []
+
+    async def fake_query_metrics(promql, start_us=None, end_us=None, step_s=300, tenant_id="default"):
+        called.append(promql)
+        # First candidate returns empty; second candidate returns data.
+        if 'resource.service.name' in promql:
+            return {"status": "success", "data": {"result": []}}
+        if 'service_name' in promql:
+            ts = int((start_us or int(__import__('time').time() * 1_000_000)) / 1_000_000)
+            return {"status": "success", "data": {"result": [{"metric": {}, "values": [[ts, "7"]]}]}}
+        return {"status": "success", "data": {"result": []}}
+
+    service._query_metrics_range = fake_query_metrics
+
+    start = 1_700_000_000_000_000
+    end = start + (60 * 1_000_000)
+    result = asyncio.run(service.get_trace_volume(service="svc", start=start, end=end, step=60))
+
+    # ensure we tried selectors in order and used the first non-empty result
+    assert len(called) >= 2
+    assert 'resource.service.name' in called[0]
+    assert 'service_name' in called[1]
+    values = result["data"]["result"][0]["values"]
+    assert values[0][1] == "7"
 
 
 def test_get_trace_volume_estimates_from_total_traces_when_metrics_missing():
