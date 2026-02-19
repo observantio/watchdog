@@ -266,29 +266,31 @@ export default function AuditCompliancePage() {
             <Input label="Search details" className="h-10" placeholder="Text in details JSON" value={filters.q} onChange={(e) => setFilters((prev) => ({ ...prev, q: e.target.value }))} />
           </div>
 
-          <div className="flex px-4 flex-wrap gap-2 items-end justify-start">
-            <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className=" h-10">
+          <div className="w-full flex flex-wrap gap-2 items-end justify-start xl:justify-end px-4 mt-2 xl:mt-0">
+            <Select value={filters.limit} onChange={(e) => onLimitChange(e.target.value)} className="h-10 min-w-[72px]">
               {LIMIT_OPTIONS.map((l) => (
                 <option key={l} value={l}>{l}</option>
               ))}
             </Select>
 
-            <Button
-              size="sm"
-              className="min-w-[110px] h-10 flex-shrink-0"
-              onClick={async () => {
-                const nextFilters = { ...filters, offset: 0 }
-                await applyPage(nextFilters)
-              }}
-            >
-              Apply filters
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="min-w-[110px] h-10"
+                onClick={async () => {
+                  const nextFilters = { ...filters, offset: 0 }
+                  await applyPage(nextFilters)
+                }}
+              >
+                Apply filters
+              </Button>
 
-            <Button size="sm" variant="secondary" className="min-w-[110px] h-10 flex-shrink-0" onClick={handleExportCsv} disabled={exporting}>
-              {exporting ? <span className="inline-flex items-center gap-2"><Spinner size="xs" /> Exporting...</span> : 'Export CSV'}
-            </Button>
+              <Button size="sm" variant="secondary" className="min-w-[110px] h-10" onClick={handleExportCsv} disabled={exporting}>
+                {exporting ? <span className="inline-flex items-center gap-2"><Spinner size="xs" /> Exporting...</span> : 'Export CSV'}
+              </Button>
 
-            <Button size="sm" variant="ghost" className="h-10 flex-shrink-0" onClick={clearAllFilters}>Clear</Button>
+              <Button size="sm" variant="ghost" className="h-10" onClick={clearAllFilters}>Clear</Button>
+            </div>
           </div>
         </div>
 
