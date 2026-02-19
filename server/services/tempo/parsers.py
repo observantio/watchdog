@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from typing import Any, Dict, List, Optional
 
-from models.observability.tempo_models import Span, Trace
+from models.observability.tempo_models import Span, SpanAttribute, Trace
 
 _SERVICE_NAME_KEY = "service.name"
 _SERVICE_ALIAS_KEY = "service"
@@ -36,11 +36,11 @@ def parse_span(
     resource_attrs: Optional[Dict[str, Any]] = None,
 ) -> Span:
     attr_map = parse_attributes(span_data.get("attributes", []))
-    tags = [{"key": k, "value": v} for k, v in attr_map.items()]
+    tags = [SpanAttribute(key=k, value=v) for k, v in attr_map.items()]
 
     if service_name and _SERVICE_NAME_KEY not in attr_map:
         attr_map[_SERVICE_NAME_KEY] = service_name
-        tags.append({"key": _SERVICE_NAME_KEY, "value": service_name})
+        tags.append(SpanAttribute(key=_SERVICE_NAME_KEY, value=service_name))
 
     if resource_attrs:
         for k, v in resource_attrs.items():
@@ -51,21 +51,23 @@ def parse_span(
     parent_span_id = span_data.get("parentSpanId") or None
 
     return Span(
-        spanID=span_data.get("spanId", ""),
-        traceID=trace_id,
-        parentSpanID=parent_span_id,
-        operationName=span_data.get("name", ""),
-        startTime=start_time,
+        span_id=span_data.get("spanId", ""),
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
+        operation_name=span_data.get("name", ""),
+        start_time=start_time,
         duration=end_time - start_time,
         tags=tags,
-        serviceName=service_name,
+        service_name=service_name,
         attributes=attr_map,
-        processID=process_id,
+        process_id=process_id,
+        warnings=None,
     )
 
 
 def parse_tempo_trace(trace_id: str, data: Dict[str, Any]) -> Trace:
-    spans, processes = [], {}
+    spans: list[Span] = []
+    processes: dict[str, Any] = {}
     for batch in data.get("batches", []):
         resource_attrs = parse_attributes(batch.get("resource", {}).get("attributes", []))
         service_name = (
@@ -82,10 +84,9 @@ def parse_tempo_trace(trace_id: str, data: Dict[str, Any]) -> Trace:
         }
         for scope in batch.get("scopeSpans", []):
             spans.extend(
-                parse_span(s, trace_id, process_id, service_name, resource_attrs)
-                for s in scope.get("spans", [])
+                [parse_span(s, trace_id, process_id, service_name, resource_attrs) for s in scope.get("spans", [])]
             )
-    return Trace(traceID=trace_id, spans=spans, processes=processes)
+    return Trace(trace_id=trace_id, spans=spans, processes=processes)
 
 
 def build_summary_trace(trace_data: Dict[str, Any]) -> Optional[Trace]:
@@ -101,20 +102,19 @@ def build_summary_trace(trace_data: Dict[str, Any]) -> Optional[Trace]:
     except (TypeError, ValueError):
         duration_ms = None
 
-    return Trace(
-        traceID=trace_id,
-        spans=[{
-            "spanID": "root",
-            "traceID": trace_id,
-            "parentSpanID": None,
-            "operationName": trace_data.get("rootTraceName") or "",
-            "startTime": int(start_ns // 1000) if start_ns else 0,
-            "duration": int(duration_ms * 1000) if duration_ms is not None else 0,
-            "tags": [],
-            "serviceName": trace_data.get("rootServiceName") or trace_data.get("rootService") or "unknown",
-            "attributes": {},
-            "processID": trace_data.get("rootServiceName") or "unknown",
-        }],
-        processes={},
+    # Construct a proper Span object for the summary so types match
+    summary_span = Span(
+        span_id="root",
+        trace_id=trace_id,
+        parent_span_id=None,
+        operation_name=trace_data.get("rootTraceName") or "",
+        start_time=int(start_ns // 1000) if start_ns else 0,
+        duration=int(duration_ms * 1000) if duration_ms is not None else 0,
+        tags=[],
+        service_name=trace_data.get("rootServiceName") or trace_data.get("rootService") or "unknown",
+        attributes={},
+        process_id=trace_data.get("rootServiceName") or "unknown",
         warnings=["Trace summary only"],
     )
+
+    return Trace(trace_id=trace_id, spans=[summary_span], processes={}, warnings=["Trace summary only"]) 

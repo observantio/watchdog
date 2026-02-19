@@ -378,7 +378,7 @@ def test_get_label_values_normalizes_and_caps_start_end_and_caches():
 
 
 def test__normalize_label_values_parses_labelset_and_truncation():
-    service = LokiService(loki_url="http://loki.test")
+    from services.loki.label_utils import normalize_label_values
     raw_values = [
         'service_name="api",env="prod"',
         'web",other="x"',
@@ -386,7 +386,6 @@ def test__normalize_label_values_parses_labelset_and_truncation():
         'complex\"value\",rest="x"',
     ]
 
-    from services.loki.label_utils import normalize_label_values
     normalized = normalize_label_values('service_name', raw_values)
     assert 'api' in normalized
     assert 'web' in normalized or 'web\"' in normalized
@@ -394,10 +393,13 @@ def test__normalize_label_values_parses_labelset_and_truncation():
 
 
 def test__normalize_service_label_query_and_expand():
-    from services.loki.fallback import _normalize_service_label_query
+    from services.loki.fallback import _normalize_service_label_query, _expand_service_label_matchers, build_service_fallback_queries
     q = '{service.name="api"}'
     normalized = _normalize_service_label_query(q)
     assert 'service_name' in normalized
 
-    expanded = service._expand_service_label_matchers('{service_name="api"}')
+    expanded = _expand_service_label_matchers('{service_name="api"}')
     assert 'service_name=~"api.*"' in expanded
+    # ensure build_service_fallback_queries includes normalized/expanded variants
+    fallbacks = build_service_fallback_queries(q)
+    assert any('service_name' in f for f in fallbacks)

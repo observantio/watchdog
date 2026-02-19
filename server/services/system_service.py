@@ -8,7 +8,6 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-
 import logging
 import os
 import psutil
@@ -106,7 +105,7 @@ class SystemService:
         """Get network connection metrics for the BeObservant process."""
         try:
             connections = self.process.connections(kind='inet')
-            status_counts = {}
+            status_counts: dict[str, int] = {}
             for conn in connections:
                 status = conn.status
                 status_counts[status] = status_counts.get(status, 0) + 1

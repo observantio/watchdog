@@ -10,9 +10,6 @@ if ROOT not in sys.path:
 
 
 import types
-# insert a temporary fake `services` package only for importing the module-under-test;
-# restore the original `services` entry afterwards so other tests are not affected
-_original_services_module = sys.modules.get("services")
 services_mod = types.ModuleType("services")
 sys.modules["services"] = services_mod
 
@@ -39,7 +36,6 @@ finally:
     else:
         sys.modules.pop("config", None)
 
-# fake submodules used by the module-under-test
 gf_mod = types.ModuleType("services.grafana_service")
 class _LocalGrafanaAPIError(Exception):
     def __init__(self, status: int, body=None):
@@ -107,11 +103,7 @@ for name in (
     setattr(ds_mod, name, lambda *a, **k: None)
 sys.modules["services.grafana.datasource_ops"] = ds_mod
 
-# restore the (possibly existing) real `services` module so other tests can import normally
-if _original_services_module is not None:
-    sys.modules["services"] = _original_services_module
-else:
-    sys.modules.pop("services", None)
+from server.services.grafana_proxy_service import GrafanaProxyService
 from server.db_models import Base, Group
 from fastapi import HTTPException
 GrafanaAPIError = gf_mod.GrafanaAPIError
@@ -177,7 +169,7 @@ def test_validate_group_visibility_missing_ids_raises():
     with pytest.raises(HTTPException) as exc:
         svc._validate_group_visibility(db, tenant_id="t1", group_ids=["g1"], shared_group_ids=["g1", "g2"], is_admin=True)
     assert exc.value.status_code == 400
-    assert "One or more group ids are invalid" in str(exc.value.detail)
+    assert "One or more group ids are invalid" in exc.value.detail
 
 
 def test_validate_group_visibility_non_admin_not_member_raises():
@@ -191,7 +183,7 @@ def test_validate_group_visibility_non_admin_not_member_raises():
     with pytest.raises(HTTPException) as exc:
         svc._validate_group_visibility(db, tenant_id="t1", group_ids=["g1"], shared_group_ids=["g1", "g2"], is_admin=False)
     assert exc.value.status_code == 403
-    assert "User is not a member of one or more specified groups" in str(exc.value.detail)
+    assert "User is not a member of one or more specified groups" in exc.value.detail
 
 
 def test_validate_group_visibility_success_for_admin_and_member():

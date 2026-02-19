@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from models.alerting.rules import AlertRuleCreate
+from models.alerting.rules import AlertRuleCreate, RuleSeverity
+from models.alerting.silences import Visibility
 from services.common.visibility import normalize_visibility
 
 _VALID_SEVERITIES = {"info", "warning", "error", "critical"}
@@ -63,6 +64,7 @@ def _normalize_rule_entry(
     ).strip().lower()
     if severity not in _VALID_SEVERITIES:
         severity = "warning"
+    severity_enum = RuleSeverity(severity)
 
     channels_raw = be_meta.get("channels")
     channels_src = channels_raw if isinstance(channels_raw, list) else defaults.get("channels")
@@ -72,11 +74,14 @@ def _normalize_rule_entry(
     shared_src = shared_raw if isinstance(shared_raw, list) else []
     shared_group_ids = [str(gid).strip() for gid in shared_src if str(gid).strip()]
 
+    visibility_str = _normalize_visibility(be_meta.get("visibility") or defaults.get("visibility"), "private")
+    visibility_enum = Visibility(visibility_str)
+
     return AlertRuleCreate(
         orgId=str(be_meta.get("orgId") or be_meta.get("org_id") or defaults.get("orgId") or "").strip() or None,
         name=alert_name,
         expression=expr,
-        severity=severity,
+        severity=severity_enum,
         description=annotations.get("description"),
         enabled=bool(be_meta.get("enabled", defaults.get("enabled", True))),
         labels={k: v for k, v in labels.items() if k != "severity"},
@@ -84,7 +89,7 @@ def _normalize_rule_entry(
         **{"for": str(rule_data.get("for") or defaults.get("duration") or "5m").strip() or "5m"},
         groupName=str(be_meta.get("group") or group_name or defaults.get("group") or "default").strip() or "default",
         notificationChannels=channels,
-        visibility=_normalize_visibility(be_meta.get("visibility") or defaults.get("visibility"), "private"),
+        visibility=visibility_enum,
         sharedGroupIds=shared_group_ids,
     )
 

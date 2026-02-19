@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from typing import Dict, List, Optional
 
 from models.access.auth_models import Role, TokenData
-from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardUpdate
+from models.grafana.grafana_dashboard_models import Dashboard, DashboardCreate, DashboardUpdate
 
 
 VALID_VISIBILITIES = {"private", "group", "tenant"}
@@ -32,18 +32,21 @@ def validate_visibility(visibility: Optional[str]) -> None:
 def parse_dashboard_create_payload(payload: Dict) -> DashboardCreate:
     if not isinstance(payload, dict):
         raise ValueError("Invalid dashboard payload")
+    # Ensure inner `dashboard` is a `Dashboard` instance so constructors are type-safe for mypy
     if payload.get("dashboard"):
-        return DashboardCreate(**payload)
-    return DashboardCreate(
-        dashboard=payload,
-        folder_id=int(payload["folderId"]) if payload.get("folderId") is not None else 0,
-        overwrite=bool(payload.get("overwrite", False)),
-    )
+        dashboard_obj = Dashboard.parse_obj(payload["dashboard"])
+        return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)))
+
+    dashboard_obj = Dashboard.parse_obj(payload)
+    return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)))
 
 
 def parse_dashboard_update_payload(payload: Dict) -> DashboardUpdate:
     if not isinstance(payload, dict):
         raise ValueError("Invalid dashboard payload")
     if payload.get("dashboard"):
-        return DashboardUpdate(**payload)
-    return DashboardUpdate(dashboard=payload, overwrite=payload.get("overwrite", True))
+        dashboard_obj = Dashboard.parse_obj(payload["dashboard"])
+        return DashboardUpdate(dashboard=dashboard_obj, folderId=payload.get("folderId"), overwrite=payload.get("overwrite", True), message=payload.get("message"))
+
+    dashboard_obj = Dashboard.parse_obj(payload)
+    return DashboardUpdate(dashboard=dashboard_obj, folderId=payload.get("folderId"), overwrite=payload.get("overwrite", True), message=payload.get("message"))

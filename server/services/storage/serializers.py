@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 
 def _rule_to_pydantic(r) -> AlertRulePydantic:
     return AlertRulePydantic(
-        id=r.id, org_id=r.org_id, name=r.name, expr=r.expr, duration=r.duration,
+        id=r.id, orgId=r.org_id, name=r.name, expr=r.expr, duration=r.duration,
         severity=r.severity, labels=r.labels or {}, annotations=r.annotations or {},
-        enabled=r.enabled, group=r.group, notification_channels=r.notification_channels or [],
+        enabled=r.enabled, group=r.group, notificationChannels=r.notification_channels or [],
         visibility=r.visibility or "private",
-        shared_group_ids=[g.id for g in r.shared_groups] if r.shared_groups else [],
+        sharedGroupIds=[g.id for g in r.shared_groups] if r.shared_groups else [],
     )
 
 

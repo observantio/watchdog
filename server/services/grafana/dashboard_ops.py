@@ -307,8 +307,6 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
 
     panels = dash.get("panels") or []
 
-    # Allow empty dashboards (created via the form editor) — they don't need
-    # datasource references until panels/targets are added.
     if not panels:
         return True
 
@@ -317,7 +315,6 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
         try:
             pds = panel.get("datasource")
             if pds:
-                # string or object
                 if isinstance(pds, str) and pds.strip():
                     panel_has_ds = True
                 elif isinstance(pds, dict) and pds.get("uid"):
@@ -372,7 +369,6 @@ async def create_dashboard(
         ):
             raise HTTPException(status_code=409, detail="Dashboard title already exists in your visible scope")
 
-        # Validate dashboard JSON contains datasource references early
         try:
             dash_obj = dashboard_create.dashboard if hasattr(dashboard_create, 'dashboard') else None
             if dash_obj and not _dashboard_has_datasource(dash_obj):
@@ -380,7 +376,6 @@ async def create_dashboard(
         except HTTPException:
             raise
         except (TypeError, AttributeError):
-            # continue; we'll rely on Grafana to validate more strictly
             service.logger.debug("Skipping local dashboard datasource pre-validation due to malformed payload")
 
         groups: List[Group] = []
@@ -496,7 +491,6 @@ async def update_dashboard(
     except HTTPException:
         raise
     except (TypeError, AttributeError):
-        # ignore validation errors and let Grafana validate
         service.logger.debug("Skipping local dashboard datasource validation for malformed update payload")
 
     try:

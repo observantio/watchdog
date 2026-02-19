@@ -26,8 +26,8 @@ async def notify_for_alerts(service, alerts_list, storage_service, notification_
             continue
 
         raw_status = incoming_alert.get("status") or {}
-        silenced = []
-        inhibited = []
+        silenced: list[str] = []
+        inhibited: list[str] = []
         if isinstance(raw_status, dict):
             state_value = raw_status.get("state")
             silenced = raw_status.get("silencedBy") or []
