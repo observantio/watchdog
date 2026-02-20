@@ -1,12 +1,13 @@
 """
+Database initialization and session management using SQLAlchemy, providing functions to create the database engine, manage sessions, and perform connectivity checks. This module includes logic to handle database connection pooling, to provide context-managed sessions for use in route handlers and services, and to ensure proper cleanup of database resources on application shutdown. It also includes a function to initialize the database schema based on defined SQLAlchemy models.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 import logging
 import os
 from typing import Optional
@@ -19,7 +20,6 @@ from typing import Generator, Iterator
 
 logger = logging.getLogger(__name__)
 
-# Use the application's declarative base from `db_models` (single authoritative source)
 from db_models import Base
 
 _engine: Optional[Engine] = None

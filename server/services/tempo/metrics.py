@@ -1,12 +1,13 @@
 """
+Tempo metrics queries and processing logic, providing functions to query Tempo for trace metrics based on alert rule conditions and to process the retrieved metrics for use in alert evaluation. This module includes logic to construct appropriate queries for Tempo based on the alert rule configurations, to handle the responses from Tempo, and to extract relevant metric data that can be used in the context of alerting. The metrics processing functions ensure that the data retrieved from Tempo is in a format suitable for evaluating alert conditions and making decisions about when to trigger alerts based on trace metrics.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 from typing import Any, Dict, List, Optional, Callable, Tuple
 import logging

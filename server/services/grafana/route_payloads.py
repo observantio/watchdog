@@ -1,10 +1,10 @@
 """
+Route payload construction and access control utilities for Grafana integration, providing functions to build request payloads for Grafana API operations while enforcing access control based on user permissions and group memberships. This module includes functions to check for title conflicts when creating or updating dashboards, determine accessible dashboard UIDs for a user, build search contexts for optimizing dashboard searches, and construct payloads for dashboard creation and updates while ensuring that users have the necessary permissions to perform these operations. The utilities also handle visibility settings (private, group, tenant) and shared group management to ensure that users can only access and modify dashboards they have permissions for while maintaining consistency with the underlying database records.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 from typing import Dict, List, Optional

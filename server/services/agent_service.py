@@ -1,12 +1,13 @@
 """
+Service for managing OTLP agents, providing functions to track recently active agents based on heartbeats received from them. This module maintains an in-memory registry of agents, allowing for updates based on incoming heartbeat data and providing a way to list currently active agents along with their details. The service also includes functionality to query Mimir for recent activity associated with a specific key, such as an API key or tenant ID, to determine if there has been recent metrics activity related to that key.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 
 import logging

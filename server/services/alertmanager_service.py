@@ -1,12 +1,13 @@
 """
+Service for managing interactions with AlertManager, providing functions to retrieve and manage alerts, silences, and notification channels. This module includes logic to interact with the AlertManager API for operations such as listing alerts, creating and deleting silences, and retrieving the status of the AlertManager instance. The service also handles the encoding and decoding of silence metadata within silence comments, enforces security for webhook endpoints, and provides utility functions related to alerting and silencing. Additionally, it includes functionality to synchronize alert rules with Mimir and to notify external services based on alert conditions.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 import json
 import logging
 from typing import Dict, List, Optional

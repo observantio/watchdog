@@ -1,10 +1,10 @@
 """
+Email provider utilities for sending notifications via different email services, including SendGrid, Resend, and SMTP. This module provides functions to build email messages, validate recipient email addresses, and send emails using the respective APIs or protocols while handling errors and implementing retry logic for transient failures. The utilities ensure that email sending operations are performed securely and efficiently, with proper logging and error handling to facilitate troubleshooting and monitoring of email delivery performance.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 

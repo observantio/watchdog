@@ -1,4 +1,6 @@
 """
+Database authentication service utilities for handling OpenID Connect (OIDC) user synchronization and provisioning, including functions to extract permissions from OIDC claims, synchronize user information from OIDC claims with the local database, provision new users based on OIDC claims when auto-provisioning is enabled, and update existing user records with information from OIDC claims during login. This module provides a common interface for integrating OIDC authentication with the database authentication service, allowing for seamless synchronization of user data and permissions based on the claims provided by the OIDC provider while ensuring that user accounts are properly managed in the local database.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

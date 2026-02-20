@@ -1,14 +1,13 @@
 """
+Service for managing interactions with Jira, providing functions to create issues, list projects and issue types, and manage comments on issues. This module includes logic to handle authentication with Jira using either API tokens or bearer tokens, to construct appropriate API requests to the Jira REST API, and to process the responses received from Jira. The service ensures that the base URL for Jira is properly configured and validated, and it provides error handling for various scenarios that may arise when interacting with the Jira API.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Jira integration service.
-
-Supports both global env credentials and per-request tenant-scoped credentials.
 """
+
 import base64
 import logging
 import os

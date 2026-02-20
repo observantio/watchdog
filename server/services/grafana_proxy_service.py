@@ -1,10 +1,13 @@
 """
+Service for proxying requests to Grafana, providing functions to handle authentication, authorization, and access control for Grafana resources such as dashboards and datasources. This module includes logic to extract necessary information from incoming requests, to validate access permissions based on user roles and group memberships, and to interact with the Grafana API for operations related to dashboards and datasources. The service ensures that only authorized users can access or modify Grafana resources through the proxy, and it provides utility functions to manage visibility and sharing of these resources within the context of the application.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 import logging
 from typing import List, Optional, Dict, Any

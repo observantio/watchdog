@@ -1,12 +1,13 @@
 """
+Service for managing authentication and authorization, providing functions for user management, group management, permission handling, API key management, and integration with external identity providers. This module includes logic for authenticating users, generating and validating access tokens, managing multi-factor authentication (MFA) using TOTP, and synchronizing user information from external OIDC providers. The service also handles the assignment of permissions to users and groups, the creation and management of API keys, and the logging of audit events related to authentication and authorization actions.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 import logging
 import secrets

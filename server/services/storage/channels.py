@@ -1,12 +1,13 @@
 """
+Storage service for managing notification channels, providing functions to create, read, update, and delete notification channels while enforcing access control based on channel visibility and user/group permissions. This module interacts with the database to persist channel configurations, including encrypted channel settings, and ensures that users can only access channels they have permission to view or modify. The service also includes functionality to test notification channels by simulating a notification send operation, as well as retrieving channels associated with specific alert rules for use in the alerting system.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 import json
 import logging
 import uuid

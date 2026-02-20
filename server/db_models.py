@@ -1,14 +1,13 @@
 """
+All SQLAlchemy models for the application, defining the database schema for tenants, users, groups, permissions, alert rules, incidents, notification channels, and audit logs. This module uses SQLAlchemy's declarative base to define models with relationships and constraints that enforce data integrity and support the application's multi-tenant architecture. Each model includes fields for tracking creation and update timestamps, as well as relationships to other models to facilitate access control and data retrieval based on user permissions. The module also defines association tables for many-to-many relationships between users, groups, permissions, alert rules, and notification channels.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Database models for enterprise IAM system.
 """
+
 from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional

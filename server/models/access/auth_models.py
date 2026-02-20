@@ -1,7 +1,6 @@
 """
 This module defines Pydantic models for authentication and authorization data structures used in the API layer.
 
-
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

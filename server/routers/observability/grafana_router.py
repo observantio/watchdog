@@ -1,13 +1,11 @@
 """
+Router for Grafana dashboard and datasource management with multi-tenant access control, visibility settings, and proxying of datasource queries.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Grafana API router with multi-tenancy, hide/show, team filtering, and UID search.
 """
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request, status
 from fastapi.concurrency import run_in_threadpool

@@ -1,4 +1,6 @@
 """
+User operations for managing user accounts, including creating, updating, deleting users, and managing user permissions and group memberships.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

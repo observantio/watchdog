@@ -1,4 +1,6 @@
 """
+Access control utilities for checking user permissions and resolving group memberships for tenant-based resources, including functions to determine if a user is a tenant admin, resolve group objects from group IDs with optional membership enforcement, assign shared groups to database objects based on visibility settings, and check if a user has access to a resource based on its visibility and shared group memberships.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

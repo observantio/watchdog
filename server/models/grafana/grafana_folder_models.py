@@ -1,16 +1,14 @@
 """
+Module defines Pydantic models for Grafana folder-related data structures used in the API layer.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Grafana folder model (split from grafana_models.py).
-
-Defines Pydantic models for representing Grafana folders as used in the GrafanaService.
 """
+
+
 from typing import Optional
 from pydantic import BaseModel, Field
 

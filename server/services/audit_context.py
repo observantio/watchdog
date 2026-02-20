@@ -1,12 +1,13 @@
 """
+Service for managing audit context information, providing functions to set, reset, and retrieve audit-related data such as the IP address and user agent of incoming requests. This module uses Python's `contextvars` to maintain request-specific audit information that can be accessed throughout the request handling process. The service allows for setting the audit context at the beginning of a request, resetting it after the request is processed, and retrieving the current audit context when needed for logging or other purposes.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 from contextvars import ContextVar
 from typing import Optional
 

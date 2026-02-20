@@ -1,12 +1,13 @@
 """
+Tempo query parameter construction logic, providing functions to build query parameters for Tempo based on trace query conditions specified in alert rules. This module includes logic to translate the conditions defined in alert rules into the appropriate query parameters that can be used to query Tempo for trace data. The parameter construction functions ensure that the queries sent to Tempo are correctly formatted and include all necessary information to retrieve the relevant trace data for alert evaluation.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 from typing import Any, Dict
 from models.observability.tempo_models import TraceQuery

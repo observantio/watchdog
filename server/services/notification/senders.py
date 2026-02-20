@@ -1,10 +1,10 @@
 """
+Senders for notification services, providing functions to send notifications to various channels such as Slack, Microsoft Teams, generic webhooks, and PagerDuty based on alert data and channel configurations. This module includes logic to validate webhook URLs, construct payloads for each channel using the payload construction utilities, and perform HTTP requests to send the notifications while handling errors and implementing retry logic for transient failures. The senders ensure that notifications are sent securely and efficiently, with proper logging of successes and failures to facilitate monitoring and troubleshooting of notification delivery.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 

@@ -1,10 +1,10 @@
 """
+Database authentication service utilities for handling token decoding and user information extraction, including functions to decode access tokens, extract user information from tokens, and build token data structures based on user information. This module provides a common interface for handling token-related operations in the database authentication service, allowing for consistent decoding of tokens and extraction of relevant user information such as permissions and group memberships while also supporting integration with external authentication providers when enabled.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 

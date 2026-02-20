@@ -1,11 +1,12 @@
 """
+Authentication utilities for handling user login, token exchange, and external user provisioning in the database authentication service, including functions to authenticate users with either local credentials or external OIDC providers, exchange authorization codes for tokens, and provision new users in the external authentication provider when necessary. This module provides a common interface for performing authentication-related operations within the database authentication service, abstracting away the details of the underlying authentication mechanisms and allowing for flexible support of different authentication configurations.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-
 from typing import Optional, Union
 
 import httpx

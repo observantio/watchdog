@@ -1,4 +1,6 @@
 """
+Api key management operations for creating, updating, deleting, and sharing API keys, as well as backfilling missing OTLP tokens for existing keys.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

@@ -1,13 +1,11 @@
 """
+Database for log and audit utilities for the database authentication service, providing functions to log audit events related to authentication operations such as user creation, group management, and MFA changes. This module defines a common interface for logging audit events in the database, allowing for consistent tracking of important actions and changes within the authentication service while ensuring that relevant information is captured for auditing purposes.
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-
 from typing import Any, Dict, Optional
 
 from services.audit_context import get_request_audit_context

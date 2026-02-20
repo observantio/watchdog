@@ -1,10 +1,10 @@
 """
+Ensure cookies are marked Secure when appropriate based on the request scheme and proxy headers, with support for trusting specific proxy CIDRs when determining if the original request was made over HTTPS.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 

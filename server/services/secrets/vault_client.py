@@ -1,19 +1,28 @@
-"""Vault-backed SecretProvider implementation."""
+"""
+Vault client for fetching secrets from HashiCorp Vault, supporting both token-based and AppRole authentication methods, with caching of secrets to reduce load on Vault and improve performance. This module provides a VaultSecretProvider class that can be used to retrieve secrets from Vault based on a specified key, with support for both KV version 1 and version 2 secret engines. The client handles authentication, secret retrieval, error handling, and caching of secrets with a configurable time-to-live (TTL) to ensure efficient access to secrets while minimizing the number of requests made to Vault.
+
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
+
+
 from __future__ import annotations
 
 import threading
 import time
 from typing import Callable, Dict, Optional, Any
 
-# hvac types are untyped, ignore imports for mypy
 try:
-    import hvac  # type: ignore
-    from hvac.exceptions import Forbidden, InvalidPath, VaultError  # type: ignore
-except ImportError:  # pragma: no cover - runtime import handled in class
-    hvac = None  # type: ignore
-    Forbidden = Exception  # type: ignore
-    InvalidPath = Exception  # type: ignore
-    VaultError = Exception  # type: ignore
+    import hvac 
+    from hvac.exceptions import Forbidden, InvalidPath, VaultError 
+except ImportError: 
+    hvac = None
+    Forbidden = Exception
+    InvalidPath = Exception  
+    VaultError = Exception
 
 
 class VaultClientError(RuntimeError):

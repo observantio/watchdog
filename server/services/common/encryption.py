@@ -1,10 +1,10 @@
 """
+Encryption utilities for securely hashing and verifying sensitive data such as passwords and API keys, using bcrypt for password hashing and Fernet symmetric encryption for encrypting API key values in the database. This module provides functions to hash passwords, verify passwords against hashes, encrypt API key values, and decrypt API key values, ensuring that sensitive information is stored securely and can be validated when needed.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 import json

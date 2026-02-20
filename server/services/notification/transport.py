@@ -1,12 +1,13 @@
 """
+Transport utilities for notification services, providing functions to perform HTTP requests with retry logic for transient failures and to send emails using SMTP with similar retry mechanisms. This module includes error handling to determine whether exceptions are transient and should be retried, as well as logging of failures to facilitate troubleshooting. The transport utilities ensure that notification sending operations are resilient to temporary issues such as network errors or service unavailability, while also integrating with the overall notification system to provide reliable delivery of alerts and messages.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 import logging
 from typing import Optional, Dict, Any

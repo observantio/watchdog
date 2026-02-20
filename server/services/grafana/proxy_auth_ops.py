@@ -1,4 +1,6 @@
 """
+Proxy authentication and authorization operations for Grafana integration, providing functions to extract and verify authentication tokens from incoming requests, determine required permissions based on request paths and methods, and enforce access control for Grafana resources such as dashboards and datasources. This module implements a caching mechanism for token verification results to optimize performance while ensuring that permissions are properly checked against the user's role, group memberships, and direct permissions when accessing or modifying Grafana resources through the proxy. The operations include handling of various Grafana API endpoints and enforcing constraints such as read-only access for default datasources and proper permission checks for dashboard creation and updates.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

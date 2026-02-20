@@ -1,12 +1,13 @@
 """
+Tempo Parsers for processing responses from Tempo metrics queries, providing functions to extract and aggregate metric values from the responses received from Tempo when querying for trace metrics. This module includes logic to handle the structure of the responses from Tempo, to iterate through the returned metric data, and to aggregate the metric values based on their timestamps. The parsers ensure that the extracted metric data is in a format suitable for use in alert evaluation and other processing related to trace metrics in
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 from typing import Any, Dict, List, Optional
 

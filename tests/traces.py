@@ -1,3 +1,13 @@
+"""
+Trace generator for testing OTLP trace ingestion, simulating realistic trace data from a variety of services, environments, and regions. This script generates traces with multiple spans that represent typical interactions in a microservices architecture, including frontend requests, gateway processing, service calls, database queries, and external API calls. Each trace includes attributes such as service name, environment, region, HTTP method and route, status code, duration, customer segment, and error information. The script sends the generated traces to the specified OTLP endpoint in batches with configurable parallelism and loop count.
+
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
+
 #!/usr/bin/env python3
 import sys, time, random, secrets, json, threading
 from urllib.request import urlopen, Request

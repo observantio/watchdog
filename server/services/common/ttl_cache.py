@@ -1,10 +1,10 @@
 """
+Redis-based TTL cache utilities for storing and retrieving temporary data with expiration, including functions to set and get cached values with optional encryption based on a configured encryption key. This module provides a simple interface for caching data in Redis with a specified time-to-live (TTL) and handles encryption and decryption of cached values when an encryption key is configured, ensuring that sensitive data can be stored securely in the cache while still benefiting from Redis's performance and scalability features.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 import asyncio

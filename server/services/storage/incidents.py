@@ -1,12 +1,13 @@
 """
+Storage service for managing alert incidents, providing functions to synchronize incidents from alerts, list incidents with filtering options, retrieve specific incidents with access control, and update incident details. This module interacts with the database to persist incident information and ensures that users can only access or modify incidents they have permission to view or edit based on their user ID and group memberships. The service also includes functionality to filter alerts based on user permissions when associating them with incidents, ensuring that users only see relevant information in the context of their access rights.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 from typing import Any, Dict, List, Optional
 

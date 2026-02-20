@@ -1,4 +1,6 @@
 """
+OIDC authentication service for validating access tokens, exchanging credentials for tokens, and provisioning users in Keycloak if enabled.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

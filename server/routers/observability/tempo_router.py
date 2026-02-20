@@ -1,18 +1,12 @@
 """
+Router for Tempo trace querying, trace retrieval by ID, service and operation listing, and trace metrics with multi-tenant access control and query validation.
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Tempo API router.
-
-Provides endpoints for querying traces, retrieving trace details, and getting trace metrics and volume over time.
-
-Supports multi-tenancy and permission-based access control.
 """
+
 from fastapi import APIRouter, HTTPException, Query, status, Depends, Request
 from typing import Optional, List
 

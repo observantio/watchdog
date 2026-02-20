@@ -1,12 +1,13 @@
 """
+Service for managing notifications, providing functions to send notifications through various channels such as email, Slack, and Microsoft Teams. This module includes logic to construct notification payloads based on alert information, to handle the formatting of messages for different notification platforms, and to implement retry mechanisms for failed notification attempts. The service also includes functionality to manage notification templates and to integrate with external services for sending notifications securely and efficiently.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 import httpx
 import logging
 import os

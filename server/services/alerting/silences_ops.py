@@ -1,13 +1,12 @@
 """
+Silences operations for managing Alertmanager silences, including fetching, creating, updating, and deleting silences, as well as applying metadata and access control based on user permissions.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-
 import asyncio
 from typing import Dict, List, Optional
 

@@ -1,11 +1,13 @@
 """
+Validation utilities for notification channel configurations, providing functions to validate the configuration of different notification channels such as email, Slack, Microsoft Teams, generic webhooks, and PagerDuty. This module checks for the presence of required fields based on the channel type, validates URLs for webhook-based channels, and ensures that email configurations have the necessary information for sending emails. The validation functions return a list of error messages if any issues are found with the channel configuration, allowing for proper feedback when setting up or updating notification channels.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 import re
 from typing import Dict, List, Any

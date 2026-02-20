@@ -1,10 +1,10 @@
 """
+Normalization utilities for handling visibility settings on resources, including functions to normalize visibility values from user input and ensure that they conform to expected formats and allowed values. This module provides a common interface for normalizing visibility settings across different resource types, allowing for consistent handling of visibility options such as "public", "private", "tenant", and "group" while also supporting configurable defaults and aliases for certain visibility levels.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 

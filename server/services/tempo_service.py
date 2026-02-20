@@ -1,4 +1,5 @@
 """
+Service for managing trace Tempo integration, providing functions to query and retrieve trace data from Tempo based on various parameters such as trace ID, service name, and time range. This module includes logic to construct appropriate queries for Tempo, to handle responses from Tempo, and to implement retry mechanisms for failed requests. The service also includes functionality to normalize and process trace data for use within the application.
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

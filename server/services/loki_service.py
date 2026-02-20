@@ -1,12 +1,13 @@
 """
+Service for managing interactions with Loki, providing functions to query logs, retrieve labels and label values, and perform log aggregation. This module includes logic to construct appropriate LogQL queries based on input parameters, to handle responses from Loki, and to implement fallback mechanisms for cases where initial queries do not return results. The service also includes caching for label retrieval to improve performance and reduce load on the Loki instance, as well as metrics collection for monitoring query performance and error rates.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 import asyncio
 import logging
 import re

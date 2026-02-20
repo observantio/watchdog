@@ -1,10 +1,10 @@
 """
+Loki label utilities for normalizing and expanding service name labels in Loki queries, as well as running fallback queries against a Loki endpoint when the original query does not return results. This module provides functions to transform queries that use the "service.name" label into a normalized form using "service_name", and to expand exact matches on the service name into regex matchers that can match multiple services with similar names. Additionally, it includes an asynchronous function to execute multiple fallback queries concurrently against a Loki endpoint, returning the first successful result that contains data. This is useful for handling cases where the original query may not return results due to differences in label naming or matching behavior in Loki.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 

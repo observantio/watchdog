@@ -1,12 +1,13 @@
 """
+Serializers for the storage service, providing functions to serialize and deserialize data related to alert rules, incidents, and notification channels for storage in the database. This module includes logic to convert complex data structures into formats suitable for database storage, as well as to reconstruct those structures when retrieving data from the database. The serializers ensure that data is consistently formatted and can be easily stored and retrieved while maintaining the integrity of the information related to alerting and notification configurations.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 from datetime import datetime, timezone
 import logging
@@ -21,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 def _rule_to_pydantic(r) -> AlertRulePydantic:
-    # build alias-key dict and let pydantic coerce types at runtime; keeps mypy happy
     payload = {
         "id": r.id,
         "orgId": r.org_id,

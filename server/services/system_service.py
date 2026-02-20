@@ -1,12 +1,13 @@
 """
+Service for getting system metrics and health status, providing functions to check the health of the application and its dependencies, to retrieve system metrics such as CPU and memory usage, and to perform self-checks for critical components. This module includes logic to implement health check endpoints that can be used for monitoring and alerting purposes, as well as utility functions to gather and report on system performance metrics.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 import logging
 import os

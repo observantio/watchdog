@@ -1,12 +1,13 @@
 """
+Service for managing storage of alert rules, incidents, and notification channels in the database, providing functions to create, read, update, and delete these entities while enforcing access control based on user roles and group memberships. This module includes logic to handle the synchronization of incidents with incoming alerts, to manage the visibility and sharing of incidents and rules, and to log audit events related to incident management actions. The service also provides utility functions for filtering alerts based on user permissions and for retrieving alert rules with associated ownership information.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 import hashlib
 import json
 import logging

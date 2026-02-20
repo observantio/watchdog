@@ -1,10 +1,10 @@
 """
+Database authentication service utilities for handling user permissions, including functions to retrieve a user's effective permissions based on their role, group memberships, and direct permissions, as well as a function to list all defined permissions in the system. This module provides a common interface for managing and retrieving user permissions within the database authentication service, allowing for consistent permission handling across different parts of the service while ensuring that permissions are properly aggregated from various sources such as roles, groups, and direct assignments.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 from typing import Any, Dict, List

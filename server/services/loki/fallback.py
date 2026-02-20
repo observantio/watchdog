@@ -1,13 +1,12 @@
 """
+Loki Fallback service for handling operations related to Loki datasources that may not be fully supported or accessible through the Grafana API, providing utility functions to manage datasource references in query payloads, enforce access control for datasources in Loki queries, and build contexts for datasource listings. This module serves as a fallback layer to ensure that operations involving Loki datasources can still function correctly even when certain Grafana API features are limited or unavailable, allowing for consistent handling of datasource access and metadata while maintaining security and performance considerations.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-
 import asyncio
 import re
 from typing import Any, Dict, List, Optional

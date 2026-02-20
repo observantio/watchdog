@@ -1,4 +1,6 @@
 """
+Database authentication service utilities for handling multi-factor authentication (MFA) operations, including TOTP enrollment, verification, and recovery code management. This module provides functions to enroll users in TOTP-based MFA, verify TOTP codes during login, generate and manage recovery codes for MFA, and disable or reset MFA settings for users as needed. The utilities in this module ensure that MFA operations are performed securely, with support for encryption of TOTP secrets and proper handling of recovery codes to enhance the security of user accounts in the database authentication service.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

@@ -1,12 +1,13 @@
 """
+Storage service for managing alert rules, providing functions to create, read, update, and delete alert rules while enforcing access control based on rule visibility and user/group permissions. This module interacts with the database to persist alert rule configurations and ensures that users can only access or modify rules they have permission to view or edit. The service also includes functionality to retrieve alert rules along with their owners for display purposes, as well as to filter rules based on user permissions when listing them for a tenant or organization.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 
 from typing import List, Optional, Tuple
 

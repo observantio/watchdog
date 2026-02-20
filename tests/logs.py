@@ -1,3 +1,13 @@
+"""
+Log generator for testing OTLP log ingestion, simulating realistic log data from a variety of services, environments, and regions. This script generates logs with different severity levels (INFO, WARN, ERROR, DEBUG) based on configurable probabilities that reflect typical distributions in production, staging, and development environments. Each log entry includes attributes such as service name, version, environment, region, host, HTTP method and route, status code, duration, request ID, and trace ID. The script sends the generated logs to the specified OTLP endpoint in batches with configurable parallelism and loop count.
+
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
+
 #!/usr/bin/env python3
 import sys, time, random, secrets, json, threading
 from urllib.request import urlopen, Request

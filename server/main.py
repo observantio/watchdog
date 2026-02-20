@@ -1,14 +1,13 @@
 """
+Entrypoint for the FastAPI application, setting up the server, middleware, routes, and database connections. This module initializes the application, configures logging, sets up CORS and security headers, and defines the main API endpoints for health checks and service information. It also includes exception handlers for validation errors and unexpected exceptions to ensure consistent error responses. The application is designed to be modular, with separate routers for different services (Tempo, Loki, Alertmanager, Grafana) and a shared authentication system. The server is configured to use uvloop for improved performance and includes graceful shutdown logic to clean up resources on exit.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Be Observant - Full Stack Observability Control Plane
 """
+
 import logging
 import asyncio
 import uvloop

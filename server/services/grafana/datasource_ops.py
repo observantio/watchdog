@@ -1,10 +1,10 @@
 """
+Datasource operations for Grafana integration, providing functions to list, retrieve, create, update, and delete Grafana datasources while managing access control based on user permissions and group memberships. This module interacts with both the local database to track datasource metadata and the Grafana API to perform operations on the actual datasources in Grafana, ensuring that users can only access and modify datasources they have permissions for while also enforcing constraints such as unique names within a user's visible scope. The operations include handling of datasource visibility (private, group, tenant), shared group management, and conflict resolution during creation and updates.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 import re

@@ -1,14 +1,13 @@
 """
+Configuration management for the application, loading settings from environment variables with support for defaults, type conversion, and validation. This module defines a `Config` class that encapsulates all configuration options for the application, including server settings, service URLs, authentication parameters, rate limiting controls, and security hardening features. The configuration is designed to be flexible and secure by default, with special considerations for production environments. It also includes integration with Vault for secret management when enabled.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
-
 you may not use this file except in compliance with the License.
-
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-
-Application configuration and constants. If you use Vault for secrets management, this is also where Vault integration is configured and initialized.
 """
+
 import logging
 import os
 import secrets
@@ -214,7 +213,6 @@ class Config:
         )
 
         # Cookie / allowlist hardening
-        # In production we default to forcing Secure cookies; can be overridden with env
         self.FORCE_SECURE_COOKIES: bool = _to_bool(os.getenv("FORCE_SECURE_COOKIES"), default=self.IS_PRODUCTION)
         # When true, an explicit-but-empty allowlist will be treated as permissive. Default is false (fail-closed).
         self.ALLOWLIST_FAIL_OPEN: bool = _to_bool(os.getenv("ALLOWLIST_FAIL_OPEN"), default=False)
