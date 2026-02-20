@@ -15,12 +15,17 @@ import logging
 import time
 from threading import Lock
 from typing import Optional
+from types import ModuleType
+
+# redis module may not be installed; declared as optional
+redis: Optional[ModuleType] = None
 from urllib.parse import urlparse, urlunparse
 
 from fastapi import HTTPException, status
 
 try:
-    import redis
+    import redis  # type: ignore[import]
+    redis: ModuleType  # narrow type
 except Exception:
     redis = None
 

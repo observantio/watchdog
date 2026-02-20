@@ -15,6 +15,10 @@ import time
 import logging
 from threading import Lock
 from typing import Optional
+from types import ModuleType
+
+# redis may not be installed
+redis: Optional[ModuleType] = None
 from ipaddress import ip_network, ip_address
 
 from fastapi import Request, HTTPException, status
@@ -24,7 +28,8 @@ from sqlalchemy.exc import SQLAlchemyError
 import db_models
 
 try:
-    import redis
+    import redis  # type: ignore[import]
+    redis: ModuleType
 except ImportError:
     redis = None
 

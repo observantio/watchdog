@@ -1,6 +1,5 @@
 """
 Shared router-level error handling helpers (moved from routers).
-
 Decorators for mapping expected exceptions to HTTP status codes consistently across route handlers.
 
 

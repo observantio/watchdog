@@ -1,5 +1,6 @@
 """
-These are ASGI middleware components for enforcing request size limits and concurrency limits on incoming HTTP requests.
+These are ASGI middleware components for enforcing request size limits
+and concurrency limits on incoming HTTP requests.
 
 
 Copyright (c) 2026 Stefan Kumarasinghe

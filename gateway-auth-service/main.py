@@ -1,4 +1,8 @@
 """
+This is the main entry point for the standalone gateway auth service
+as this is decoupled from the main server, it has its own FastAPI app and lifecycle management.
+
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

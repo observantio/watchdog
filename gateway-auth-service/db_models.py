@@ -16,13 +16,14 @@ import os
 
 from sqlalchemy import Boolean, Column, ForeignKey, String, create_engine, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
+from typing import Any
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://beobservant:changeme123@localhost:5432/beobservant",
 )
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 class User(Base):
