@@ -1,9 +1,10 @@
+version: "3.9"
+
 networks:
   obs:
     driver: bridge
 
 volumes:
-  mimir:
   grafana:
   alertmanager:
   postgres_data:
@@ -24,6 +25,14 @@ services:
       retries: 5
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks: [obs]
+    restart: unless-stopped
+
   beobservant:
     build:
       context: ./server
@@ -40,19 +49,31 @@ services:
     environment:
       RATE_LIMIT_BACKEND: redis
       RATE_LIMIT_REDIS_URL: redis://redis:6379/0
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
     networks: [obs]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4319/health')"]
       interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  gateway-auth:
+    build:
+      context: ./gateway-auth-service
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [obs]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4321/api/gateway/health')"]
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
@@ -81,76 +102,13 @@ services:
       start_period: 5s
     restart: unless-stopped
 
-  gateway-auth:
-    build:
-      context: ./gateway-auth-service
-      dockerfile: Dockerfile
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks: [obs]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4321/api/gateway/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-    networks: [obs]
-    restart: unless-stopped
-
   otel-agent:
-    image: otel/opentelemetry-collector-contrib:0.145.0
-    command: ["--config=/etc/otel/agent.yaml"]
-    env_file:
-      - .env
-    volumes:
-      - ./configs/otel-agent.yaml:/etc/otel/agent.yaml:ro
-    depends_on:
-      otlp-gateway:
-        condition: service_healthy
+    build:
+      context: ./tests
+      dockerfile: Dockerfile
     networks: [obs]
-    ports:
-      - "4317:4317"
-      - "4318:4318"
-    restart: unless-stopped
-
-  trace-generator:
-    image: alpine:latest
-    network_mode: host
-    volumes:
-      - ./tests/traces.sh:/app/script.sh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    working_dir: /app
-    command: >
-      sh -c "apk add --no-cache bash docker-cli openssl &&
-             bash script.sh"
-    depends_on:
-      - otel-agent
-    restart: unless-stopped
-
-  log-generator:
-    image: alpine:latest
-    network_mode: host
-    volumes:
-      - ./tests/logs.sh:/app/script.sh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    working_dir: /app
-    command: >
-      sh -c "apk add --no-cache bash docker-cli &&
-             bash script.sh"
-    depends_on:
-      - otel-agent
+    environment:
+      OTEL_OTLP_TOKEN: "${DEFAULT_OTLP_TOKEN:-DAMJ8xlh9UrUgK23yYWfzvLDJYeTRfase}"
     restart: unless-stopped
 
   loki:
@@ -161,8 +119,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1024M
+          cpus: '2.0'
+          memory: 2048M
         reservations:
           cpus: '0.25'
           memory: 256M
@@ -177,8 +135,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1024M
+          cpus: '2.0'
+          memory: 2048M
         reservations:
           cpus: '0.25'
           memory: 256M
@@ -190,7 +148,14 @@ services:
     command: ["-config.file=/etc/mimir/mimir.yaml"]
     volumes:
       - ./configs/mimir.yaml:/etc/mimir/mimir.yaml:ro
-      - mimir:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     depends_on:
       - alertmanager
     networks: [obs]

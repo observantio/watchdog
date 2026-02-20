@@ -42,8 +42,8 @@ storage:
 
 overrides:
   max_search_duration: 168h
-  max_bytes_per_trace: 5000000
-  ingestion_rate_limit_bytes: 20000000
-  ingestion_burst_size_bytes: 40000000
+  max_bytes_per_trace: 5000000    
+  ingestion_rate_limit_bytes: 5000000 
+  ingestion_burst_size_bytes: 10000000
   max_traces_per_user: 20000
   metrics_generator_processors: [service-graphs, span-metrics]

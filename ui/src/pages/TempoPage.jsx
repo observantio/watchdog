@@ -19,30 +19,50 @@ const TraceResults = lazy(() => import('../components/tempo/TraceResults'))
 const TraceTimeline = lazy(() => import('../components/tempo/TraceTimeline'))
 import { formatDuration } from '../utils/formatters'
 import { getServiceName, hasSpanError } from '../utils/helpers'
-import { TIME_RANGES, DEFAULT_DURATION_RANGE, TRACE_STATUS_OPTIONS, REFRESH_INTERVALS } from '../utils/constants'
+import { TIME_RANGES, DEFAULT_DURATION_RANGE, TRACE_STATUS_OPTIONS, REFRESH_INTERVALS, TRACE_LIMIT_OPTIONS, DEFAULT_QUERY_LIMITS } from '../utils/constants'
 import HelpTooltip from '../components/HelpTooltip'
 import { discoverServices, computeTraceStats } from '../utils/tempoTraceUtils'
 
+// default number of traces shown per page in list view
 const TRACE_PAGE_SIZE = 20
 
 export default function TempoPage() {
+  const STORAGE_KEY = 'tempoPageState'
+  // restore saved values from localStorage (if present)
+  const loadSaved = () => {
+    try {
+      if (typeof localStorage === 'undefined') return {}
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      return s
+    } catch {
+      return {}
+    }
+  }
+  const saved = loadSaved()
+
   const [services, setServices] = useState([])
-  const [service, setService] = useState('')
-  const [operation, setOperation] = useState('')
-  const [traceIdSearch, setTraceIdSearch] = useState('')
-  const [durationRange, setDurationRange] = useState([DEFAULT_DURATION_RANGE.min, DEFAULT_DURATION_RANGE.max])
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [timeRange, setTimeRange] = useState(60)
+  const [service, setService] = useState(saved.service || '')
+  const [operation, setOperation] = useState(saved.operation || '')
+  const [traceIdSearch, setTraceIdSearch] = useState(saved.traceIdSearch || '')
+  const [durationRange, setDurationRange] =
+    useState(saved.durationRange || [DEFAULT_DURATION_RANGE.min, DEFAULT_DURATION_RANGE.max])
+  const [statusFilter, setStatusFilter] = useState(saved.statusFilter || 'all')
+  const [timeRange, setTimeRange] = useState(saved.timeRange || 60)
   const [traces, setTraces] = useState(null)
   const [selectedTrace, setSelectedTrace] = useState(null)
-  const [selectedTraceIds, setSelectedTraceIds] = useState(new Set())
+  const [selectedTraceIds, setSelectedTraceIds] = useState(
+    new Set(saved.selectedTraceIds || [])
+  )
   const [graphTraces, setGraphTraces] = useState([])
   const [graphLoading, setGraphLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [viewMode, setViewMode] = useState('list')
-  const [tracePage, setTracePage] = useState(1)
-  const [pageSize, setPageSize] = useState(TRACE_PAGE_SIZE)
+  const [viewMode, setViewMode] = useState(saved.viewMode || 'list')
+  const [tracePage, setTracePage] = useState(saved.tracePage || 1)
+  const [pageSize, setPageSize] = useState(saved.pageSize || TRACE_PAGE_SIZE)
+  // maximum number of traces to request from the backend (search limit)
+  const [searchLimit, setSearchLimit] =
+    useState(saved.searchLimit || DEFAULT_QUERY_LIMITS.traces || TRACE_PAGE_SIZE)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
 
@@ -67,6 +87,55 @@ export default function TempoPage() {
 
   // centralized auto-refresh hook (keeps previous behavior)
   useAutoRefresh(() => onSearch(), refreshInterval * 1000, autoRefresh)
+
+  // persist relevant state to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      const toSave = {
+        service,
+        operation,
+        traceIdSearch,
+        durationRange,
+        statusFilter,
+        timeRange,
+        searchLimit,
+        pageSize,
+        tracePage,
+        viewMode,
+        selectedTraceIds: Array.from(selectedTraceIds),
+        // only save trace id of opened detail view
+        selectedTrace: selectedTrace
+          ? selectedTrace.traceId || selectedTrace.traceID || selectedTrace.id
+          : null,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+    } catch {
+      // ignore
+    }
+  }, [service, operation, traceIdSearch, durationRange, statusFilter, timeRange, searchLimit, pageSize, tracePage, viewMode, selectedTraceIds, selectedTrace])
+
+  // if we restored a selected trace id at startup, refetch it into detail modal
+  useEffect(() => {
+    if (saved.selectedTrace && !selectedTrace) {
+      handleTraceClick(saved.selectedTrace)
+    }
+    // if we were on the graph view and had selected ids, reload them
+    if (viewMode === 'graph' && selectedTraceIds.size > 0 && graphTraces.length === 0) {
+      showSelectedOnMap()
+    }
+    // if any filter was saved we should automatically perform a search
+    if (
+      saved.traceIdSearch ||
+      saved.service ||
+      saved.operation ||
+      saved.durationRange ||
+      saved.statusFilter ||
+      saved.timeRange
+    ) {
+      onSearch()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // If backend doesn't return services, derive them from loaded traces
   useEffect(() => {
@@ -144,6 +213,29 @@ export default function TempoPage() {
     }
   }
 
+  // Show a single trace directly on the dependency map (used by the map icon on each result)
+  const showTraceOnMap = useCallback(async (traceId) => {
+    if (!traceId) return
+
+    setViewMode('graph')
+    setGraphLoading(true)
+    setGraphTraces([])
+    setSelectedTraceIds(new Set([traceId]))
+
+    try {
+      const t = await getTrace(traceId)
+      if (t && t.spans && t.spans.length) {
+        setGraphTraces([t])
+      } else {
+        toast && toast.error && toast.error('Failed to load trace for map')
+      }
+    } catch (e) {
+      toast && toast.error && toast.error(`Failed to load trace: ${e.message || e}`)
+    } finally {
+      setGraphLoading(false)
+    }
+  }, [toast])
+
   async function onSearch(e) {
     if (e) e.preventDefault()
     setError(null)
@@ -173,7 +265,7 @@ export default function TempoPage() {
         maxDuration: `${Math.floor(durationRange[1] / 1000000)}ms`,
         start: Math.floor(start),
         end: Math.floor(end),
-        limit: pageSize,
+        limit: searchLimit,
         fetchFull: false  // Get summaries only for efficiency
       })
 
@@ -212,7 +304,14 @@ export default function TempoPage() {
     return filteredTraces.slice(start, start + pageSize)
   }, [filteredTraces, tracePage, pageSize])
 
-  const totalPages = Math.max(1, Math.ceil(filteredTraces.length / TRACE_PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(filteredTraces.length / pageSize))
+
+  // Clamp current page when filters or page size change
+  useEffect(() => {
+    if (tracePage > totalPages) {
+      setTracePage(totalPages)
+    }
+  }, [totalPages, tracePage])
 
   function clearFilters() {
     setService('')
@@ -430,7 +529,15 @@ export default function TempoPage() {
               <HelpTooltip text="Reset all search filters and duration range to their default values." />
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-sre-text-muted">Page Size</label>
+              <label className="text-xs text-sre-text-muted">Search Limit</label>
+              <select
+                value={searchLimit}
+                onChange={(e) => { setSearchLimit(Number(e.target.value)); setTracePage(1) }}
+                className="text-xs px-2 py-1 bg-sre-surface border border-sre-border rounded text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary"
+              >
+                {TRACE_LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            <label className="text-xs text-sre-text-muted">Page Size</label>
               <select
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setTracePage(1) }}
@@ -503,8 +610,8 @@ export default function TempoPage() {
                     <button type="button" className="btn btn-sm bg-sre-primary text-white px-3 py-1 rounded text-xs" onClick={showSelectedOnMap} disabled={selectedTraceIds.size === 0}>Show selected on Map</button>
                   </div>
                 </div>
-                <TraceResults traces={pagedTraces} loading={loading} handleTraceClick={handleTraceClick} viewMode={viewMode} selectedIds={selectedTraceIds} onToggleSelect={toggleSelectTrace} />
-            {filteredTraces.length > TRACE_PAGE_SIZE && (
+                <TraceResults traces={pagedTraces} loading={loading} handleTraceClick={handleTraceClick} viewMode={viewMode} selectedIds={selectedTraceIds} onToggleSelect={toggleSelectTrace} onShowOnMap={showTraceOnMap} />
+            {filteredTraces.length > pageSize && (
               <div className="mt-4 flex items-center justify-between text-xs text-sre-text-muted">
                 <span>Page {tracePage} of {totalPages}</span>
                 <div className="flex gap-2">

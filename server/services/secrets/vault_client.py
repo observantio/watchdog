@@ -1,17 +1,16 @@
-"""Vault-backed SecretProvider implementation.
-
-- Uses `hvac` (imported lazily) so the codebase can remain runnable when
-  `VAULT_ENABLED=false` in dev.
-- Supports KV v1 and KV v2 mounts and a small in-memory cache.
-"""
+"""Vault-backed SecretProvider implementation."""
 from __future__ import annotations
 
+import threading
 import time
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 
 class VaultClientError(RuntimeError):
     pass
+
+
+_SENTINEL = object()
 
 
 class VaultSecretProvider:
@@ -20,7 +19,7 @@ class VaultSecretProvider:
         address: str,
         token: Optional[str] = None,
         role_id: Optional[str] = None,
-        secret_id: Optional[str] = None,
+        secret_id_fn: Optional[Callable[[], str]] = None,
         prefix: str = "secret",
         kv_version: int = 2,
         timeout: float = 2.0,
@@ -29,66 +28,97 @@ class VaultSecretProvider:
     ) -> None:
         try:
             import hvac
-        except Exception as exc:  # pragma: no cover - import error handled in runtime
+            from hvac.exceptions import Forbidden, InvalidPath, VaultError
+            self._hvac = hvac
+            self._exc_not_found = InvalidPath
+            self._exc_forbidden = Forbidden
+            self._exc_vault = VaultError
+        except ImportError as exc:
             raise VaultClientError("hvac library is required for VaultSecretProvider") from exc
 
         if not address:
-            raise VaultClientError("VAULT_ADDR is required to use VaultSecretProvider")
+            raise VaultClientError("VAULT_ADDR is required")
+
+        if kv_version not in (1, 2):
+            raise VaultClientError(f"Unsupported kv_version: {kv_version!r}, must be 1 or 2")
+
+        self._address = address
+        self._timeout = timeout
+        self._cacert = cacert
+        self._prefix = prefix.strip("/")
+        self._kv_version = kv_version
+        self._cache: Dict[str, tuple[float, object]] = {}
+        self._cache_ttl = float(cache_ttl)
+        self._lock = threading.Lock()
+        self._role_id = role_id
+        self._secret_id_fn = secret_id_fn
 
         self._client = hvac.Client(url=address, timeout=timeout, verify=cacert or True)
-        self._prefix = prefix.strip("/")
-        self._kv_version = int(kv_version)
-        self._cache: Dict[str, tuple[float, Optional[str]]] = {}
-        self._cache_ttl = float(cache_ttl)
 
-        # auth: token preferred, otherwise AppRole
         if token:
             self._client.token = token
-        elif role_id and secret_id:
-            auth = self._client.auth.approle.login(role_id=role_id, secret_id=secret_id)
-            self._client.token = auth["auth"]["client_token"]
+        elif role_id and secret_id_fn:
+            self._approle_login()
         else:
-            raise VaultClientError("Vault auth not configured (provide VAULT_TOKEN or AppRole credentials)")
+            raise VaultClientError(
+                "Vault auth not configured (provide token or role_id + secret_id_fn)"
+            )
 
         if not self._client.is_authenticated():
             raise VaultClientError("Vault authentication failed")
 
-    def _from_cache(self, key: str) -> Optional[str]:
-        entry = self._cache.get(key)
-        if not entry:
-            return None
-        ts, value = entry
-        if time.time() - ts > self._cache_ttl:
-            del self._cache[key]
-            return None
-        return value
+    def _approle_login(self) -> None:
+        secret_id = self._secret_id_fn()
+        auth = self._client.auth.approle.login(role_id=self._role_id, secret_id=secret_id)
+        self._client.token = auth["auth"]["client_token"]
+
+    def _ensure_authenticated(self) -> None:
+        if not self._client.is_authenticated():
+            if self._role_id and self._secret_id_fn:
+                self._approle_login()
+            else:
+                raise VaultClientError("Vault token expired and no AppRole credentials to refresh")
+
+    def _from_cache(self, key: str) -> object:
+        with self._lock:
+            entry = self._cache.get(key, _SENTINEL)
+            if entry is _SENTINEL:
+                return _SENTINEL
+            ts, value = entry
+            if time.monotonic() - ts > self._cache_ttl:
+                del self._cache[key]
+                return _SENTINEL
+            return value
 
     def _to_cache(self, key: str, value: Optional[str]) -> None:
-        self._cache[key] = (time.time(), value)
+        with self._lock:
+            self._cache[key] = (time.monotonic(), value)
 
     def get(self, key: str) -> Optional[str]:
-        # Fast-path from cache
         cached = self._from_cache(key)
-        if cached is not None:
-            return cached
+        if cached is not _SENTINEL:
+            return cached  # type: ignore[return-value]
+
+        self._ensure_authenticated()
 
         try:
-            # KV v2 mount (most common): read_secret_version
             if self._kv_version == 2:
-                # mount_point is the prefix (e.g. "secret"); path is the key name
-                resp = self._client.secrets.kv.v2.read_secret_version(path=key, mount_point=self._prefix)
-                payload = resp.get("data", {}).get("data", {})
+                resp = self._client.secrets.kv.v2.read_secret_version(
+                    path=key,
+                    mount_point=self._prefix,
+                    raise_on_deleted_version=False,
+                )
+                payload = resp.get("data", {}).get("data", {}) or {}
             else:
-                # KV v1
                 full_path = f"{self._prefix}/{key}" if self._prefix else key
                 resp = self._client.secrets.kv.read_secret(path=full_path)
-                payload = resp.get("data", {})
-        except Exception:
-            # treat missing / inaccessible as absent rather than crash the process
+                payload = resp.get("data", {}) or {}
+        except self._exc_not_found:
             self._to_cache(key, None)
             return None
+        except (self._exc_forbidden, self._exc_vault) as exc:
+            raise VaultClientError(f"Vault error fetching '{key}'") from exc
 
-        # common extraction heuristics
         if not payload:
             self._to_cache(key, None)
             return None
@@ -98,16 +128,13 @@ class VaultSecretProvider:
         elif key in payload and isinstance(payload[key], (str, int, float)):
             val = str(payload[key])
         elif len(payload) == 1:
-            # pick the single value
             val = str(next(iter(payload.values())))
         else:
-            # nothing obvious to return
             self._to_cache(key, None)
             return None
 
         self._to_cache(key, val)
         return val
 
-    # keep a `get_many`-like helper for callers that want multiple secrets
     def get_many(self, keys: list[str]) -> Dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}

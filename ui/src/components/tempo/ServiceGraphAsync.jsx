@@ -56,7 +56,7 @@ const ServiceNode = ({ data }) => {
 
   return (
     <div className={[
-      'relative rounded-2xl border bg-sre-surface/95 backdrop-blur-sm px-4 py-3 min-w-[220px] max-w-[260px] shadow-lg transition-all duration-150',
+      'relative rounded-2xl border bg-sre-surface/95  px-4 py-3 min-w-[220px] max-w-[260px] shadow-lg transition-all duration-150',
       isActive  ? 'ring-2 ring-sre-primary/70 shadow-xl scale-[1.03]' : '',
       isHovered && !isActive ? 'shadow-xl scale-[1.02]' : '',
       c.ring,
@@ -243,6 +243,15 @@ export default function ServiceGraphAsync({ traces }) {
         }
         .react-flow__minimap-node {
           stroke: none !important;
+        }
+
+        /* dark mode: use a white background for better contrast */
+        .dark .react-flow__minimap,
+        .dark .react-flow__minimap svg {
+          background: #ffffff !important;
+        }
+        .dark .react-flow__minimap-mask {
+          fill: #ffffff !important;
         }
       `}</style>
 

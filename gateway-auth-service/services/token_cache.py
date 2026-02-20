@@ -5,28 +5,44 @@ from threading import Lock
 from typing import Optional
 
 
+_DEFAULT_MAX_SIZE = 50_000
+_GC_INTERVAL = 512
+
+
 class TokenCache:
-    """Simple TTL cache for validated tokens.
-
-    API: get(token) -> (hit: bool, org_id: Optional[str])
-         set(token, org_id)
-    """
-
-    def __init__(self, ttl: int):
+    def __init__(self, ttl: int, max_size: int = _DEFAULT_MAX_SIZE) -> None:
         self._ttl = int(ttl)
+        self._max_size = max(256, int(max_size))
         self._cache: dict[str, tuple[Optional[str], float]] = {}
         self._lock = Lock()
+        self._ops = 0
 
     def get(self, token: str) -> tuple[bool, Optional[str]]:
         with self._lock:
             entry = self._cache.get(token)
-        if entry and time.monotonic() - entry[1] < self._ttl:
-            return True, entry[0]
+        if entry is None:
+            return False, None
+        org_id, ts = entry
+        if time.monotonic() - ts < self._ttl:
+            return True, org_id
+        with self._lock:
+            self._cache.pop(token, None)
         return False, None
 
     def set(self, token: str, org_id: Optional[str]) -> None:
+        now = time.monotonic()
         with self._lock:
-            self._cache[token] = (org_id, time.monotonic())
-            if len(self._cache) % 512 == 0:
-                cutoff = time.monotonic() - self._ttl
-                self._cache = {k: v for k, v in self._cache.items() if v[1] >= cutoff}
+            self._cache[token] = (org_id, now)
+            self._ops += 1
+            if self._ops % _GC_INTERVAL == 0:
+                self._gc(now)
+            elif len(self._cache) > self._max_size:
+                self._evict_oldest()
+
+    def _gc(self, now: float) -> None:
+        cutoff = now - self._ttl
+        self._cache = {k: v for k, v in self._cache.items() if v[1] >= cutoff}
+
+    def _evict_oldest(self) -> None:
+        oldest = min(self._cache, key=lambda k: self._cache[k][1])
+        self._cache.pop(oldest, None)

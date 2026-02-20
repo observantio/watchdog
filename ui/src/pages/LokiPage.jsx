@@ -12,6 +12,7 @@ import PageHeader from '../components/ui/PageHeader'
 import AutoRefreshControl from '../components/ui/AutoRefreshControl'
 import { queryLogs, getLabels, getLabelValues, getLogVolume } from '../api'
 import { Card, Button, Alert } from '../components/ui'
+import { DEFAULT_QUERY_LIMITS, MAX_LOG_OPTIONS } from '../utils/constants' // for search limit/page size
 import LogQueryForm from '../components/loki/LogQueryForm'
 import LogResults from '../components/loki/LogResults'
 import LogVolume from '../components/loki/LogVolume'
@@ -34,22 +35,37 @@ const LABEL_PREFETCH_LIMIT = 12
 const LABEL_PREFETCH_BATCH = 4
 
 export default function LokiPage() {
+  const STORAGE_KEY = 'lokiPageState'
+  const loadSaved = () => {
+    try {
+      if (typeof localStorage === 'undefined') return {}
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      return s
+    } catch {
+      return {}
+    }
+  }
+  const saved = loadSaved()
+
   const [labels, setLabels] = useState([])
   const [labelValuesCache, setLabelValuesCache] = useState({})
   const [loadingValues, setLoadingValues] = useState({})
-  const [selectedFilters, setSelectedFilters] = useState([])
-  const [selectedLabel, setSelectedLabel] = useState('')
-  const [selectedValue, setSelectedValue] = useState('')
-  const [pattern, setPattern] = useState('')
-  const [rangeMinutes, setRangeMinutes] = useState(60)
-  const [maxLogs, setMaxLogs] = useState(50)
+  const [selectedFilters, setSelectedFilters] = useState(saved.selectedFilters || [])
+  const [selectedLabel, setSelectedLabel] = useState(saved.selectedLabel || '')
+  const [selectedValue, setSelectedValue] = useState(saved.selectedValue || '')
+  const [pattern, setPattern] = useState(saved.pattern || '')
+  const [rangeMinutes, setRangeMinutes] = useState(saved.rangeMinutes || 60)
+  // searchLimit controls how many log entries are fetched (analogous to Tempo Search Limit)
+  const [searchLimit, setSearchLimit] = useState(saved.searchLimit || DEFAULT_QUERY_LIMITS.logs || 100)
+  // pageSize controls how many streams are shown per page in results
+  const [pageSize, setPageSize] = useState(saved.pageSize || Math.min(...MAX_LOG_OPTIONS) || 20)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
-  const [viewMode, setViewMode] = useState('table')
-  const [expandedLogs, setExpandedLogs] = useState({})
-  const [searchText, setSearchText] = useState('')
-  const [queryMode, setQueryMode] = useState('builder')
-  const [customLogQL, setCustomLogQL] = useState('')
+  const [viewMode, setViewMode] = useState(saved.viewMode || 'table')
+  const [expandedLogs, setExpandedLogs] = useState(saved.expandedLogs || {})
+  const [searchText, setSearchText] = useState(saved.searchText || '')
+  const [queryMode, setQueryMode] = useState(saved.queryMode || 'builder')
+  const [customLogQL, setCustomLogQL] = useState(saved.customLogQL || '')
 
   const [queryResult, setQueryResult] = useState(null)
   const [volume, setVolume] = useState([])
@@ -61,6 +77,43 @@ export default function LokiPage() {
 
   // use shared hook for auto-refresh (keeps behavior identical but removes manual timers)
   useAutoRefresh(() => executeQuery(), refreshInterval * 1000, autoRefresh)
+
+  // save state whenever key values change
+  useEffect(() => {
+    try {
+      const toSave = {
+        selectedFilters,
+        selectedLabel,
+        selectedValue,
+        pattern,
+        rangeMinutes,
+        searchLimit,
+        pageSize,
+        viewMode,
+        expandedLogs,
+        searchText,
+        queryMode,
+        customLogQL,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+    } catch {
+      // ignore
+    }
+  }, [selectedFilters, selectedLabel, selectedValue, pattern, rangeMinutes, searchLimit, pageSize, viewMode, expandedLogs, searchText, queryMode, customLogQL])
+
+  // run initial query if we restored search parameters
+  useEffect(() => {
+    if (
+      saved.selectedFilters?.length ||
+      saved.pattern ||
+      saved.customLogQL ||
+      saved.selectedLabel ||
+      saved.selectedValue
+    ) {
+      executeQuery()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -230,7 +283,7 @@ export default function LokiPage() {
       const startNs = start * 1e6
       const endNs = Date.now() * 1e6
 
-      const res = await queryLogs({ query: q, start: Math.round(startNs), end: Math.round(endNs), limit: maxLogs })
+      const res = await queryLogs({ query: q, start: Math.round(startNs), end: Math.round(endNs), limit: searchLimit })
       setQueryResult(res)
 
       try {
@@ -309,8 +362,10 @@ export default function LokiPage() {
           setPattern={setPattern}
           rangeMinutes={rangeMinutes}
           setRangeMinutes={setRangeMinutes}
-          maxLogs={maxLogs}
-          setMaxLogs={setMaxLogs}
+          searchLimit={searchLimit}
+          setSearchLimit={setSearchLimit}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
           addFilter={addFilter}
           selectedFilters={selectedFilters}
           clearAllFilters={clearAllFilters}
@@ -356,6 +411,7 @@ export default function LokiPage() {
               expandedLogs={expandedLogs}
               toggleLogExpand={toggleLogExpand}
               copyToClipboard={copyToClipboard}
+              streamsPerPage={pageSize}
             />
           </Card>
         </div>

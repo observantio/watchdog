@@ -70,7 +70,13 @@ class RateLimitHitResult:
 
 
 class InMemoryRateLimiter:
-    def __init__(self, *, gc_every: int = 1024, stale_after_seconds: int = 3600, max_states: int = 200000) -> None:
+    def __init__(
+        self,
+        *,
+        gc_every: int = 1024,
+        stale_after_seconds: int = 3600,
+        max_states: int = 200_000,
+    ) -> None:
         self._lock = threading.Lock()
         self._states: Dict[str, RateLimitState] = {}
         self._gc_every = max(100, int(gc_every))
@@ -83,24 +89,27 @@ class InMemoryRateLimiter:
         if self._ops % self._gc_every != 0:
             return
         threshold = now - max(window_seconds * 2, self._stale_after_seconds)
-        stale_keys = [key for key, state in self._states.items() if state.window_start < threshold]
-        for key in stale_keys:
-            self._states.pop(key, None)
+        stale = [k for k, st in self._states.items() if st.window_start < threshold]
+        for k in stale:
+            self._states.pop(k, None)
 
     def hit(self, key: str, *, limit: int, window_seconds: int) -> RateLimitHitResult:
         if limit <= 0:
             return RateLimitHitResult(True, 0, 0, "memory")
 
-        now = time.time()
         window_seconds = int(window_seconds)
         if window_seconds <= 0:
             return RateLimitHitResult(True, 0, 0, "memory")
 
+        now = time.time()
+
         with self._lock:
             self._cleanup(now, window_seconds)
+
             if key not in self._states and len(self._states) >= self._max_states:
-                oldest_key = min(self._states, key=lambda k: self._states[k].window_start)
-                self._states.pop(oldest_key, None)
+                oldest = min(self._states, key=lambda k: self._states[k].window_start)
+                self._states.pop(oldest, None)
+
             st = self._states.get(key)
             if st is None or (now - st.window_start) >= window_seconds:
                 st = RateLimitState(window_start=now, count=0)
@@ -114,7 +123,14 @@ class InMemoryRateLimiter:
 
 
 class RedisFixedWindowRateLimiter:
-    def __init__(self, redis_url: str, *, key_prefix: str = "beobs:rl", socket_timeout: float = 0.25) -> None:
+    def __init__(
+        self,
+        redis_url: str,
+        *,
+        key_prefix: str = "beobs:rl",
+        socket_timeout: float = 1.0,
+        max_connections: int = 50,
+    ) -> None:
         if redis is None:
             raise RuntimeError("redis package is not installed")
         self._key_prefix = key_prefix
@@ -123,6 +139,7 @@ class RedisFixedWindowRateLimiter:
             redis_url,
             socket_timeout=socket_timeout,
             socket_connect_timeout=socket_timeout,
+            max_connections=max_connections,
             decode_responses=True,
         )
 
@@ -150,15 +167,15 @@ class RedisFixedWindowRateLimiter:
         bucket_key = f"{self._key_prefix}:{key}:{window_id}"
         retry_after = max(1, window_seconds - (now % window_seconds))
 
-        pipe = self._client.pipeline(transaction=True)
+        # transaction=False: INCR is already atomic; MULTI/EXEC adds round-trip
+        # overhead and contention that causes timeouts under burst traffic.
+        pipe = self._client.pipeline(transaction=False)
         pipe.incr(bucket_key)
         pipe.expire(bucket_key, window_seconds + 1)
         current, _ = pipe.execute()
 
         count = int(current)
-        allowed = count <= limit
-        remaining = max(0, limit - count)
-        return RateLimitHitResult(allowed, remaining, retry_after, "redis")
+        return RateLimitHitResult(count <= limit, max(0, limit - count), retry_after, "redis")
 
 
 class HybridRateLimiter:
@@ -186,6 +203,8 @@ class HybridRateLimiter:
         if self._redis_limiter is not None:
             try:
                 return self._redis_limiter.hit(key, limit=limit, window_seconds=window_seconds)
+            except HTTPException:
+                raise
             except Exception as exc:
                 now = time.monotonic()
                 if now - self._last_warning > 30:
@@ -232,6 +251,7 @@ def _build_rate_limiter() -> HybridRateLimiter:
         stale_after_seconds=config.RATE_LIMIT_STALE_AFTER_SECONDS,
         max_states=config.RATE_LIMIT_MAX_STATES,
     )
+
     if backend in {"memory", "in-memory", "inmemory"}:
         return HybridRateLimiter(None, fallback)
 
@@ -243,7 +263,11 @@ def _build_rate_limiter() -> HybridRateLimiter:
         return HybridRateLimiter(None, fallback)
 
     try:
-        redis_limiter = RedisFixedWindowRateLimiter(redis_url)
+        redis_limiter = RedisFixedWindowRateLimiter(
+            redis_url,
+            socket_timeout=float(os.getenv("RATE_LIMIT_REDIS_TIMEOUT", "1.0")),
+            max_connections=int(os.getenv("RATE_LIMIT_REDIS_MAX_CONNECTIONS", "50")),
+        )
         logger.info("Using Redis-backed rate limiter")
         return HybridRateLimiter(redis_limiter, fallback)
     except Exception as exc:

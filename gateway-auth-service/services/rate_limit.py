@@ -36,7 +36,7 @@ def _sanitize_redis_url(url: str) -> str:
 
 
 class TokenRateLimiter:
-    def __init__(self, limit_per_minute: int):
+    def __init__(self, limit_per_minute: int) -> None:
         self._limit = max(1, int(limit_per_minute))
         self._hits: dict[str, tuple[float, int]] = {}
         self._lock = Lock()
@@ -65,14 +65,22 @@ class TokenRateLimiter:
 
 
 class RedisTokenRateLimiter:
-    def __init__(self, limit_per_minute: int, url: str):
+    def __init__(
+        self,
+        limit_per_minute: int,
+        url: str,
+        *,
+        socket_timeout: float = 1.0,
+        max_connections: int = 50,
+    ) -> None:
         if redis is None:
             raise RuntimeError("redis library not available")
         self._limit = max(1, int(limit_per_minute))
         self._client = redis.from_url(
             url,
-            socket_timeout=0.25,
-            socket_connect_timeout=0.25,
+            socket_timeout=socket_timeout,
+            socket_connect_timeout=socket_timeout,
+            max_connections=max_connections,
             decode_responses=True,
         )
         try:
@@ -85,7 +93,8 @@ class RedisTokenRateLimiter:
 
     def enforce(self, key: str) -> None:
         bucket = f"beobs:rl:{key}:{int(time.time()) // 60}"
-        pipe = self._client.pipeline(transaction=True)
+        # transaction=False: INCR is atomic; MULTI/EXEC adds contention under burst
+        pipe = self._client.pipeline(transaction=False)
         pipe.incr(bucket)
         pipe.expire(bucket, 61)
         count, _ = pipe.execute()
@@ -94,7 +103,7 @@ class RedisTokenRateLimiter:
 
 
 class HybridTokenRateLimiter:
-    def __init__(self, primary, fallback):
+    def __init__(self, primary: RedisTokenRateLimiter, fallback: TokenRateLimiter) -> None:
         self._primary = primary
         self._fallback = fallback
         self._last_warn = 0.0
@@ -117,7 +126,14 @@ class HybridTokenRateLimiter:
         self._fallback.enforce(key)
 
 
-def make_default_rate_limiter(limit: int, backend: str = "auto", redis_url: str | None = None):
+def make_default_rate_limiter(
+    limit: int,
+    backend: str = "auto",
+    redis_url: str | None = None,
+    *,
+    socket_timeout: float = 1.0,
+    max_connections: int = 50,
+) -> TokenRateLimiter | HybridTokenRateLimiter:
     backend = (backend or "auto").strip().lower()
 
     if backend in ("memory", "in-memory", "inmemory") or not redis_url:
@@ -127,7 +143,12 @@ def make_default_rate_limiter(limit: int, backend: str = "auto", redis_url: str 
         return TokenRateLimiter(limit)
 
     try:
-        primary = RedisTokenRateLimiter(limit, redis_url)
+        primary = RedisTokenRateLimiter(
+            limit,
+            redis_url,
+            socket_timeout=socket_timeout,
+            max_connections=max_connections,
+        )
         logger.info("Gateway rate limiting backend: redis (%s)", _sanitize_redis_url(redis_url))
         return HybridTokenRateLimiter(primary, TokenRateLimiter(limit))
     except Exception as exc:

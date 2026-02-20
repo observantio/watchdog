@@ -66,7 +66,8 @@ class GatewayRateLimitTests(unittest.TestCase):
         prev = os.environ.get("GATEWAY_ALLOWLIST_FAIL_OPEN")
         try:
             os.environ["GATEWAY_ALLOWLIST_FAIL_OPEN"] = "true"
-            # reload module so the module-level flag picks up the env change
+            # reload both config and service so the new flag is picked up
+            importlib.reload(__import__("services.config", fromlist=["*"]))
             importlib.reload(__import__("services.gateway_service", fromlist=["*"]))
             from services.gateway_service import GatewayAuthService
             service = GatewayAuthService(rate_limit_per_minute=100, ip_allowlist="")
@@ -77,6 +78,7 @@ class GatewayRateLimitTests(unittest.TestCase):
                 os.environ.pop("GATEWAY_ALLOWLIST_FAIL_OPEN", None)
             else:
                 os.environ["GATEWAY_ALLOWLIST_FAIL_OPEN"] = prev
+            importlib.reload(__import__("services.config", fromlist=["*"]))
             importlib.reload(__import__("services.gateway_service", fromlist=["*"]))
 
     def test_validate_otlp_token_raises_database_unavailable_on_db_error(self):
@@ -109,10 +111,11 @@ class GatewayRateLimitTests(unittest.TestCase):
         gateway_router._service._networks = [ipaddress.ip_network("127.0.0.1/32")]
 
         # stub the validate_otlp_token to simulate DB outage
-        import services.gateway_service as svc_mod
-
+        # use the same DatabaseUnavailable class that the router has imported,
+        # otherwise earlier reloads can leave us with two distinct objects and the
+        # except clause in the router won't match.
         def _boom(token):
-            raise svc_mod.DatabaseUnavailable("db down")
+            raise gateway_router.DatabaseUnavailable("db down")
 
         prev = gateway_router._service.validate_otlp_token
         try:

@@ -7,7 +7,7 @@ you may not use this file except in compliance with the License.
 
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
-Application configuration and constants.
+Application configuration and constants. If you use Vault for secrets management, this is also where Vault integration is configured and initialized.
 """
 import logging
 import os
@@ -137,7 +137,7 @@ class Config:
         self.CORS_ALLOW_CREDENTIALS: bool = _to_bool(os.getenv("CORS_ALLOW_CREDENTIALS"), default=True)
 
         # API limits
-        self.MAX_QUERY_LIMIT: int = int(os.getenv("MAX_QUERY_LIMIT", "5000"))
+        self.MAX_QUERY_LIMIT: int = int(os.getenv("MAX_QUERY_LIMIT", "1000"))
         # Default number of items returned by list endpoints (can be overridden by client)
         self.DEFAULT_QUERY_LIMIT: int = int(os.getenv("DEFAULT_QUERY_LIMIT", "20"))
 
@@ -251,19 +251,13 @@ class Config:
         self.VAULT_SECRETS_PREFIX: str = os.getenv("VAULT_SECRETS_PREFIX", "secret")
         self.VAULT_KV_VERSION: int = int(os.getenv("VAULT_KV_VERSION", "2"))
         self.VAULT_TIMEOUT: float = float(os.getenv("VAULT_TIMEOUT", "2.0"))
-        # When true (or in production) missing Vault => fail startup
         self.VAULT_FAIL_ON_MISSING: bool = _to_bool(os.getenv("VAULT_FAIL_ON_MISSING"), default=self.IS_PRODUCTION)
-
-        # Attempt to load secrets from Vault (if enabled) before applying security defaults
         try:
             self._load_vault_secrets()
-        except Exception as exc:  # pragma: no cover - only raised when Vault explicitly misconfigured
+        except Exception as exc: 
             if self.VAULT_ENABLED and (self.IS_PRODUCTION or self.VAULT_FAIL_ON_MISSING):
                 raise
             logger.warning("Vault not available or misconfigured; continuing with environment variables: %s", exc)
-
-        # ensure a fallback secret provider is always present for runtime secret
-        # lookups (used by callers that prefer `config.get_secret(...)`).
         if not hasattr(self, "_secret_provider") or self._secret_provider is None:
             from services.secrets.provider import EnvSecretProvider
 
@@ -293,9 +287,6 @@ class Config:
         """
         if not self.VAULT_ENABLED:
             return
-
-        # lazy import so hvac is not required unless VAULT is used
-        # import using the same top-level `services` package used elsewhere
         from services.secrets.provider import EnvSecretProvider
         from services.secrets.vault_client import VaultClientError, VaultSecretProvider
 
@@ -338,23 +329,15 @@ class Config:
                 val = None
 
             if val:
-                # override only when Vault returns a value
                 setattr(self, sk, val)
                 logger.info("Loaded secret %s from Vault", sk)
 
     def get_secret(self, key: str) -> Optional[str]:
-        """Runtime secret lookup (Vault-aware).
-
-        - Prefers attributes already present on the Config object (e.g. when
-          `_load_vault_secrets` has populated them).
-        - Falls back to the configured SecretProvider (env or Vault).
-        """
-        # prefer explicit attribute values already set on Config
+        """Runtime secret lookup (Vault-aware)."""
         val = getattr(self, key, None)
         if val:
             return val
 
-        # delegate to provider (EnvSecretProvider or VaultSecretProvider)
         try:
             return self._secret_provider.get(key)
         except Exception:

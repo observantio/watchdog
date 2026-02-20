@@ -142,6 +142,9 @@ export const MESSAGES = {
 // Max logs options for Loki query
 export const MAX_LOG_OPTIONS = [20, 50, 100,200]
 
+// Maximum number of items to request for paginated searches (traces, logs, etc.)
+export const TRACE_LIMIT_OPTIONS = [20, 50, 100, 200]
+
 // Auto-refresh intervals for Loki
 export const LOKI_REFRESH_INTERVALS = [
   { value: 10, label: '10s' },

@@ -7,6 +7,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 `
 
 import  { useState, useEffect, useCallback } from 'react'
+import { useLocalStorage } from '../hooks'
 import {
   searchDashboards, createDashboard, updateDashboard, deleteDashboard,
   getDatasources, createDatasource, updateDatasource, deleteDatasource,
@@ -29,17 +30,17 @@ import { buildGrafanaLaunchUrl } from '../utils/grafanaLaunchUtils'
 
 export default function GrafanaPage() { 
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState('dashboards')
+  const [activeTab, setActiveTab] = useLocalStorage('grafana-active-tab', 'dashboards')
   const [dashboards, setDashboards] = useState([])
   const [datasources, setDatasources] = useState([])
   const [folders, setFolders] = useState([])
   const [groups, setGroups] = useState([])
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useLocalStorage('grafana-query', '')
   const [loading, setLoading] = useState(true)
   const [dashboardMeta, setDashboardMeta] = useState({})
   const [datasourceMeta, setDatasourceMeta] = useState({})
 
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useLocalStorage('grafana-filters', {
     teamId: '',
     showHidden: false,
   })

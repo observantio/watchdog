@@ -26,8 +26,11 @@ export default function LogQueryForm({
   setPattern,
   rangeMinutes,
   setRangeMinutes,
-  maxLogs,
-  setMaxLogs,
+  // renamed for clarity
+  searchLimit,
+  setSearchLimit,
+  pageSize,
+  setPageSize,
   addFilter,
   selectedFilters,
   clearAllFilters,
@@ -37,11 +40,8 @@ export default function LogQueryForm({
   loading = false,
   onRemoveFilter = undefined,
 }) {
-  // Find the lowest value from MAX_LOG_OPTIONS for default
-  const minMaxLogs = Math.min(...MAX_LOG_OPTIONS);
-
-  // If maxLogs is not set or invalid, use the lowest as default
-  const effectiveMaxLogs = MAX_LOG_OPTIONS.includes(maxLogs) ? maxLogs : minMaxLogs;
+  // find the lowest option - used when validating props
+  const minOption = Math.min(...MAX_LOG_OPTIONS);
 
   return (
     <form onSubmit={runQuery} className="space-y-4">
@@ -71,7 +71,7 @@ export default function LogQueryForm({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-sre-text mb-2">
                 <span>Label</span>
@@ -115,32 +115,38 @@ export default function LogQueryForm({
               </label>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">
-                <span>Max Logs</span>
-                <HelpTooltip text="Limit the number of log entries returned. Higher limits provide more data but may slow down queries." />
-                <select
-                  value={effectiveMaxLogs}
-                  onChange={(e)=>setMaxLogs(Number(e.target.value))}
-                  className="mt-2 w-full px-3 pr-10 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary"
-                >
-                  {MAX_LOG_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-            </div>
           </div>
         </>
       )}
 
-      <div className="flex items-center gap-2">
-        {queryMode === 'builder' && (
-          <>
-            <Button type="button" size="sm" onClick={addFilter} disabled={!selectedLabel || !selectedValue}>Add Filter</Button>
-            {selectedFilters?.length > 0 && <Button type="button" size="sm" variant="ghost" onClick={clearAllFilters}>Clear All</Button>}
-          </>
-        )}
-        <div className="flex-1" />
-        <Button type="submit" size="sm" loading={!!loading}>Run Query</Button>
+      <div className="flex justify-end gap-2 mt-2">
+        <div className="flex items-center gap-2">
+          {queryMode === 'builder' && (
+            <>
+              <Button type="button" size="sm" onClick={addFilter} disabled={!selectedLabel || !selectedValue}>Add Filter</Button>
+              {selectedFilters?.length > 0 && <Button type="button" size="sm" variant="ghost" onClick={clearAllFilters}>Clear All</Button>}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-sre-text-muted">Search Limit</label>
+          <select
+            value={searchLimit}
+            onChange={(e) => setSearchLimit(Number(e.target.value))}
+            className="text-xs px-2 py-1 bg-sre-surface border border-sre-border rounded text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary"
+          >
+            {MAX_LOG_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <label className="text-xs text-sre-text-muted">Page Size</label>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="text-xs px-2 py-1 bg-sre-surface border border-sre-border rounded text-sre-text focus:border-sre-primary focus:ring-1 focus:ring-sre-primary"
+          >
+            {MAX_LOG_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <Button type="submit" size="sm" loading={!!loading}>Run Query</Button>
+        </div>
       </div>
 
       {selectedFilters?.length > 0 && (
@@ -178,8 +184,10 @@ LogQueryForm.propTypes = {
   setPattern: PropTypes.func.isRequired,
   rangeMinutes: PropTypes.number.isRequired,
   setRangeMinutes: PropTypes.func.isRequired,
-  maxLogs: PropTypes.number.isRequired,
-  setMaxLogs: PropTypes.func.isRequired,
+  searchLimit: PropTypes.number.isRequired,
+  setSearchLimit: PropTypes.func.isRequired,
+  pageSize: PropTypes.number.isRequired,
+  setPageSize: PropTypes.func.isRequired,
   addFilter: PropTypes.func.isRequired,
   selectedFilters: PropTypes.arrayOf(PropTypes.shape({
     label: PropTypes.string.isRequired,

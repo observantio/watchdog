@@ -37,4 +37,4 @@ aiosmtplib==1.1.6
 tenacity==8.2.2
 PyYAML==6.0.2
 redis==5.0.8
-hvac==1.4.0
+hvac

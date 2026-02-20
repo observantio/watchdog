@@ -27,11 +27,11 @@ import {
 export default function AlertManagerPage() {
   const { user, hasPermission } = useAuth()
   const apiKeys = user?.api_keys || []
-  const [activeTab, setActiveTab] = useState('alerts')
+  const [activeTab, setActiveTab] = useLocalStorage('alertmanager-active-tab', 'alerts')
   const [showRuleEditor, setShowRuleEditor] = useState(false)
   const [showSilenceForm, setShowSilenceForm] = useState(false)
   const [editingRule, setEditingRule] = useState(null)
-  const [filterSeverity, setFilterSeverity] = useState('all')
+  const [filterSeverity, setFilterSeverity] = useLocalStorage('alertmanager-filter-severity', 'all')
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_CONFIRM_DIALOG)
 
   const [testDialog, setTestDialog] = useState({ isOpen: false, title: '', message: '' })

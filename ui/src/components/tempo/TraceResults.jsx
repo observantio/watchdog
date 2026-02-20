@@ -3,12 +3,15 @@ import { Badge, Spinner } from '../ui'
 import { formatDuration } from '../../utils/formatters'
 import { getServiceName, hasSpanError } from '../../utils/helpers'
 
-function TraceCard({ trace, handleTraceClick, selectedIds, onToggleSelect }) {
+function TraceCard({ trace, handleTraceClick, selectedIds, onToggleSelect, onShowOnMap }) {
   const t = trace
   const rootSpan = t.spans?.find(s => !s.parentSpanId && !s.parentSpanID) || t.spans?.[0]
   const duration = rootSpan?.duration || 0
   const traceHasError = t.spans?.some(hasSpanError)
-  const allServices = t.spans?.map(s => getServiceName(s)).filter(Boolean) || []
+  // determine if this is a summary-only trace, which means we only have the root span
+  const isSummary = Array.isArray(t.warnings) && t.warnings.some(w => w.toLowerCase().includes('summary'))
+  // gather service names, ignore blanks and generic "unknown" labels
+  const allServices = (t.spans?.map(s => getServiceName(s)).filter(n => n && n.toLowerCase() !== 'unknown')) || []
   const serviceCount = new Set(allServices).size
   const rootServiceName = rootSpan ? getServiceName(rootSpan) : 'unknown'
   const traceId = t.traceID || t.traceId
@@ -35,8 +38,12 @@ function TraceCard({ trace, handleTraceClick, selectedIds, onToggleSelect }) {
                 <span className={`material-icons ${traceHasError ? 'text-red-500' : 'text-green-500'} group-hover:scale-110 transition-transform`}>{traceHasError ? 'error' : 'check_circle'}</span>
                 <span className="font-mono text-sm text-sre-text font-semibold">{traceId?.substring(0, 16)}...</span>
                 <Badge variant={traceHasError ? 'error' : 'success'}>{traceHasError ? 'ERROR' : 'OK'}</Badge>
-                <Badge variant="info">{t.spans?.length || 0} spans</Badge>
-                <Badge variant="default">{serviceCount} service{serviceCount !== 1 ? 's' : ''}</Badge>
+                <Badge variant="info">
+                  {t.spans?.length || 0}{isSummary ? '+' : ''} spans
+                </Badge>
+                <Badge variant="default">
+                  {serviceCount}{isSummary ? '+' : ''} service{serviceCount !== 1 ? 's' : ''}
+                </Badge>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-sre-text-muted leading-relaxed">
                 <div>
@@ -61,7 +68,15 @@ function TraceCard({ trace, handleTraceClick, selectedIds, onToggleSelect }) {
             </div>
           </button>
         </div>
-        <span className="material-icons text-sre-text-muted group-hover:text-sre-primary transition-colors">chevron_right</span>
+        <button
+          type="button"
+          title="Show dependency map"
+          onClick={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(traceId, true); onShowOnMap && onShowOnMap(traceId); }}
+          className="text-sre-text-muted group-hover:text-sre-primary transition-colors"
+          aria-label={`Show dependency map for ${traceId}`}
+        >
+          <span className="material-icons">hub</span>
+        </button>
       </div>
     </div>
   )
@@ -72,9 +87,10 @@ TraceCard.propTypes = {
   handleTraceClick: PropTypes.func.isRequired,
   selectedIds: PropTypes.object,
   onToggleSelect: PropTypes.func,
+  onShowOnMap: PropTypes.func,
 }
 
-export default function TraceResults({ traces, loading, handleTraceClick, viewMode = 'list', selectedIds = new Set(), onToggleSelect = null }) {
+export default function TraceResults({ traces, loading, handleTraceClick, viewMode = 'list', selectedIds = new Set(), onToggleSelect = null, onShowOnMap = null }) {
   if (loading) {
     return (
       <div className="py-12 flex flex-col items-center">
@@ -104,6 +120,7 @@ export default function TraceResults({ traces, loading, handleTraceClick, viewMo
           handleTraceClick={handleTraceClick}
           selectedIds={selectedIds}
           onToggleSelect={onToggleSelect}
+          onShowOnMap={onShowOnMap}
         />
       ))}
     </div>
@@ -117,4 +134,5 @@ TraceResults.propTypes = {
   viewMode: PropTypes.string,
   selectedIds: PropTypes.object,
   onToggleSelect: PropTypes.func,
+  onShowOnMap: PropTypes.func,
 }

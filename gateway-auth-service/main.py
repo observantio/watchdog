@@ -11,7 +11,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 import logging
-import os
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -23,9 +22,10 @@ from db_models import SessionLocal, _validate_schema_compatibility
 from routers import router as gateway_router
 from services.gateway_service import GatewayAuthService
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
-# Prefer a service-specific port if provided so we don't accidentally inherit a global PORT value
-PORT = int(os.getenv("GATEWAY_PORT", os.getenv("PORT", "4321")))
+from services import config as gw_config
+
+LOG_LEVEL = gw_config.LOG_LEVEL
+PORT = gw_config.PORT
 
 logger = logging.getLogger("gateway_auth")
 logging.basicConfig(
@@ -37,8 +37,8 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting standalone gateway auth service")
-    max_retries = int(os.getenv("GATEWAY_DB_STARTUP_RETRIES", "10"))
-    backoff = float(os.getenv("GATEWAY_DB_STARTUP_BACKOFF", "1.0"))
+    max_retries = gw_config.GATEWAY_DB_STARTUP_RETRIES
+    backoff = gw_config.GATEWAY_DB_STARTUP_BACKOFF
     attempt = 0
 
     while True:

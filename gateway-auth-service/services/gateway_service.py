@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 import logging
 from threading import Lock
@@ -20,12 +19,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_RATE_LIMIT        = int(os.getenv("GATEWAY_RATE_LIMIT_PER_MINUTE", "300"))
-_IP_ALLOWLIST      = os.getenv("GATEWAY_IP_ALLOWLIST", "").strip()
-_FAIL_OPEN         = os.getenv("GATEWAY_ALLOWLIST_FAIL_OPEN", "false").lower() in ("1", "true", "yes", "on")
-_RL_BACKEND        = os.getenv("GATEWAY_RATE_LIMIT_BACKEND", "auto").strip().lower()
-_RL_REDIS_URL      = os.getenv("GATEWAY_RATE_LIMIT_REDIS_URL", "").strip()
-_TOKEN_CACHE_TTL   = int(os.getenv("GATEWAY_TOKEN_CACHE_TTL", "60"))
+from . import config as gw_config
+
 
 
 class DatabaseUnavailable(Exception):
@@ -57,16 +52,16 @@ class GatewayAuthService:
 
         Optional keyword arguments override environment defaults (useful for tests).
         """
-        rate_limit = rate_limit_per_minute if rate_limit_per_minute is not None else _RATE_LIMIT
-        backend = rate_limit_backend if rate_limit_backend is not None else _RL_BACKEND
-        redis_url = rate_limit_redis_url if rate_limit_redis_url is not None else _RL_REDIS_URL
+        rate_limit = rate_limit_per_minute if rate_limit_per_minute is not None else gw_config.RATE_LIMIT_PER_MINUTE
+        backend = rate_limit_backend if rate_limit_backend is not None else gw_config.RATE_LIMIT_BACKEND
+        redis_url = rate_limit_redis_url if rate_limit_redis_url is not None else gw_config.RATE_LIMIT_REDIS_URL
         self._rate_limiter = make_default_rate_limiter(rate_limit, backend, redis_url)
 
-        allowlist = ip_allowlist if ip_allowlist is not None else _IP_ALLOWLIST
+        allowlist = ip_allowlist if ip_allowlist is not None else gw_config.IP_ALLOWLIST
         self._networks = _parse_networks(allowlist)
 
         # token cache (allow TTL override)
-        ttl = token_cache_ttl if token_cache_ttl is not None else _TOKEN_CACHE_TTL
+        ttl = token_cache_ttl if token_cache_ttl is not None else gw_config.TOKEN_CACHE_TTL
         self._token_cache = TokenCache(ttl)
 
     @staticmethod
@@ -84,7 +79,7 @@ class GatewayAuthService:
 
     def enforce_ip_allowlist(self, request: Request) -> None:
         if not self._networks:
-            if not _FAIL_OPEN:
+            if not gw_config.ALLOWLIST_FAIL_OPEN:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Source IP not allowed")
             return
 
