@@ -451,12 +451,6 @@ class Constants:
     STATUS_SUCCESS: str = "Success"
     STATUS_ERROR: str = "Error"
     
-    # Error messages
-    ERROR_NOT_FOUND: str = "Resource not found"
-    ERROR_INVALID_REQUEST: str = "Invalid request"
-    ERROR_INTERNAL: str = "Internal server error"
-    ERROR_UNAUTHORIZED: str = "Unauthorized"
-    ERROR_TIMEOUT: str = "Request timeout"
     
     # Service names
     SERVICE_TEMPO: str = "Tempo"

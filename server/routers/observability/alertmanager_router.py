@@ -17,6 +17,15 @@ from models.alerting.alerts import Alert, AlertGroup, AlertStatus, AlertState
 from models.alerting.incidents import AlertIncident, AlertIncidentUpdateRequest
 from models.alerting.silences import Silence, SilenceCreate, SilenceCreateRequest, Visibility
 from pydantic import BaseModel, Field
+
+from models.alerting.jira_requests import (
+    JiraCreateRequest,
+    JiraConfigRequest,
+    RuleImportRequest,
+    JiraIntegrationCreateRequest,
+    JiraIntegrationUpdateRequest,
+    JiraCommentRequest,
+)
 from services.jira_service import jira_service, JiraError
 from models.alerting.receivers import AlertManagerStatus
 from models.alerting.rules import AlertRule, AlertRuleCreate
@@ -330,52 +339,6 @@ async def patch_incident(
     return updated
 
 
-class JiraCreateRequest(BaseModel):
-    integrationId: str
-    projectKey: str
-    issueType: str | None = "Task"
-    summary: str | None = None
-    description: str | None = None
-
-
-class JiraConfigRequest(BaseModel):
-    enabled: bool = True
-    baseUrl: str
-    email: str | None = None
-    apiToken: str | None = None
-    bearerToken: str | None = None
-
-
-class RuleImportRequest(BaseModel):
-    yamlContent: str
-    dryRun: bool = False
-    defaults: Dict[str, object] | None = None
-
-
-class JiraIntegrationCreateRequest(BaseModel):
-    name: str
-    visibility: str = "private"
-    sharedGroupIds: List[str] = Field(default_factory=list)
-    enabled: bool = True
-    baseUrl: Optional[str] = None
-    email: Optional[str] = None
-    apiToken: Optional[str] = None
-    bearerToken: Optional[str] = None
-    authMode: Optional[str] = "api_token"
-    supportsSso: bool = False
-
-
-class JiraIntegrationUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    visibility: Optional[str] = None
-    sharedGroupIds: Optional[List[str]] = None
-    enabled: Optional[bool] = None
-    baseUrl: Optional[str] = None
-    email: Optional[str] = None
-    apiToken: Optional[str] = None
-    bearerToken: Optional[str] = None
-    authMode: Optional[str] = None
-    supportsSso: Optional[bool] = None
 
 
 @router.post("/rules/import")
@@ -770,8 +733,6 @@ async def create_incident_jira(
     return updated
 
 
-class JiraCommentRequest(BaseModel):
-    text: str
 
 
 def _resolve_incident_jira_credentials(incident, tenant_id: str, current_user: TokenData):
