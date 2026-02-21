@@ -18,14 +18,6 @@ from models.alerting.incidents import AlertIncident, AlertIncidentUpdateRequest
 from models.alerting.silences import Silence, SilenceCreate, SilenceCreateRequest, Visibility
 from pydantic import BaseModel, Field
 
-from models.alerting.jira_requests import (
-    JiraCreateRequest,
-    JiraConfigRequest,
-    RuleImportRequest,
-    JiraIntegrationCreateRequest,
-    JiraIntegrationUpdateRequest,
-    JiraCommentRequest,
-)
 from services.jira_service import jira_service, JiraError
 from models.alerting.receivers import AlertManagerStatus
 from models.alerting.rules import AlertRule, AlertRuleCreate
@@ -344,18 +336,18 @@ async def patch_incident(
 @router.post("/rules/import")
 @handle_route_errors()
 async def import_alert_rules(
-    payload: RuleImportRequest,
+    payload: dict = Body(...),
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.CREATE_RULES, Permission.WRITE_ALERTS], "alertmanager")
     ),
 ):
     tenant_id, user_id, group_ids = alertmanager_service.user_scope(current_user)
     try:
-        parsed_rules = parse_rules_yaml(payload.yamlContent, payload.defaults or {})
+        parsed_rules = parse_rules_yaml(payload.get("yamlContent"), payload.get("defaults") or {})
     except RuleImportError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    if payload.dryRun:
+    if payload.get("dryRun"):
         return {
             "status": "preview",
             "count": len(parsed_rules),
@@ -417,16 +409,16 @@ async def get_jira_config(
 @router.put("/jira/config")
 @handle_route_errors()
 async def put_jira_config(
-    payload: JiraConfigRequest,
+    payload: dict = Body(...),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.MANAGE_TENANTS, "alertmanager")),
 ):
     return _save_tenant_jira_config(
         current_user.tenant_id,
-        enabled=payload.enabled,
-        base_url=payload.baseUrl,
-        email=payload.email,
-        api_token=payload.apiToken,
-        bearer=payload.bearerToken,
+        enabled=payload.get("enabled"),
+        base_url=payload.get("baseUrl"),
+        email=payload.get("email"),
+        api_token=payload.get("apiToken"),
+        bearer=payload.get("bearerToken"),
     )
 
 
@@ -453,13 +445,13 @@ async def list_jira_integrations(
 @router.post("/integrations/jira")
 @handle_route_errors()
 async def create_jira_integration(
-    payload: JiraIntegrationCreateRequest,
+    payload: dict = Body(...),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
     import uuid
     integrations = _load_tenant_jira_integrations(current_user.tenant_id)
-    visibility = _normalize_visibility(payload.visibility, "private")
-    shared_group_ids = payload.sharedGroupIds or []
+    visibility = _normalize_visibility(payload.get("visibility", "private"), "private")
+    shared_group_ids = payload.get("sharedGroupIds") or []
     if visibility != "group":
         shared_group_ids = []
     else:
@@ -467,26 +459,26 @@ async def create_jira_integration(
             current_user.tenant_id, shared_group_ids, current_user
         )
 
-    auth_mode = _normalize_jira_auth_mode(payload.authMode)
+    auth_mode = _normalize_jira_auth_mode(payload.get("authMode"))
     _validate_jira_credentials(
-        base_url=payload.baseUrl,
+        base_url=payload.get("baseUrl"),
         auth_mode=auth_mode,
-        email=payload.email,
-        api_token=payload.apiToken,
-        bearer_token=payload.bearerToken,
+        email=payload.get("email"),
+        api_token=payload.get("apiToken"),
+        bearer_token=payload.get("bearerToken"),
     )
 
     item = {
         "id": str(uuid.uuid4()),
-        "name": (payload.name or "Jira").strip() or "Jira",
+        "name": (payload.get("name") or "Jira").strip() or "Jira",
         "createdBy": current_user.user_id,
-        "enabled": bool(payload.enabled),
+        "enabled": bool(payload.get("enabled")),
         "visibility": visibility,
         "sharedGroupIds": [str(g).strip() for g in shared_group_ids if str(g).strip()],
-        "baseUrl": (payload.baseUrl or "").strip() or None,
-        "email": (payload.email or "").strip() or None,
-        "apiToken": _encrypt_tenant_secret((payload.apiToken or "").strip() or None),
-        "bearerToken": _encrypt_tenant_secret((payload.bearerToken or "").strip() or None),
+        "baseUrl": (payload.get("baseUrl") or "").strip() or None,
+        "email": (payload.get("email") or "").strip() or None,
+        "apiToken": _encrypt_tenant_secret((payload.get("apiToken") or "").strip() or None),
+        "bearerToken": _encrypt_tenant_secret((payload.get("bearerToken") or "").strip() or None),
         "authMode": auth_mode,
         "supportsSso": auth_mode == "sso",
     }
@@ -499,7 +491,7 @@ async def create_jira_integration(
 @handle_route_errors()
 async def update_jira_integration(
     integration_id: str,
-    payload: JiraIntegrationUpdateRequest,
+    payload: dict = Body(...),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
     integrations = _load_tenant_jira_integrations(current_user.tenant_id)
@@ -513,32 +505,32 @@ async def update_jira_integration(
     if str(current.get("createdBy") or "") != current_user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only integration owner can update this integration")
 
-    if payload.name is not None:
-        current["name"] = (payload.name or "").strip() or current.get("name") or "Jira"
-    if payload.enabled is not None:
-        current["enabled"] = bool(payload.enabled)
-    if payload.visibility is not None:
-        current["visibility"] = _normalize_visibility(payload.visibility, "private")
-    if payload.sharedGroupIds is not None:
-        current["sharedGroupIds"] = [str(g).strip() for g in payload.sharedGroupIds if str(g).strip()]
+    if "name" in payload:
+        current["name"] = (payload.get("name") or "").strip() or current.get("name") or "Jira"
+    if "enabled" in payload:
+        current["enabled"] = bool(payload.get("enabled"))
+    if "visibility" in payload:
+        current["visibility"] = _normalize_visibility(payload.get("visibility"), "private")
+    if "sharedGroupIds" in payload:
+        current["sharedGroupIds"] = [str(g).strip() for g in (payload.get("sharedGroupIds") or []) if str(g).strip()]
     if current.get("visibility") != "group":
         current["sharedGroupIds"] = []
     else:
         current["sharedGroupIds"] = _validate_shared_group_ids_for_user(
             current_user.tenant_id, current.get("sharedGroupIds") or [], current_user
         )
-    if payload.baseUrl is not None:
-        current["baseUrl"] = (payload.baseUrl or "").strip() or None
-    if payload.email is not None:
-        current["email"] = (payload.email or "").strip() or None
-    if payload.apiToken is not None:
-        current["apiToken"] = _encrypt_tenant_secret((payload.apiToken or "").strip() or None)
-    if payload.bearerToken is not None:
-        current["bearerToken"] = _encrypt_tenant_secret((payload.bearerToken or "").strip() or None)
-    if payload.authMode is not None:
-        current["authMode"] = (payload.authMode or "api_token").strip() or "api_token"
-    if payload.supportsSso is not None:
-        current["supportsSso"] = bool(payload.supportsSso)
+    if "baseUrl" in payload:
+        current["baseUrl"] = (payload.get("baseUrl") or "").strip() or None
+    if "email" in payload:
+        current["email"] = (payload.get("email") or "").strip() or None
+    if "apiToken" in payload:
+        current["apiToken"] = _encrypt_tenant_secret((payload.get("apiToken") or "").strip() or None)
+    if "bearerToken" in payload:
+        current["bearerToken"] = _encrypt_tenant_secret((payload.get("bearerToken") or "").strip() or None)
+    if "authMode" in payload:
+        current["authMode"] = (payload.get("authMode") or "api_token").strip() or "api_token"
+    if "supportsSso" in payload:
+        current["supportsSso"] = bool(payload.get("supportsSso"))
 
     next_auth_mode = _normalize_jira_auth_mode(current.get("authMode"))
     _validate_jira_credentials(
@@ -666,7 +658,7 @@ async def list_jira_issue_types(
 @handle_route_errors()
 async def create_incident_jira(
     incident_id: str,
-    payload: JiraCreateRequest,
+    payload: dict = Body(...),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
     incident = await run_in_threadpool(
@@ -679,7 +671,7 @@ async def create_incident_jira(
     if not incident:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
 
-    integration_id = (payload.integrationId or "").strip()
+    integration_id = (payload.get("integrationId") or "").strip()
     if not integration_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="integrationId is required")
 
@@ -690,15 +682,15 @@ async def create_incident_jira(
             detail="Selected Jira integration is not enabled or incomplete",
         )
 
-    project = (payload.projectKey or "").strip()
+    project = (payload.get("projectKey") or "").strip()
     if not project:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="projectKey is required")
 
-    summary = (payload.summary or incident.alert_name or "Incident").strip()
-    description = payload.description or (
+    summary = (payload.get("summary") or incident.alert_name or "Incident").strip()
+    description = payload.get("description") or (
         f"Incident: {incident.alert_name}\n\nLabels: {incident.labels or {}}\nAnnotations: {incident.annotations or {}}"
     )
-    issue_type = (payload.issueType or "Task").strip()
+    issue_type = (payload.get("issueType") or "Task").strip()
     credentials = _jira_integration_credentials(integration)
 
     try:
@@ -807,7 +799,7 @@ async def sync_incident_jira_comments(
 @router.post("/incidents/{incident_id}/jira/comments")
 async def create_incident_jira_comment(
     incident_id: str,
-    payload: JiraCommentRequest,
+    payload: dict = Body(...),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_INCIDENTS, "alertmanager")),
 ):
     incident = await run_in_threadpool(
@@ -822,7 +814,7 @@ async def create_incident_jira_comment(
     if not incident.jira_ticket_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incident has no Jira ticket key")
 
-    text = (payload.text or "").strip()
+    text = (payload.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Comment text is required")
 
