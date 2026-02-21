@@ -15,7 +15,7 @@ import threading
 from typing import Any, Dict, List, Optional, Union
 
 from cryptography.fernet import Fernet
-from passlib.context import CryptContext  # type: ignore[import]
+from passlib.context import CryptContext 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -118,8 +118,7 @@ class DatabaseAuthService:
         self.logger = logger
         self.oidc_service = OIDCService()
         self._password_op_semaphore = threading.Semaphore(1)
-        # annotated separately so mypy knows this exists
-        self._secret_provider: Optional["SecretProvider"] = None  # type: ignore[name-defined]
+        self._secret_provider: Optional["SecretProvider"] = None 
 
     def is_external_auth_enabled(self) -> bool:
         return config.AUTH_PROVIDER == "keycloak" and self.oidc_service.is_enabled()
@@ -283,10 +282,6 @@ class DatabaseAuthService:
 
     def _to_group_schema(self, group: Group) -> GroupSchema:
         return db_schema.to_group_schema(self, group)
-
-    # -------------------------------------------------------------------------
-    # User CRUD
-    # -------------------------------------------------------------------------
 
     def get_user_by_id(self, user_id: str) -> Optional[UserSchema]:
         return get_user_by_id_op(self, user_id)

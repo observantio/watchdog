@@ -105,7 +105,7 @@ Send telemetry to the gateway on port `4320`. Include your token in every reques
 x-otlp-token: <your-token>
 ```
 
-The gateway validates the token and maps the request to the correct tenant and organisation. The OTLP token is your API key — configure it on the collector side and never share it publicly. It maps internally to an `X-Org-Scope-ID` that scopes all data access within the multi-tenant ecosystem.
+The gateway validates the token and maps the request to the correct tenant and organisation. Historically the gateway queried Postgres directly, but the current implementation is completely **database‑free**; it uses Redis for caching and/or rate limiting and an HTTP call to the main server for token resolution. This simplifies deployment and allows the gateway to run in environments where database access is restricted. See `GATEWAY_AUTH_API_URL`, `RATE_LIMIT_REDIS_URL`, and `TOKEN_CACHE_REDIS_URL` for configuration. To enforce a Redis-only rate limiter (no in-memory fallback) set `GATEWAY_RATE_LIMIT_STRICT=true`. The OTLP token is your API key — configure it on the collector side and never share it publicly. It maps internally to an `X-Org-Scope-ID` that scopes all data access within the multi-tenant ecosystem.
 
 ---
 

@@ -1,22 +1,20 @@
 """
-Token cache implementation for the gateway auth service.
+In-memory token cache for the gateway auth service.
 
-
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+This mirrors the original ``TokenCache`` class that previously lived in
+``services/token_cache.py``. It is intentionally lightweight and designed for
+unit tests and small deployments. In-memory caches are used as a fallback when
+no Redis backend is configured or when Redis is unavailable.
 """
-
-
 
 from __future__ import annotations
 
+import logging
 import time
 from threading import Lock
 from typing import Optional
 
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_SIZE = 50_000
 _GC_INTERVAL = 512

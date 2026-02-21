@@ -165,6 +165,8 @@ class Config:
         self.INBOUND_WEBHOOK_TOKEN: Optional[str] = os.getenv("INBOUND_WEBHOOK_TOKEN")
         self.OTLP_INGEST_TOKEN: Optional[str] = os.getenv("OTLP_INGEST_TOKEN")
 
+        self.GATEWAY_INTERNAL_SERVICE_TOKEN: Optional[str] = os.getenv("GATEWAY_INTERNAL_SERVICE_TOKEN")
+
         # Authentication
         self.JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "RS256").strip().upper()
         self.JWT_EXPIRATION_MINUTES: int = int(os.getenv("JWT_EXPIRATION_MINUTES", "1440"))
@@ -291,7 +293,6 @@ class Config:
         if not self.VAULT_ADDR:
             raise ValueError("VAULT_ADDR must be set when VAULT_ENABLED=true")
 
-        # build a callable for secret id if provided
         secret_id_fn = (lambda: self.VAULT_SECRET_ID) if self.VAULT_SECRET_ID else None
 
         provider = VaultSecretProvider(
@@ -320,6 +321,7 @@ class Config:
             "AWS_SECRET_ACCESS_KEY",
             "INBOUND_WEBHOOK_TOKEN",
             "OTLP_INGEST_TOKEN",
+            "GATEWAY_INTERNAL_SERVICE_TOKEN",
             "AGENT_HEARTBEAT_TOKEN",
         ]
 

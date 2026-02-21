@@ -1,7 +1,5 @@
 """
-This is the main entry point for the standalone gateway auth service
-as this is decoupled from the main server, it has its own FastAPI app and lifecycle management.
-
+Gateway auth service entry point.
 
 Copyright (c) 2026 Stefan Kumarasinghe
 
@@ -12,55 +10,48 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import text
 
-from db_models import SessionLocal, _validate_schema_compatibility
+from services import config as gw_config
 from routers import router as gateway_router
 from services.gateway_service import GatewayAuthService
 
-from services import config as gw_config
-
-LOG_LEVEL = gw_config.LOG_LEVEL
-PORT = gw_config.PORT
-
-logger = logging.getLogger("gateway_auth")
 logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    level=getattr(logging, gw_config.LOG_LEVEL, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+logger = logging.getLogger("gateway_auth")
+
+_service = GatewayAuthService()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting standalone gateway auth service")
-    max_retries = gw_config.GATEWAY_DB_STARTUP_RETRIES
-    backoff = gw_config.GATEWAY_DB_STARTUP_BACKOFF
+
+    max_retries = gw_config.GATEWAY_STARTUP_RETRIES
+    backoff = gw_config.GATEWAY_STARTUP_BACKOFF
     attempt = 0
 
     while True:
         try:
-            with SessionLocal() as db:
-                db.execute(text("SELECT 1"))
-                _validate_schema_compatibility(db)
-            logger.info("Database connectivity and schema checks passed")
+            if gw_config.AUTH_API_URL:
+                _service._fetch_org_from_api("startup-check")
+            logger.info("Startup connectivity checks passed")
             break
         except Exception as exc:
             attempt += 1
             if attempt >= max_retries:
-                logger.exception("Gateway auth service startup check failed after %d attempts: %s", attempt, exc)
+                logger.exception("Gateway startup check failed after %d attempts: %s", attempt, exc)
                 raise
             logger.warning(
-                "Database not ready (attempt %d/%d): %s — retrying in %.1fs",
-                attempt,
-                max_retries,
-                exc,
-                backoff,
+                "Startup check failed (attempt %d/%d): %s — retrying in %.1fs",
+                attempt, max_retries, exc, backoff,
             )
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
@@ -78,8 +69,6 @@ app = FastAPI(
 
 app.include_router(gateway_router)
 
-# keep a top-level /health for Docker healthchecks (delegates to service)
-_service = GatewayAuthService()
 
 @app.get("/health")
 async def health_root():
@@ -87,9 +76,17 @@ async def health_root():
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=PORT,
-        log_level=LOG_LEVEL.lower(),
-    )
+    uvicorn_kwargs: dict = {
+        "app": "main:app",
+        "host": "0.0.0.0",
+        "port": gw_config.PORT,
+        "log_level": gw_config.LOG_LEVEL.lower(),
+    }
+    if gw_config.SSL_CERTFILE and gw_config.SSL_KEYFILE:
+        uvicorn_kwargs["ssl_certfile"] = gw_config.SSL_CERTFILE
+        uvicorn_kwargs["ssl_keyfile"] = gw_config.SSL_KEYFILE
+        if gw_config.SSL_CA_CERTS:
+            uvicorn_kwargs["ssl_ca_certs"] = gw_config.SSL_CA_CERTS
+        logger.info("TLS enabled")
+
+    uvicorn.run(**uvicorn_kwargs)

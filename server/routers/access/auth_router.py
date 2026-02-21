@@ -104,6 +104,8 @@ _AUDIT_SENSITIVE_KEYS = (
     "setup_token",
     "auth_code",
     "oauth_code",
+    # generic code parameter should also be treated as sensitive
+    "code",
 )
 
 

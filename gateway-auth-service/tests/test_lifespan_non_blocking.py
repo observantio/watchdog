@@ -19,6 +19,12 @@ class LifespanTests(unittest.TestCase):
         src = inspect.getsource(lifespan)
         self.assertNotIn("time.sleep", src)
         self.assertIn("asyncio.sleep", src)
+        # ensure database code has been removed
+        self.assertNotIn("SessionLocal", src)
+        self.assertNotIn("_validate_schema", src)
+        # new connectivity checks should reference the auth URL (redis init lives
+        # in the service constructor, not here)
+        self.assertIn("AUTH_API_URL", src)
 
 
 if __name__ == "__main__":

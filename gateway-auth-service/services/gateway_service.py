@@ -10,18 +10,20 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
+import json
 import logging
+import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
 from ipaddress import ip_address, ip_network
 from typing import Optional
 
 from fastapi import HTTPException, Request, status
-from sqlalchemy import func, or_, select
-from sqlalchemy.exc import SQLAlchemyError
 
-import db_models
 from . import config as gw_config
 from .rate_limit import make_default_rate_limiter
-from .token_cache import TokenCache
+from .token_cache import make_token_cache
 
 logger = logging.getLogger(__name__)
 
@@ -41,25 +43,20 @@ def _parse_networks(allowlist: str) -> list:
     return networks
 
 
-_VALID_TOKEN_STMT = (
-    select(db_models.UserApiKey.key)
-    .join(db_models.User, db_models.User.id == db_models.UserApiKey.user_id)
-    .join(db_models.Tenant, db_models.Tenant.id == db_models.User.tenant_id)
-    .where(
-        or_(
-            db_models.UserApiKey.otlp_token == None,
-            db_models.UserApiKey.key == None,
-        ),
-        db_models.UserApiKey.is_enabled.is_(True),
-        db_models.User.is_active.is_(True),
-        db_models.Tenant.is_active.is_(True),
-    )
-    .limit(1)
-)
+def _build_ssl_context() -> ssl.SSLContext | None:
+    if not gw_config.AUTH_API_URL.startswith("https"):
+        return None
+    ctx = ssl.create_default_context()
+    if gw_config.SSL_CA_CERTS:
+        ctx.load_verify_locations(gw_config.SSL_CA_CERTS)
+    if not gw_config.SSL_VERIFY:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 class GatewayAuthService:
-    __slots__ = ("_rate_limiter", "_networks", "_token_cache")
+    __slots__ = ("_rate_limiter", "_networks", "_token_cache", "_ssl_ctx")
 
     def __init__(
         self,
@@ -78,9 +75,11 @@ class GatewayAuthService:
         self._networks = _parse_networks(
             ip_allowlist if ip_allowlist is not None else gw_config.IP_ALLOWLIST
         )
-        self._token_cache = TokenCache(
-            token_cache_ttl if token_cache_ttl is not None else gw_config.TOKEN_CACHE_TTL
+        self._token_cache = make_token_cache(
+            token_cache_ttl if token_cache_ttl is not None else gw_config.TOKEN_CACHE_TTL,
+            gw_config.TOKEN_CACHE_REDIS_URL or None,
         )
+        self._ssl_ctx = _build_ssl_context()
 
     @staticmethod
     def _client_ip(request: Request) -> str:
@@ -113,6 +112,33 @@ class GatewayAuthService:
     def enforce_rate_limit(self, request: Request) -> None:
         self._rate_limiter.enforce(self._client_ip(request))
 
+    def _fetch_org_from_api(self, token: str) -> Optional[str]:
+        url = f"{gw_config.AUTH_API_URL}?token={urllib.parse.quote(token)}"
+        headers = {}
+        if gw_config.INTERNAL_SERVICE_TOKEN:
+            headers["X-Internal-Token"] = gw_config.INTERNAL_SERVICE_TOKEN
+
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=2, context=self._ssl_ctx) as resp:
+                if resp.status == 200:
+                    try:
+                        data = json.loads(resp.read())
+                    except Exception:
+                        return None
+                    return data.get("org_id")
+                if resp.status == 404:
+                    return None
+                raise DatabaseUnavailable(f"unexpected status {resp.status}")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            logger.warning("Auth API HTTPError %s", e)
+            raise DatabaseUnavailable from e
+        except Exception as e:
+            logger.warning("Auth API request failed: %s", e)
+            raise DatabaseUnavailable from e
+
     def validate_otlp_token(self, token: str) -> Optional[str]:
         if not token:
             return None
@@ -121,38 +147,16 @@ class GatewayAuthService:
         if hit:
             return cached
 
-        stmt = (
-            select(db_models.UserApiKey.key)
-            .join(db_models.User, db_models.User.id == db_models.UserApiKey.user_id)
-            .join(db_models.Tenant, db_models.Tenant.id == db_models.User.tenant_id)
-            .where(
-                or_(
-                    db_models.UserApiKey.otlp_token == token,
-                    db_models.UserApiKey.key == token,
-                ),
-                db_models.UserApiKey.is_enabled.is_(True),
-                db_models.User.is_active.is_(True),
-                db_models.Tenant.is_active.is_(True),
-            )
-            .limit(1)
-        )
-
         try:
-            with db_models.SessionLocal() as db:
-                result = db.execute(stmt).scalar_one_or_none()
-        except SQLAlchemyError as exc:
-            logger.warning("Database error validating OTLP token", exc_info=True)
-            raise DatabaseUnavailable from exc
+            org = self._fetch_org_from_api(token)
+        except DatabaseUnavailable:
+            raise
+        except Exception:
+            logger.warning("Auth API fetch unexpected error", exc_info=True)
+            raise DatabaseUnavailable
 
-        self._token_cache.set(token, result)
-        return result
+        self._token_cache.set(token, org)
+        return org
 
     def health(self) -> dict:
-        try:
-            with db_models.SessionLocal() as db:
-                db.execute(
-                    select(func.count()).select_from(db_models.UserApiKey).limit(1)
-                )
-            return {"status": "healthy", "service": "gateway-auth-service"}
-        except Exception:
-            return {"status": "unhealthy", "service": "gateway-auth-service"}
+        return {"status": "healthy", "service": "gateway-auth-service"}

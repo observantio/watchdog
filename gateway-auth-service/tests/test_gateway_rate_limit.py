@@ -12,7 +12,8 @@ import unittest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from services.gateway_service import GatewayAuthService, TokenRateLimiter, HybridTokenRateLimiter
+from services.gateway_service import GatewayAuthService
+from services.rate_limit import TokenRateLimiter, HybridTokenRateLimiter
 
 
 class _BrokenPrimaryRateLimiter:
@@ -81,27 +82,22 @@ class GatewayRateLimitTests(unittest.TestCase):
             importlib.reload(__import__("services.config", fromlist=["*"]))
             importlib.reload(__import__("services.gateway_service", fromlist=["*"]))
 
-    def test_validate_otlp_token_raises_database_unavailable_on_db_error(self):
+    def test_validate_otlp_token_raises_database_unavailable_on_api_error(self):
         service = GatewayAuthService(rate_limit_per_minute=100, ip_allowlist="")
 
-        from sqlalchemy.exc import SQLAlchemyError
+        # simulate network/backend failure by patching the helper on the class
+        from services import gateway_service as gw_mod
 
-        class BrokenSession:
-            def __enter__(self):
-                raise SQLAlchemyError("db down")
+        def boom(self, token):
+            raise gw_mod.DatabaseUnavailable("api down")
 
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-        # patch the module-level SessionLocal used by the service
-        import services.gateway_service as svc_mod
-        prev = svc_mod.db_models.SessionLocal
+        prev = GatewayAuthService._fetch_org_from_api
         try:
-            svc_mod.db_models.SessionLocal = BrokenSession
-            with self.assertRaises(svc_mod.DatabaseUnavailable):
+            GatewayAuthService._fetch_org_from_api = boom
+            with self.assertRaises(gw_mod.DatabaseUnavailable):
                 service.validate_otlp_token("tok")
         finally:
-            svc_mod.db_models.SessionLocal = prev
+            GatewayAuthService._fetch_org_from_api = prev
 
     def test_validate_endpoint_returns_503_on_database_unavailable(self):
         # Ensure allowlist permits our test IP
@@ -110,16 +106,16 @@ class GatewayRateLimitTests(unittest.TestCase):
 
         gateway_router._service._networks = [ipaddress.ip_network("127.0.0.1/32")]
 
-        # stub the validate_otlp_token to simulate DB outage
-        # use the same DatabaseUnavailable class that the router has imported,
-        # otherwise earlier reloads can leave us with two distinct objects and the
-        # except clause in the router won't match.
-        def _boom(token):
+        # stub the validate_otlp_token to simulate DB outage (now backed by
+        # HTTP request). we stress that the router still handles a
+        # DatabaseUnavailable exception. patch on the class rather than the
+        # instance because __slots__ forbids new attributes.
+        def _boom(self, token):
             raise gateway_router.DatabaseUnavailable("db down")
 
-        prev = gateway_router._service.validate_otlp_token
+        prev = GatewayAuthService.validate_otlp_token
         try:
-            gateway_router._service.validate_otlp_token = _boom
+            GatewayAuthService.validate_otlp_token = _boom
             scope = {
                 "type": "http",
                 "http_version": "1.1",
@@ -135,16 +131,94 @@ class GatewayRateLimitTests(unittest.TestCase):
             with self.assertLogs("routers.gateway_router", level="WARNING") as log_ctx:
                 with self.assertRaises(HTTPException) as cm:
                     asyncio.run(gateway_router.validate_otlp_token(req))
-            # router returns sanitized 503 and logs a friendly warning (no SQL internals)
+            # router returns sanitized 503 and logs a friendly warning
             self.assertEqual(cm.exception.status_code, 503)
-            self.assertEqual(cm.exception.detail, "Auth database unavailable")
+            self.assertEqual(cm.exception.detail, "Auth backend unavailable")
             log_output = "\n".join(log_ctx.output)
-            self.assertIn("Auth database unavailable", log_output)
-            self.assertNotIn("SQLAlchemy", log_output)
+            self.assertIn("Auth backend unavailable", log_output)
             self.assertNotIn("Traceback", log_output)
         finally:
-            gateway_router._service.validate_otlp_token = prev
+            GatewayAuthService.validate_otlp_token = prev
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_token_cache_hits(self):
+        service = GatewayAuthService(rate_limit_per_minute=100, ip_allowlist="")
+        calls: list[str] = []
+
+        def fetch(self, token):
+            calls.append(token)
+            return "org42"
+
+        prev = GatewayAuthService._fetch_org_from_api
+        try:
+            GatewayAuthService._fetch_org_from_api = fetch
+            # first invocation should call the backend
+            self.assertEqual(service.validate_otlp_token("tok"), "org42")
+            self.assertEqual(calls, ["tok"])
+            # second invocation should hit the cache
+            self.assertEqual(service.validate_otlp_token("tok"), "org42")
+            self.assertEqual(calls, ["tok"])
+        finally:
+            GatewayAuthService._fetch_org_from_api = prev
+
+    def test_token_cache_caches_negative(self):
+        service = GatewayAuthService(rate_limit_per_minute=100, ip_allowlist="")
+        calls: list[str] = []
+
+        def fetch(self, token):
+            calls.append(token)
+            return None
+
+        prev = GatewayAuthService._fetch_org_from_api
+        try:
+            GatewayAuthService._fetch_org_from_api = fetch
+            self.assertIsNone(service.validate_otlp_token("bad"))
+            self.assertIsNone(service.validate_otlp_token("bad"))
+            self.assertEqual(calls, ["bad"])
+        finally:
+            GatewayAuthService._fetch_org_from_api = prev
+
+    def test_make_token_cache_fallback(self):
+        import services.token_cache as tc_mod
+        prev_redis = getattr(tc_mod, "redis", None)
+        tc_mod.redis = None
+        try:
+            cache = tc_mod.make_token_cache(5, "redis://doesnotmatter")
+            self.assertIsInstance(cache, tc_mod.TokenCache)
+        finally:
+            tc_mod.redis = prev_redis
+
+    def test_strict_rate_limiter_requires_redis(self):
+        # strict mode should mandate a working Redis backend; errors bubble up
+        import services.config as cfg
+        from services.rate_limit import make_default_rate_limiter, RedisTokenRateLimiter
+
+        prev_strict = cfg.GATEWAY_RATE_LIMIT_STRICT
+        cfg.GATEWAY_RATE_LIMIT_STRICT = True
+
+        orig_init = RedisTokenRateLimiter.__init__
+        try:
+            # cause Redis initializer to always fail regardless of URL
+            def fail(self, *args, **kwargs):
+                raise RuntimeError("no redis")
+
+            RedisTokenRateLimiter.__init__ = fail
+            with self.assertRaises(RuntimeError):
+                make_default_rate_limiter(1, backend="redis", redis_url=None)
+            with self.assertRaises(RuntimeError):
+                make_default_rate_limiter(1, backend="redis", redis_url="redis://localhost")
+
+            # succeed case: initializer replaced with noop
+            def ok_init(self, limit, url, *args, **kwargs):
+                self._limit = limit
+                self.enforce = lambda key: None
+
+            RedisTokenRateLimiter.__init__ = ok_init
+            limiter = make_default_rate_limiter(2, backend="redis", redis_url="redis://localhost")
+            self.assertIsInstance(limiter, RedisTokenRateLimiter)
+        finally:
+            cfg.GATEWAY_RATE_LIMIT_STRICT = prev_strict
+            RedisTokenRateLimiter.__init__ = orig_init
+
+    if __name__ == "__main__":
+        unittest.main()

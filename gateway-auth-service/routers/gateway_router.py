@@ -10,7 +10,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import logging
 
 from fastapi import APIRouter, Request, Response, HTTPException, status
-from sqlalchemy.exc import SQLAlchemyError
 
 from services.gateway_service import GatewayAuthService, DatabaseUnavailable
 
@@ -35,9 +34,9 @@ async def validate_otlp_token(request: Request, path: str = ""):
 
     try:
         org_id = _service.validate_otlp_token(token)
-    except (SQLAlchemyError, DatabaseUnavailable):
-        logger.warning("Auth database unavailable")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth database unavailable")
+    except DatabaseUnavailable:
+        logger.warning("Auth backend unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth backend unavailable")
 
     if not org_id:
         logger.warning("OTLP token validation failed – token_prefix=%s", token_prefix)

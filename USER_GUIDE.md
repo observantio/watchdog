@@ -198,7 +198,11 @@ All `GET /api/*` requests produce `resource.view` audit entries. On Postgres, th
 
 ### Rate Limiting
 
-Per-user and per-IP fixed-window limits are enforced with Redis and an in-memory fallback. Request payload sizes and concurrency are capped at the middleware level.
+Per-user and per-IP fixed-window limits are enforced with Redis (or other backend via
+`GATEWAY_RATE_LIMIT_BACKEND`) and an in-memory fallback. Set
+`GATEWAY_RATE_LIMIT_STRICT=true` to require a working Redis backend; the gateway
+will refuse to start if Redis cannot be initialised. Request payload sizes and
+concurrency are capped at the middleware level.
 
 ---
 
@@ -266,6 +270,9 @@ On Postgres deployments, confirm the append-only trigger exists in the DB schema
 ### Debug OTLP Ingestion Failures
 
 1. Validate the token against `gateway-auth-service`.
+   * The gateway performs no database operations; it first checks its Redis
+     cache then calls the main server (`GATEWAY_AUTH_API_URL`) if necessary.
+     Ensure Redis and the API are reachable by the gateway container.
 2. Check `GATEWAY_IP_ALLOWLIST` for the sending IP.
 3. Review `docker compose logs otlp-gateway`.
 

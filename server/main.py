@@ -11,7 +11,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import logging
 import asyncio
 import uvloop
-from urllib.parse import parse_qsl, urlencode
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -20,12 +19,27 @@ from fastapi.exceptions import RequestValidationError
 import httpx
 
 from config import config, constants
-from routers import tempo_router, loki_router, alertmanager_router, grafana_router, auth_router, agents_router, system_router
-from database import init_database, init_db, connection_test, get_db_session
+from routers import (
+    tempo_router,
+    loki_router,
+    alertmanager_router,
+    grafana_router,
+    auth_router,
+    agents_router,
+    system_router,
+    internal_router,
+)
+from database import init_database, init_db, connection_test
 from db_models import AuditLog
 from middleware.limits import RequestSizeLimitMiddleware, ConcurrencyLimitMiddleware
 from middleware.rate_limit import client_ip
-from services.audit_context import set_request_audit_context, reset_request_audit_context
+
+# audit middleware and global exception handlers live in their own modules
+from middleware.audit import security_headers_middleware
+from middleware.error_handlers import (
+    validation_exception_handler,
+    general_exception_handler,
+)
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -50,58 +64,8 @@ auth_service._lazy_init()
 auth_service.backfill_otlp_tokens()
 logger.info("✓ Auth service initialized")
 
-from contextlib import asynccontextmanager
-
-RESOURCE_VIEW_AUDIT_EXCLUDED_PATHS = {
-    "/api/auth/me",
-    "/api/auth/users",
-}
-RESOURCE_VIEW_AUDIT_EXCLUDED_PREFIXES = (
-    "/api/auth/audit-logs",
-)
 
 
-def _skip_resource_view_audit(path: str) -> bool:
-    if path in RESOURCE_VIEW_AUDIT_EXCLUDED_PATHS:
-        return True
-    return any(path.startswith(prefix) for prefix in RESOURCE_VIEW_AUDIT_EXCLUDED_PREFIXES)
-
-
-SENSITIVE_AUDIT_KEYS = (
-    "token",
-    "secret",
-    "password",
-    "passcode",
-    "authorization",
-    "bearer",
-    "jwt",
-    "mfa_code",
-    "setup_token",
-    "code",
-)
-
-
-def _is_sensitive_audit_key(key: str) -> bool:
-    lowered = str(key or "").strip().lower()
-    # `status_code` is not a secret — avoid redacting it even though it contains 'code'
-    if lowered == "status_code":
-        return False
-    return any(marker in lowered for marker in SENSITIVE_AUDIT_KEYS)
-
-
-def _sanitize_query_string(raw_query: str) -> str:
-    if not raw_query:
-        return ""
-    pairs = parse_qsl(raw_query, keep_blank_values=True)
-    sanitized = []
-    for key, value in pairs:
-        if _is_sensitive_audit_key(key):
-            sanitized.append((key, "[REDACTED]"))
-        else:
-            sanitized.append((key, value))
-    return urlencode(sanitized, doseq=True)
-
-@asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         yield
@@ -138,59 +102,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    context_tokens = set_request_audit_context(client_ip(request), request.headers.get("user-agent"))
-    try:
-        response = await call_next(request)
-    finally:
-        reset_request_audit_context(context_tokens)
-
-    try:
-        if request.method == "GET" and request.url.path.startswith("/api/") and not _skip_resource_view_audit(request.url.path):
-            auth_header = request.headers.get("authorization", "")
-            cookie_token = request.cookies.get("beobservant_token")
-            bearer = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
-            token = bearer or cookie_token
-            if token:
-                token_data = auth_service.decode_token(token)
-                if token_data:
-                    with get_db_session() as db:
-                        db.add(
-                            AuditLog(
-                                tenant_id=token_data.tenant_id,
-                                user_id=token_data.user_id,
-                                action="resource.view",
-                                resource_type="http",
-                                resource_id=request.url.path,
-                                details={
-                                    "method": request.method,
-                                    "status_code": response.status_code,
-                                    "query": _sanitize_query_string(str(request.query_params)),
-                                },
-                                ip_address=client_ip(request),
-                                user_agent=request.headers.get("user-agent"),
-                            )
-                        )
-    except Exception:
-        logger.debug("Skipping middleware audit write for request %s", request.url.path)
-
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "no-referrer")
-    # CSP: allow Google Fonts / Material Icons and common data/connect sources.
-    # Keep `self` and allow `fonts.googleapis.com` (style) and `fonts.gstatic.com` (font files).
-    response.headers.setdefault(
-        "Content-Security-Policy",
-        "default-src 'self'; "
-        "connect-src 'self' https:; "
-        "img-src 'self' data: https:; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com;"
-    )
-    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-    return response
+# register shared middleware & exception handlers
+app.middleware("http")(security_headers_middleware)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 app.add_middleware(RequestSizeLimitMiddleware, max_bytes=config.MAX_REQUEST_BYTES)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -214,32 +129,9 @@ logger.info(
     config.CORS_ALLOW_CREDENTIALS,
 )
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, 
-    exc: RequestValidationError
-) -> JSONResponse:
-    """Handle validation errors with detailed error messages."""
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "detail": exc.errors(),
-        },
-    )
-
-@app.exception_handler(Exception)
-async def general_exception_handler(
-    request: Request, 
-    exc: Exception
-) -> JSONResponse:
-    """Handle unexpected errors gracefully."""
-    logger.exception("Unhandled exception: %s", exc)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": constants.ERROR_INTERNAL},
-    )
 
 
+app.include_router(internal_router.router)
 app.include_router(auth_router.router)
 app.include_router(agents_router.router)
 app.include_router(system_router.router)
