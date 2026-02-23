@@ -3,6 +3,10 @@
 from fastapi.testclient import TestClient
 import pytest
 
+from tests._env import ensure_test_env
+
+ensure_test_env()
+
 from main import app
 from config import config
 from routers import internal_router

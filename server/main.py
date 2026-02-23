@@ -10,6 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import logging
 import asyncio
+import os
 import uvloop
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,20 +50,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("beobservant")
 
-logger.info("Connecting to database: %s", config.DATABASE_URL.split("@")[-1])
-init_database(config.DATABASE_URL, config.LOG_LEVEL == "debug")
-init_db()
-logger.info("✓ Database initialized")
+if os.getenv("SKIP_STARTUP_DB_INIT", "").lower() not in {"1", "true", "yes"}:
+    logger.info("Connecting to database: %s", config.DATABASE_URL.split("@")[-1])
+    init_database(config.DATABASE_URL, config.LOG_LEVEL == "debug")
+    init_db()
+    logger.info("✓ Database initialized")
+    logger.info("✓ Database schema ready")
 
-
-
-logger.info("✓ Database schema ready")
-
-from middleware.dependencies import auth_service
-auth_service._lazy_init()
-
-auth_service.backfill_otlp_tokens()
-logger.info("✓ Auth service initialized")
+    from middleware.dependencies import auth_service
+    auth_service._lazy_init()
+    auth_service.backfill_otlp_tokens()
+    logger.info("✓ Auth service initialized")
 
 
 

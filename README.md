@@ -1,10 +1,14 @@
 # Be Observant
 
-> A unified observability platform — metrics, logs, traces, and alerts in one place.
+A unified observability platform — metrics, logs, traces, and alerts in one place. Created to watch and conquer them all
+
+![alt text](assets/opening.png)
+
+Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be Observant is designed for production use as an observability control plane, aiming for enterprise-grade security, multi-tenancy, and a clean REST API.
 
 ![alt text](assets/observant-home.png)
 
-Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be Observant is a production-ready observability control plane with enterprise-grade security, multi-tenancy, and a clean REST API.
+Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be Observant is designed for production use as an observability control plane, aiming for enterprise-grade security, multi-tenancy, and a clean REST API.
 
 ## Distributed Tracing
 
@@ -15,6 +19,34 @@ With Tempo as the backbone, Be Observant Proxies and scopes Traces based on the 
 With visualization of spans and multiple traces using React flow
 
 ![alt text](assets/dependency-maps.png)
+
+## Logs
+
+With Loki as the backbone, Be Observant Proxies and scopes Logs based on the API key to enforce multi-tenacy
+
+![alt text](assets/logs-summary.png)
+
+## Alerting 
+
+With Be Notified as the backbone, Be Observant Proxies and scopes Logs based on the API key to enforce multi-tenacy, visit https://github.com/StefanKumarasinghe/benotified
+
+![alt text](assets/alerts-board.png)
+
+# InOps
+
+With Be Notified as the backbone, Be Observant Proxies and scopes Logs based on the API key to enforce multi-tenacy, visit https://github.com/StefanKumarasinghe/benotified
+
+![alt text](assets/inops-board.png)
+
+# Grafana for Visualization
+
+With Grafana as the backbone, Be Observant Proxies and scopes Logs based on the API key and permissions by proxing the request via an nginx proxy
+
+![alt text](assets/grafana-dashboards.png)
+
+The proxy powered by nginx to limit specific routes the admin allows and scoping to the visibility the user has
+
+![alt text](assets/grafana-proxy.png)
 
 ---
 
@@ -47,28 +79,13 @@ cp .env.example .env
 
 Edit `.env` and set the required variables:
 
-```env
-POSTGRES_PASSWORD=
-JWT_PRIVATE_KEY=
-JWT_PUBLIC_KEY=
-JWT_ALGORITHM=RS256
-DEFAULT_ADMIN_PASSWORD=
-DEFAULT_OTLP_TOKEN=
-INBOUND_WEBHOOK_TOKEN=
-DATA_ENCRYPTION_KEY=
-DEFAULT_ADMIN_BOOTSTRAP_ENABLED=false
-JWT_AUTO_GENERATE_KEYS=false
-BENOTIFIED_SERVICE_TOKEN=
-BENOTIFIED_EXPECTED_SERVICE_TOKEN=
-BENOTIFIED_CONTEXT_SIGNING_KEY=
-BENOTIFIED_CONTEXT_VERIFY_KEY=
-```
-
 Generate a Fernet key for `DATA_ENCRYPTION_KEY`:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
+
+use that key to update the DATA_ENCRYPTION_KEY
 
 ### 2. Start the stack
 
@@ -100,13 +117,18 @@ docker compose up --build -d
 
 Your ui should be running at localhost:5173 unless it is not freed, also ensure if you enable CORS, to add `localhost:5173` to the environment page
 
-BeNotified runs as an internal service and should not be exposed publicly. Main server proxies `/api/alertmanager/*` while preserving permission/scope checks and main audit semantics.
+To get access to Be Notified and Be Certain you must use these links https://github.com/StefanKumarasinghe/becertain/ and https://github.com/StefanKumarasinghe/benotifed and set it up in the repo and adjust the file names
+
+Be Notified runs as an internal service and should not be exposed publicly. Main server proxies `/api/alertmanager/*` while preserving permission/scope checks and main audit semantics.
 
 ---
 
 ## OTLP Ingestion
 
+
 Send telemetry to the gateway on port `4320`. Include your token in every request, this will be generated on your ui
+
+![alt text](assets/auth-otlp.png)
 
 ```
 x-otlp-token: <your-token>
@@ -143,6 +165,7 @@ OIDC endpoints: `POST /api/auth/oidc/authorize-url`, `POST /api/auth/oidc/exchan
 - IP allowlists for all sensitive public endpoints
 - Request payload size limits and concurrency backpressure middleware
 - Multi-tenant isolation: tenant and org scoping on all resources and API keys
+- Vault compatibility: If you don't want to load using env keys you can configure a VAULT ROLE to fetch sensitive data from there
 
 > **Secrets:** Sensitive values (DB URL, JWT keys, SMTP passwords, API keys) can be provided via environment variables or fetched from a secrets backend. Set `VAULT_ENABLED=true` and provide `VAULT_ADDR`/AppRole or token to load secrets from HashiCorp Vault. See `USER_GUIDE.md` → "Secret management / Vault" for details.
 
@@ -150,7 +173,7 @@ OIDC endpoints: `POST /api/auth/oidc/authorize-url`, `POST /api/auth/oidc/exchan
 
 ## Testing & Load Generation
 
-A default OTel agent and canary log/trace generators are included and run automatically with the stack, you may comment that out if you dont want it.
+A default OTel agent and canary log/trace generators are included and run automatically with the stack, you may comment that out if you dont want it. You can tweak the generator at `tests/start.sh`
 
 ---
 
@@ -159,6 +182,7 @@ A default OTel agent and canary log/trace generators are included and run automa
 ```bash
 docker compose down       # stop services, keep volumes
 docker compose down -v    # stop services and remove all volumes (including user data)
+# bash fresh.sh will create a fresh DB and erase all volumes
 ```
 
 ---
