@@ -111,6 +111,7 @@ export const NAV_ITEMS = {
   DASHBOARD: { label: 'Dashboard', icon: 'dashboard', path: '/', permission: null },
   TEMPO: { label: 'Tempo', icon: 'timeline', path: '/tempo', permission: 'read:traces' },
   LOKI: { label: 'Loki', icon: 'view_stream', path: '/loki', permission: 'read:logs' },
+  RCA: { label: 'RCA', icon: 'psychology', path: '/rca', permission: 'read:rca' },
   ALERTMANAGER: { label: 'AlertManager', icon: 'notifications', path: '/alertmanager', permission: 'read:alerts' },
   INCIDENTS: { label: 'Incidents', icon: 'assignment', path: '/incidents', permission: 'read:alerts' },
   GRAFANA: { label: 'Grafana', icon: 'analytics', path: '/grafana', permission: 'read:dashboards' },

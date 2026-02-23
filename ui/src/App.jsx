@@ -32,6 +32,7 @@ const GroupsPage = lazy(() => import('./pages/GroupsPage'))
 const ApiKeyPage = lazy(() => import('./pages/ApiKeyPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 const AuditCompliancePage = lazy(() => import('./pages/AuditCompliancePage'))
+const RCAPage = lazy(() => import('./pages/RCAPage'))
 
 function PageLoader() {
   return (
@@ -110,6 +111,7 @@ function AppContent() {
     { path: '/', element: <Dashboard info={info} /> },
     { path: '/tempo', element: <TempoPage />, permissions: ['read:traces'] },
     { path: '/loki', element: <LokiPage />, permissions: ['read:logs'] },
+    { path: '/rca', element: <RCAPage />, permissions: ['read:rca'] },
     { path: '/alertmanager', element: <AlertManagerPage />, permissions: ['read:alerts'] },
     { path: '/incidents', element: <IncidentBoardPage />, permissions: ['read:alerts'] },
     { path: '/grafana', element: <GrafanaPage />, permissions: ['read:dashboards'] },

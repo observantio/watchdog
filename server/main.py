@@ -25,6 +25,7 @@ from routers import (
     loki_router,
     alertmanager_router,
     grafana_router,
+    becertain_router,
     auth_router,
     agents_router,
     system_router,
@@ -41,6 +42,7 @@ from middleware.error_handlers import (
     validation_exception_handler,
     general_exception_handler,
 )
+from services.becertain_proxy_service import becertain_proxy_service
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -75,6 +77,7 @@ async def lifespan(app: FastAPI):
             getattr(alertmanager_router, "alertmanager_service", None),
             getattr(alertmanager_router, "notification_service", None),
             getattr(grafana_router, "grafana_service", None),
+            becertain_proxy_service,
         ):
             client = getattr(svc, "_client", None)
             if client is not None:
@@ -137,6 +140,7 @@ app.include_router(tempo_router.router)
 app.include_router(loki_router.router)
 app.include_router(alertmanager_router.router)
 app.include_router(grafana_router.router)
+app.include_router(becertain_router.router)
 
 
 @app.get("/", tags=["info"])
@@ -149,7 +153,8 @@ async def root() -> dict:
             constants.SERVICE_TEMPO: "/api/tempo",
             constants.SERVICE_LOKI: "/api/loki",
             constants.SERVICE_ALERTMANAGER: "/api/alertmanager",
-            constants.SERVICE_GRAFANA: "/api/grafana"
+            constants.SERVICE_GRAFANA: "/api/grafana",
+            constants.SERVICE_BECERTAIN: "/api/becertain",
         },
         "documentation": "/docs",
         "health": "/health"
@@ -188,6 +193,7 @@ async def ready(request: Request):
         "benotified": config.BENOTIFIED_URL,
         "grafana": config.GRAFANA_URL,
         "mimir": config.MIMIR_URL,
+        "becertain": config.BECERTAIN_URL,
     }
 
     results = await asyncio.gather(*(_upstream_reachable(url) for url in upstream_targets.values()))

@@ -1,0 +1,97 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createRcaAnalyzeJob, listRcaJobs } from '../api'
+import { useToast } from '../contexts/ToastContext'
+
+const JOB_POLL_MS = 5000
+
+function hasActiveJobs(items) {
+  return (items || []).some((job) => job.status === 'queued' || job.status === 'running')
+}
+
+export function useRcaJobs() {
+  const toast = useToast()
+  const [jobs, setJobs] = useState([])
+  const [loadingJobs, setLoadingJobs] = useState(false)
+  const [creatingJob, setCreatingJob] = useState(false)
+  const [selectedJobId, setSelectedJobId] = useState(null)
+
+  const refreshJobs = useCallback(async () => {
+    setLoadingJobs(true)
+    try {
+      const res = await listRcaJobs({ limit: 30 })
+      const items = Array.isArray(res?.items) ? res.items : []
+      setJobs(items)
+      if (!selectedJobId && items.length > 0) {
+        setSelectedJobId(items[0].job_id)
+      }
+    } catch (err) {
+      toast?.error?.(err?.message || 'Failed to load RCA jobs')
+    } finally {
+      setLoadingJobs(false)
+    }
+  }, [selectedJobId, toast])
+
+  useEffect(() => {
+    refreshJobs()
+  }, [refreshJobs])
+
+  useEffect(() => {
+    if (!hasActiveJobs(jobs)) return undefined
+    const timer = setInterval(() => {
+      refreshJobs()
+    }, JOB_POLL_MS)
+    return () => clearInterval(timer)
+  }, [jobs, refreshJobs])
+
+  const createJob = useCallback(async (payload) => {
+    setCreatingJob(true)
+    const optimisticId = `pending-${Date.now()}`
+    const optimistic = {
+      job_id: optimisticId,
+      status: 'queued',
+      created_at: new Date().toISOString(),
+      started_at: null,
+      finished_at: null,
+      duration_ms: null,
+      error: null,
+      summary_preview: 'Submitting RCA analysis request...',
+      requested_by: 'me',
+      tenant_id: 'current',
+    }
+    setJobs((prev) => [optimistic, ...prev].slice(0, 30))
+    setSelectedJobId(optimisticId)
+
+    try {
+      const created = await createRcaAnalyzeJob(payload)
+      setJobs((prev) => {
+        const withoutOptimistic = prev.filter((job) => job.job_id !== optimisticId)
+        return [created, ...withoutOptimistic].slice(0, 30)
+      })
+      setSelectedJobId(created.job_id)
+      toast?.success?.('RCA analysis job created')
+      return created
+    } catch (err) {
+      setJobs((prev) => prev.filter((job) => job.job_id !== optimisticId))
+      toast?.error?.(err?.message || 'Failed to create RCA job')
+      throw err
+    } finally {
+      setCreatingJob(false)
+    }
+  }, [toast])
+
+  const selectedJob = useMemo(
+    () => jobs.find((job) => job.job_id === selectedJobId) || null,
+    [jobs, selectedJobId]
+  )
+
+  return {
+    jobs,
+    loadingJobs,
+    creatingJob,
+    selectedJobId,
+    selectedJob,
+    setSelectedJobId,
+    createJob,
+    refreshJobs,
+  }
+}

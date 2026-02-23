@@ -52,6 +52,17 @@ describe('api request behavior', () => {
     expect(options.headers.Authorization).toBe('Bearer token-abc')
   })
 
+  it('adds X-Scope-OrgID for BeCertain requests', async () => {
+    api.setAuthToken('token-abc')
+    api.setUserOrgIds(['org-a'])
+
+    await api.listRcaJobs()
+
+    const [, options] = fetch.mock.calls[0]
+    expect(options.headers['X-Scope-OrgID']).toBe('org-a')
+    expect(options.headers.Authorization).toBe('Bearer token-abc')
+  })
+
   it('throws structured error body on non-2xx', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: 'Denied' }, 403)))
 

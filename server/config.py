@@ -96,6 +96,7 @@ class Config:
         self.LOKI_URL: str = os.getenv("LOKI_URL", "http://loki:3100")
         self.ALERTMANAGER_URL: str = os.getenv("ALERTMANAGER_URL", "http://alertmanager:9093")
         self.BENOTIFIED_URL: str = os.getenv("BENOTIFIED_URL", "http://benotified:4323")
+        self.BECERTAIN_URL: str = os.getenv("BECERTAIN_URL", "http://becertain:4322")
         self.GRAFANA_URL: str = os.getenv("GRAFANA_URL", "http://grafana:3000")
         self.MIMIR_URL: str = os.getenv("MIMIR_URL", "http://mimir:9009")
 
@@ -113,6 +114,7 @@ class Config:
         # Request settings
         self.DEFAULT_TIMEOUT: float = float(os.getenv("DEFAULT_TIMEOUT", "30.0"))
         self.BENOTIFIED_TIMEOUT_SECONDS: float = float(os.getenv("BENOTIFIED_TIMEOUT_SECONDS", "15.0"))
+        self.BECERTAIN_TIMEOUT_SECONDS: float = float(os.getenv("BECERTAIN_TIMEOUT_SECONDS", "20.0"))
         self.MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
         self.RETRY_BACKOFF: float = float(os.getenv("RETRY_BACKOFF", "1.0"))
         self.RETRY_MAX_BACKOFF: float = float(os.getenv("RETRY_MAX_BACKOFF", "8.0"))
@@ -176,6 +178,19 @@ class Config:
         self.BENOTIFIED_CONTEXT_TTL_SECONDS: int = int(os.getenv("BENOTIFIED_CONTEXT_TTL_SECONDS", "90"))
         self.BENOTIFIED_TLS_ENABLED: bool = _to_bool(os.getenv("BENOTIFIED_TLS_ENABLED"), default=False)
         self.BENOTIFIED_CA_CERT_PATH: Optional[str] = os.getenv("BENOTIFIED_CA_CERT_PATH")
+        self.BECERTAIN_SERVICE_TOKEN: Optional[str] = os.getenv("BECERTAIN_SERVICE_TOKEN")
+        self.BECERTAIN_CONTEXT_SIGNING_KEY: Optional[str] = os.getenv("BECERTAIN_CONTEXT_SIGNING_KEY")
+        self.BECERTAIN_CONTEXT_ISSUER: str = os.getenv("BECERTAIN_CONTEXT_ISSUER", "beobservant-main")
+        self.BECERTAIN_CONTEXT_AUDIENCE: str = os.getenv("BECERTAIN_CONTEXT_AUDIENCE", "becertain")
+        self.BECERTAIN_CONTEXT_ALGORITHM: str = os.getenv("BECERTAIN_CONTEXT_ALGORITHM", "HS256")
+        self.BECERTAIN_CONTEXT_TTL_SECONDS: int = int(os.getenv("BECERTAIN_CONTEXT_TTL_SECONDS", "120"))
+        self.BECERTAIN_TLS_ENABLED: bool = _to_bool(os.getenv("BECERTAIN_TLS_ENABLED"), default=False)
+        self.BECERTAIN_CA_CERT_PATH: Optional[str] = os.getenv("BECERTAIN_CA_CERT_PATH")
+        self.BECERTAIN_ANALYZE_MAX_CONCURRENCY: int = int(os.getenv("BECERTAIN_ANALYZE_MAX_CONCURRENCY", "2"))
+        self.BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER: int = int(os.getenv("BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER", "50"))
+        self.BECERTAIN_ANALYZE_JOB_TTL_SECONDS: int = int(os.getenv("BECERTAIN_ANALYZE_JOB_TTL_SECONDS", "3600"))
+        self.BECERTAIN_ANALYZE_REPORT_RETENTION_DAYS: int = int(os.getenv("BECERTAIN_ANALYZE_REPORT_RETENTION_DAYS", "7"))
+        self.BECERTAIN_ANALYZE_STORAGE_PATH: str = os.getenv("BECERTAIN_ANALYZE_STORAGE_PATH", "./data/becertain_jobs")
 
         # Authentication
         self.JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "RS256").strip().upper()
@@ -334,6 +349,8 @@ class Config:
             "GATEWAY_INTERNAL_SERVICE_TOKEN",
             "BENOTIFIED_SERVICE_TOKEN",
             "BENOTIFIED_CONTEXT_SIGNING_KEY",
+            "BECERTAIN_SERVICE_TOKEN",
+            "BECERTAIN_CONTEXT_SIGNING_KEY",
             "AGENT_HEARTBEAT_TOKEN",
         ]
 
@@ -448,6 +465,12 @@ class Config:
             raise ValueError("DEFAULT_QUERY_LIMIT must be greater than 0")
         if self.DEFAULT_QUERY_LIMIT > self.MAX_QUERY_LIMIT:
             raise ValueError("DEFAULT_QUERY_LIMIT cannot exceed MAX_QUERY_LIMIT")
+        if self.BECERTAIN_ANALYZE_MAX_CONCURRENCY <= 0:
+            raise ValueError("BECERTAIN_ANALYZE_MAX_CONCURRENCY must be greater than 0")
+        if self.BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER <= 0:
+            raise ValueError("BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER must be greater than 0")
+        if self.BECERTAIN_ANALYZE_JOB_TTL_SECONDS <= 0:
+            raise ValueError("BECERTAIN_ANALYZE_JOB_TTL_SECONDS must be greater than 0")
 
 
 class Constants:
@@ -455,7 +478,7 @@ class Constants:
     APP_NAME: str = "Be Observant with Your Infrastructure"
     APP_VERSION: str = "1.0.0"
     APP_DESCRIPTION: str = (
-        "Unified API for managing Tempo, Loki, AlertManager, and Grafana"
+        "Unified API for managing Tempo, Loki, AlertManager, Grafana, and BeCertain"
     )
     
     # HTTP status messages
@@ -469,6 +492,7 @@ class Constants:
     SERVICE_LOKI: str = "Loki"
     SERVICE_ALERTMANAGER: str = "AlertManager"
     SERVICE_GRAFANA: str = "Grafana"
+    SERVICE_BECERTAIN: str = "BeCertain"
 
 config = Config()
 constants = Constants()

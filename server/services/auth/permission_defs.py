@@ -41,6 +41,8 @@ PERMISSION_DEFS = [
 
     ("read:logs", "Read Logs", "Query and view logs", "logs", "read"),
     ("read:traces", "Read Traces", "Query and view traces", "traces", "read"),
+    ("read:rca", "Read RCA", "View RCA analysis and reports", "rca", "read"),
+    ("create:rca", "Create RCA", "Create RCA analysis jobs", "rca", "create"),
 
     ("read:dashboards", "Read Dashboards", "View Grafana dashboards", "dashboards", "read"),
     ("create:dashboards", "Create Dashboards", "Create Grafana dashboards", "dashboards", "create"),

@@ -1,52 +1,41 @@
 # Be Observant
 
-A unified observability platform — metrics, logs, traces, and alerts in one place. Created to watch and conquer them all
+Unified observability platform for metrics, logs, traces, and alerts in one control plane.
 
-![alt text](assets/opening.png)
+Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, **Alertmanager**, and internal services for auth and alerting.
 
-Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be Observant is designed for production use as an observability control plane, aiming for enterprise-grade security, multi-tenancy, and a clean REST API.
-
-![alt text](assets/observant-home.png)
-
-Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, and **Alertmanager**, Be Observant is designed for production use as an observability control plane, aiming for enterprise-grade security, multi-tenancy, and a clean REST API.
+![Be Observant opening](assets/opening.png)
+![Be Observant home](assets/observant-home.png)
 
 ## Distributed Tracing
 
-With Tempo as the backbone, Be Observant Proxies and scopes Traces based on the API key to enforce multi-tenacy
+Tempo-backed tracing with tenant/org scoping enforced through API token context.
 
-![alt text](assets/traces-summary.png)
-
-With visualization of spans and multiple traces using React flow
-
-![alt text](assets/dependency-maps.png)
+![Traces summary](assets/traces-summary.png)
+![Dependency map](assets/dependency-maps.png)
 
 ## Logs
 
-With Loki as the backbone, Be Observant Proxies and scopes Logs based on the API key to enforce multi-tenacy
+Loki-backed log search and analytics with scoped access controls.
 
-![alt text](assets/logs-summary.png)
+![Logs summary](assets/logs-summary.png)
 
-## Alerting 
+## Alerting and Incident Ops
 
-With Be Notified as the backbone, Be Observant Proxies and scopes Logs based on the API key to enforce multi-tenacy, visit https://github.com/StefanKumarasinghe/benotified
+Alerting and incidents are powered by **BeNotified**.  
+Be Observant keeps permission checks, scope enforcement, and audit logging while proxying alert APIs.
 
-![alt text](assets/alerts-board.png)
+- BeNotified repo: [github.com/StefanKumarasinghe/benotified](https://github.com/StefanKumarasinghe/benotified)
 
-# InOps
+![Alerts board](assets/alerts-board.png)
+![InOps board](assets/inops-board.png)
 
-With Be Notified as the backbone, Be Observant Proxies and scopes Logs based on the API key to enforce multi-tenacy, visit https://github.com/StefanKumarasinghe/benotified
+## Grafana Visualization
 
-![alt text](assets/inops-board.png)
+Grafana access is proxied through an authenticated NGINX layer with RBAC and visibility scoping.
 
-# Grafana for Visualization
-
-With Grafana as the backbone, Be Observant Proxies and scopes Logs based on the API key and permissions by proxing the request via an nginx proxy
-
-![alt text](assets/grafana-dashboards.png)
-
-The proxy powered by nginx to limit specific routes the admin allows and scoping to the visibility the user has
-
-![alt text](assets/grafana-proxy.png)
+![Grafana dashboards](assets/grafana-dashboards.png)
+![Grafana proxy](assets/grafana-proxy.png)
 
 ---
 
@@ -56,16 +45,17 @@ The proxy powered by nginx to limit specific routes the admin allows and scoping
 |---|---|---|
 | `beobservant` | Core REST API (FastAPI) | `4319` |
 | `benotified` | Internal alerting/incident service | `4323` |
+| `becertain` | Internal RCA analytics engine | internal |
 | `gateway-auth` | OTLP token validation service | internal |
 | `grafana-proxy` | Authenticated Grafana reverse proxy | `8080` |
 | `otlp-gateway` | Envoy-based OTLP ingestion gateway | `4320` |
 | `otel-agent` | OpenTelemetry collector | `4317` / `4318` |
-| `loki` | Log storage and querying | internal |
-| `tempo` | Distributed trace storage | internal |
-| `mimir` | Long-term metrics storage | internal |
-| `alertmanager` | Alert routing and silences | internal |
+| `loki` | Log storage/query | internal |
+| `tempo` | Trace storage/query | internal |
+| `mimir` | Metrics storage/query | internal |
+| `alertmanager` | Alert routing/silences | internal |
 | `postgres` | Primary database | internal |
-| `redis` | Rate limiting and caching | internal |
+| `redis` | Rate limiting/cache | internal |
 
 ---
 
@@ -77,15 +67,13 @@ The proxy powered by nginx to limit specific routes the admin allows and scoping
 cp .env.example .env
 ```
 
-Edit `.env` and set the required variables:
-
 Generate a Fernet key for `DATA_ENCRYPTION_KEY`:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-use that key to update the DATA_ENCRYPTION_KEY
+Set that value in `.env`.
 
 ### 2. Start the stack
 
@@ -93,87 +81,146 @@ use that key to update the DATA_ENCRYPTION_KEY
 docker compose up -d --build
 ```
 
-### 3. Verify
+### 3. Verify health
 
 ```bash
 curl -s http://localhost:4319/health
 ```
 
-### 4. Access
+### 4. Access interfaces
 
 | Interface | URL |
 |---|---|
-| UI | http://localhost:5173 |
-| API Docs | http://localhost:4319/docs |
-| Grafana | http://localhost:8080/grafana/ |
+| UI | [http://localhost:5173](http://localhost:5173) |
+| API Docs | [http://localhost:4319/docs](http://localhost:4319/docs) |
+| Grafana | [http://localhost:8080/grafana/](http://localhost:8080/grafana/) |
 
 ---
 
 ## Local Development
 
 ```bash
-docker compose up --build -d
+docker compose up -d --build
 ```
 
-Your ui should be running at localhost:5173 unless it is not freed, also ensure if you enable CORS, to add `localhost:5173` to the environment page
+- UI runs on `localhost:5173` by default.
+- If CORS is enabled, include `http://localhost:5173` in allowed origins.
+- BeNotified runs as an internal service and should not be exposed publicly.
+- BeCertain runs as an internal service and should not be exposed publicly.
+- Public alert APIs remain under `/api/alertmanager/*` on Be Observant.
+- RCA APIs are exposed through Be Observant under `/api/becertain/*`.
 
-To get access to Be Notified and Be Certain you must use these links https://github.com/StefanKumarasinghe/becertain/ and https://github.com/StefanKumarasinghe/benotifed and set it up in the repo and adjust the file names
+Related repos:
 
-Be Notified runs as an internal service and should not be exposed publicly. Main server proxies `/api/alertmanager/*` while preserving permission/scope checks and main audit semantics.
+- BeCertain: [github.com/StefanKumarasinghe/becertain](https://github.com/StefanKumarasinghe/becertain)
+- BeNotified: [github.com/StefanKumarasinghe/benotified](https://github.com/StefanKumarasinghe/benotified)
 
 ---
 
 ## OTLP Ingestion
 
+Send telemetry to gateway port `4320` and include:
 
-Send telemetry to the gateway on port `4320`. Include your token in every request, this will be generated on your ui
-
-![alt text](assets/auth-otlp.png)
-
-```
+```http
 x-otlp-token: <your-token>
 ```
 
-The gateway validates the token and maps the request to the correct tenant and organisation. Historically the gateway queried Postgres directly, but the current implementation is completely **database‑free**; it uses Redis for caching and/or rate limiting and an HTTP call to the main server for token resolution. This simplifies deployment and allows the gateway to run in environments where database access is restricted. See `GATEWAY_AUTH_API_URL`, `RATE_LIMIT_REDIS_URL`, and `TOKEN_CACHE_REDIS_URL` for configuration. To enforce a Redis-only rate limiter (no in-memory fallback) set `GATEWAY_RATE_LIMIT_STRICT=true`. The OTLP token is your API key — configure it on the collector side and never share it publicly. It maps internally to an `X-Org-Scope-ID` that scopes all data access within the multi-tenant ecosystem.
+![OTLP auth token](assets/auth-otlp.png)
+
+Gateway behavior:
+
+- Validates token and resolves tenant/org scope
+- Uses Redis for cache/rate-limit behavior
+- Resolves token context via HTTP to the main server (no direct DB dependency in gateway)
+
+Key settings:
+
+- `GATEWAY_AUTH_API_URL`
+- `RATE_LIMIT_REDIS_URL`
+- `TOKEN_CACHE_REDIS_URL`
+- `GATEWAY_RATE_LIMIT_STRICT=true` for Redis-only limiter mode
 
 ---
 
 ## Authentication
 
-**Local (default)** — bcrypt password + JWT (RS256 / ES256) with MFA/TOTP. The default admin account requires MFA to be configured on first login.
+Local mode (default):
 
-**OIDC / Keycloak** — set `AUTH_PROVIDER=keycloak` and configure:
+- bcrypt password auth
+- JWT (RS256/ES256)
+- MFA/TOTP (admin setup required on first login)
+
+OIDC/Keycloak mode:
 
 ```env
+AUTH_PROVIDER=keycloak
 OIDC_ISSUER_URL=
 OIDC_CLIENT_ID=
 OIDC_CLIENT_SECRET=
 AUTH_PASSWORD_FLOW_ENABLED=false
 ```
 
-OIDC endpoints: `POST /api/auth/oidc/authorize-url`, `POST /api/auth/oidc/exchange`, `GET /api/auth/mode`
+OIDC endpoints:
+
+- `POST /api/auth/oidc/authorize-url`
+- `POST /api/auth/oidc/exchange`
+- `GET /api/auth/mode`
+
+---
+
+## RCA Console (BeCertain via Be Observant)
+
+- UI route: `/rca`
+- Be Observant proxy base: `/api/becertain`
+- Slow full analysis uses async jobs:
+  - `POST /api/becertain/analyze/jobs`
+  - `GET /api/becertain/analyze/jobs`
+  - `GET /api/becertain/analyze/jobs/{job_id}`
+  - `GET /api/becertain/analyze/jobs/{job_id}/result`
+- Fast read APIs are also proxied through `/api/becertain/*` (correlation, topology, causal, forecast, SLO, anomalies, ML weights, deployments).
+
+Required environment settings (shared across Be Observant + BeCertain):
+
+- `BECERTAIN_URL=http://becertain:4322`
+- `BECERTAIN_SERVICE_TOKEN`
+- `BECERTAIN_EXPECTED_SERVICE_TOKEN`
+- `BECERTAIN_CONTEXT_SIGNING_KEY`
+- `BECERTAIN_CONTEXT_VERIFY_KEY`
+- `BECERTAIN_CONTEXT_ISSUER=beobservant-main`
+- `BECERTAIN_CONTEXT_AUDIENCE=becertain`
+- `BECERTAIN_CONTEXT_ALGORITHM=HS256`
+- `BECERTAIN_CONTEXT_ALGORITHMS=HS256`
+- `BECERTAIN_TLS_ENABLED=false` (proxy outbound TLS verification)
+- `BECERTAIN_SSL_ENABLED=false` (optional inbound TLS on BeCertain server)
+- `BECERTAIN_ANALYZE_STORAGE_PATH=./data/becertain_jobs` (disk cache for job metadata + reports)
+- `BECERTAIN_ANALYZE_JOB_TTL_SECONDS=3600` (metadata retention)
+- `BECERTAIN_ANALYZE_REPORT_RETENTION_DAYS=7` (persisted report retention)
 
 ---
 
 ## Security Highlights
 
-- Asymmetric JWT signing (RS256 / ES256) — keys validated at startup
+- Asymmetric JWT signing (RS256/ES256)
 - MFA/TOTP with encrypted secret storage
-- Role-based access control with fine-grained Grafana proxy RBAC
-- Immutable audit logs enforced by a Postgres DB trigger
-- Per-user and per-IP rate limiting with Redis backend and in-memory fallback
-- IP allowlists for all sensitive public endpoints
-- Request payload size limits and concurrency backpressure middleware
-- Multi-tenant isolation: tenant and org scoping on all resources and API keys
-- Vault compatibility: If you don't want to load using env keys you can configure a VAULT ROLE to fetch sensitive data from there
+- RBAC with scoped Grafana proxy access
+- Immutable audit logs (DB trigger enforcement)
+- Per-user/per-IP rate limiting (Redis + fallback modes)
+- IP allowlists for sensitive endpoints
+- Request size limits and concurrency backpressure
+- Tenant/org isolation across APIs and API keys
+- Internal BeCertain authentication using service token + signed context JWT
+- Vault-based secret loading support
 
-> **Secrets:** Sensitive values (DB URL, JWT keys, SMTP passwords, API keys) can be provided via environment variables or fetched from a secrets backend. Set `VAULT_ENABLED=true` and provide `VAULT_ADDR`/AppRole or token to load secrets from HashiCorp Vault. See `USER_GUIDE.md` → "Secret management / Vault" for details.
+> Secrets (DB URL, keys, passwords, API keys) can be provided via env vars or Vault.  
+> Set `VAULT_ENABLED=true` and configure `VAULT_ADDR` with AppRole or token auth.  
+> See [`USER_GUIDE.md`](./USER_GUIDE.md) for details.
 
 ---
 
-## Testing & Load Generation
+## Testing and Load Generation
 
-A default OTel agent and canary log/trace generators are included and run automatically with the stack, you may comment that out if you dont want it. You can tweak the generator at `tests/start.sh`
+The default stack includes an OTel agent and canary log/trace generators.  
+You can tune or disable generator behavior in `tests/start.sh`.
 
 ---
 
@@ -181,8 +228,8 @@ A default OTel agent and canary log/trace generators are included and run automa
 
 ```bash
 docker compose down       # stop services, keep volumes
-docker compose down -v    # stop services and remove all volumes (including user data)
-# bash fresh.sh will create a fresh DB and erase all volumes
+docker compose down -v    # stop services and remove volumes
+# bash fresh.sh           # recreate from a fresh state
 ```
 
 ---
@@ -190,21 +237,22 @@ docker compose down -v    # stop services and remove all volumes (including user
 ## Production Checklist
 
 - [ ] Set `JWT_AUTO_GENERATE_KEYS=false` and provide explicit PEM keys
-- [ ] Set `DEFAULT_ADMIN_BOOTSTRAP_ENABLED=false` and provision admin via automation
+- [ ] Set `DEFAULT_ADMIN_BOOTSTRAP_ENABLED=false`
 - [ ] Configure `DATA_ENCRYPTION_KEY` for MFA/TOTP secret encryption
 - [ ] Set `REQUIRE_TOTP_ENCRYPTION_KEY=true`
 - [ ] Configure IP allowlists: `WEBHOOK_IP_ALLOWLIST`, `GATEWAY_IP_ALLOWLIST`, `AUTH_PUBLIC_IP_ALLOWLIST`, `GRAFANA_PROXY_IP_ALLOWLIST`
 - [ ] Set `REQUIRE_CLIENT_IP_FOR_PUBLIC_ENDPOINTS=true`
-- [ ] Set `TRUST_PROXY_HEADERS=false` unless behind a verified reverse proxy
-- [ ] Configure Redis for rate limiting: `RATE_LIMIT_BACKEND=redis`
-- [ ] Terminate TLS at your load balancer or edge proxy
+- [ ] Set `TRUST_PROXY_HEADERS=false` unless behind a trusted reverse proxy
+- [ ] Configure Redis rate limiting: `RATE_LIMIT_BACKEND=redis`
+- [ ] Terminate TLS at edge/load balancer
 - [ ] Set `DB_AUTO_CREATE_SCHEMA=false` after initial migration
-- [ ] Rotate all default credentials immediately
+- [ ] Configure BeCertain trust chain: `BECERTAIN_SERVICE_TOKEN`, `BECERTAIN_EXPECTED_SERVICE_TOKEN`, `BECERTAIN_CONTEXT_SIGNING_KEY`, `BECERTAIN_CONTEXT_VERIFY_KEY`
+- [ ] Keep BeCertain internal-only (no public host port)
+- [ ] Rotate all default credentials
 
 ---
 
 ## Documentation
 
-Full user and administrator guidance is in [`USER_GUIDE.md`](./USER_GUIDE.md).
-
-Service-specific notes for the internal alerting engine are in [`BeNotified/README.md`](./BeNotified/README.md).
+- Main guide: [`USER_GUIDE.md`](./USER_GUIDE.md)
+- BeNotified service notes: [`BeNotified/README.md`](./BeNotified/README.md)

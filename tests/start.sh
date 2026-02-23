@@ -13,9 +13,9 @@ done
 echo "OTEL Collector ready, starting generators..."
 
 # traces.py args: <endpoint> <count> <parallel> <loops>  (loops=0 = infinite)
-python3 /app/traces.py 127.0.0.1:4318 1 1 0 &
+python3 /app/traces.py 127.0.0.1:4318 100 1 0 &
 
 # logs.py args: <endpoint> <count> <parallel> <loops> (loops=0 = infinite)
-python3 /app/logs.py 127.0.0.1:4318 1 1 0 &
+python3 /app/logs.py 127.0.0.1:4318 100 1 0 &
 
 wait $OTEL_PID

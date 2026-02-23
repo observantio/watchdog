@@ -24,6 +24,7 @@ When OIDC is active and password fallback is disabled, self-registration is bloc
 | Datasources | Configure and query metrics, logs, and trace data sources |
 | Logs (Loki) | Execute log queries with advanced filtering |
 | Traces (Tempo) | Search and analyse distributed traces and spans |
+| RCA (BeCertain) | Run async root-cause analysis reports and review anomalies, causal links, and topology |
 | Alerts (Alertmanager) | Manage alert rules, silences, and notification channels |
 | Access Management | Administer users, groups, and API keys |
 
@@ -74,6 +75,34 @@ If a resource is inaccessible, check its visibility setting and your group membe
 **Logs** — Select the target service from the top-right service selector, then filter and query logs using the available controls.
 
 **Traces** — Select the target service from the top-right service selector, then filter traces as needed. A trace map is available to visualise multiple traces and traces with multiple spans.
+
+---
+
+## RCA Console
+
+The **RCA** page (`/rca`) creates and monitors asynchronous analysis jobs through Be Observant.
+
+- Job APIs are exposed on Be Observant under `/api/becertain/analyze/jobs*`
+- The UI never talks to BeCertain directly
+- Full reports include anomaly groups, ranked root causes, topology blast radius, forecast/SLO, and causal outputs
+- Tenant scope is injected server-side; client-provided `tenant_id` is ignored
+
+Key proxy/auth variables:
+
+```env
+BECERTAIN_URL=http://becertain:4322
+BECERTAIN_SERVICE_TOKEN=
+BECERTAIN_EXPECTED_SERVICE_TOKEN=
+BECERTAIN_CONTEXT_SIGNING_KEY=
+BECERTAIN_CONTEXT_VERIFY_KEY=
+BECERTAIN_CONTEXT_ISSUER=beobservant-main
+BECERTAIN_CONTEXT_AUDIENCE=becertain
+BECERTAIN_TLS_ENABLED=false
+BECERTAIN_SSL_ENABLED=false
+BECERTAIN_ANALYZE_STORAGE_PATH=./data/becertain_jobs
+BECERTAIN_ANALYZE_JOB_TTL_SECONDS=3600
+BECERTAIN_ANALYZE_REPORT_RETENTION_DAYS=7
+```
 
 ---
 
@@ -191,6 +220,15 @@ TOTP secrets are stored encrypted. Recovery codes are generated at enrolment and
 ### API Keys & OTLP Tokens
 
 All tokens are tenant-scoped and revocable from the UI or API. OTLP token validation is handled by the `gateway-auth-service`.
+
+### BeCertain Internal Trust
+
+BeCertain endpoints require:
+
+- `X-Service-Token` (shared secret)
+- Bearer context JWT signed by Be Observant (`tenant_id`, `org_id`, user claims)
+
+Requests without valid internal credentials are rejected before route execution.
 
 ### Audit Logs
 

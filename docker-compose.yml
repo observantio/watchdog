@@ -7,6 +7,7 @@ volumes:
   alertmanager:
   postgres_data:
   redis_data:
+  becertain_jobs_data:
 
 services:
   postgres:
@@ -35,6 +36,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
+    user: "0:0"
     env_file:
       - .env
     ports:
@@ -46,9 +48,14 @@ services:
         condition: service_started
       benotified:
         condition: service_started
+      becertain:
+        condition: service_started
     environment:
       RATE_LIMIT_BACKEND: redis
       RATE_LIMIT_REDIS_URL: redis://redis:6379/0
+      BECERTAIN_ANALYZE_STORAGE_PATH: /var/lib/beobservant/becertain-jobs
+    volumes:
+      - becertain_jobs_data:/var/lib/beobservant/becertain-jobs
     networks: [obs]
     restart: unless-stopped
     healthcheck:
@@ -111,8 +118,6 @@ services:
     env_file:
       - .env         
     networks: [obs]
-    ports:
-      - "4322:4322"
     depends_on:
       loki:
         condition: service_started

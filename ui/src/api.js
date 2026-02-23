@@ -103,9 +103,10 @@ async function requestWithHeaders(path, opts = {}, headers = {}) {
 
 async function request(path, opts = {}) {
   const isLokiTempo = path.includes('/api/loki') || path.includes('/api/tempo')
+  const isBeCertain = path.includes('/api/becertain')
   const isAlertmanager = path.includes('/api/alertmanager')
 
-  if (isLokiTempo && userOrgIds && userOrgIds.length > 0) {
+  if ((isLokiTempo || isBeCertain) && userOrgIds && userOrgIds.length > 0) {
     return requestWithHeaders(path, opts, { 'X-Scope-OrgID': userOrgIds[0] })
   }
 
@@ -636,6 +637,78 @@ export async function fetchTempoServices() {
 }
 export async function getTrace(traceID) {
   return request(`/api/tempo/traces/${encodeURIComponent(traceID)}`)
+}
+
+// BeCertain / RCA
+export async function createRcaAnalyzeJob(payload) {
+  return requestJson('/api/becertain/analyze/jobs', { payload })
+}
+
+export async function listRcaJobs(params = {}) {
+  const search = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && `${value}` !== '') {
+      search.set(key, String(value))
+    }
+  })
+  const qs = search.toString()
+  return request(`/api/becertain/analyze/jobs${qs ? `?${qs}` : ''}`)
+}
+
+export async function getRcaJob(jobId) {
+  return request(`/api/becertain/analyze/jobs/${encodeURIComponent(jobId)}`)
+}
+
+export async function getRcaJobResult(jobId) {
+  return request(`/api/becertain/analyze/jobs/${encodeURIComponent(jobId)}/result`)
+}
+
+export async function fetchRcaMetricAnomalies(payload) {
+  return requestJson('/api/becertain/anomalies/metrics', { payload })
+}
+
+export async function fetchRcaLogPatterns(payload) {
+  return requestJson('/api/becertain/anomalies/logs/patterns', { payload })
+}
+
+export async function fetchRcaLogBursts(payload) {
+  return requestJson('/api/becertain/anomalies/logs/bursts', { payload })
+}
+
+export async function fetchRcaTraceAnomalies(payload) {
+  return requestJson('/api/becertain/anomalies/traces', { payload })
+}
+
+export async function fetchRcaCorrelate(payload) {
+  return requestJson('/api/becertain/correlate', { payload })
+}
+
+export async function fetchRcaTopology(payload) {
+  return requestJson('/api/becertain/topology/blast-radius', { payload })
+}
+
+export async function fetchRcaSloBurn(payload) {
+  return requestJson('/api/becertain/slo/burn', { payload })
+}
+
+export async function fetchRcaForecast(payload) {
+  return requestJson('/api/becertain/forecast/trajectory', { payload })
+}
+
+export async function fetchRcaGranger(payload) {
+  return requestJson('/api/becertain/causal/granger', { payload })
+}
+
+export async function fetchRcaBayesian(payload) {
+  return requestJson('/api/becertain/causal/bayesian', { payload })
+}
+
+export async function getRcaMlWeights() {
+  return request('/api/becertain/ml/weights')
+}
+
+export async function getRcaDeployments() {
+  return request('/api/becertain/events/deployments')
 }
 
 // Grafana
