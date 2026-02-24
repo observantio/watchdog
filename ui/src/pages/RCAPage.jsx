@@ -93,8 +93,6 @@ export default function RCAPage() {
     return `${String(statusSource.status || '').toUpperCase()}${statusSource.duration_ms ? ` • ${statusSource.duration_ms}ms` : ''}`
   }, [reportMeta, selectedJob])
 
-  // prepare a simplified set of stats from the last loaded report so we can
-  // display them as cards near the top of the page (mimicking Loki/Tempo).
   const reportStats = useMemo(() => {
     if (!report) return null
     return [
@@ -130,8 +128,6 @@ export default function RCAPage() {
   const ownerUserId = reportMeta?.requested_by || selectedJob?.requested_by
   const currentUserId = user?.id || user?.user_id || null
   const canDelete = Boolean(selectedReportId && ownerUserId && currentUserId === ownerUserId)
-
-  // remember the selected job id in storage so it survives page refreshes.
   useEffect(() => {
     if (!selectedJobId) return
     try {
@@ -141,9 +137,6 @@ export default function RCAPage() {
     }
   }, [selectedJobId])
 
-  // when the job list updates we may have a previously-stored id; if so and the
-  // job still exists we want to restore that selection rather than the default
-  // first item pushed by the hook.
   useEffect(() => {
     try {
       const stored = localStorage.getItem(JOB_STORAGE_KEY)
@@ -275,12 +268,11 @@ export default function RCAPage() {
         <Button variant="secondary" size='sm' onClick={refreshJobs}>Refresh Jobs</Button>
       </PageHeader>
 
-      {/* show stats for the last report right under the header; these mirror the
-          content that appears inside the modal summary but are always visible */}
       {report && (
         <div className="mb-6">
+          <span className="text-xs text-sre-text-muted">Based on the previous RCA job you ran</span>
           {reportStats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               {reportStats.map((stat) => (
                 <Card
                   key={stat.label}
@@ -294,7 +286,6 @@ export default function RCAPage() {
           )}
         </div>
       )}
-
       <section className="space-y-3">
         <RcaJobComposer
           onCreate={createJob}

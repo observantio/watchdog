@@ -8,5 +8,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from .agent_models import *
 from .becertain_models import *
+from .grafana_request_models import *
 from .loki_models import *
 from .tempo_models import *

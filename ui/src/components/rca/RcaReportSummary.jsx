@@ -15,7 +15,6 @@ export default function RcaReportSummary({ report, compact = false }) {
     <>
       <h3 className="text-lg text-sre-text font-semibold mb-2">Report Summary</h3>
       <p className="text-sm text-sre-text-muted mb-4">{report.summary || 'No summary available'}</p>
-      {/* metrics always displayed in a horizontal row, wrapping on smaller widths; each card flexes to fill available space */}
       <div className="flex flex-wrap gap-3">
         <div className="flex-1 min-w-[150px]"><MetricCard label="Overall Severity" value={String(report.overall_severity || 'unknown').toUpperCase()} status={severityStatus(report.overall_severity)} /></div>
         <div className="flex-1 min-w-[150px]"><MetricCard label="Metric Anomalies" value={report.metric_anomalies?.length || 0} status="info" /></div>

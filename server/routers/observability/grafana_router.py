@@ -10,12 +10,19 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, JSONResponse
-from typing import Optional, List, Dict, cast
+from typing import List, Optional
 import logging
 
 from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardUpdate, DashboardSearchResult
 from models.grafana.grafana_datasource_models import Datasource, DatasourceCreate, DatasourceUpdate
 from models.grafana.grafana_folder_models import Folder
+from models.observability.grafana_request_models import (
+    GrafanaBootstrapSessionRequest,
+    GrafanaCreateFolderRequest,
+    GrafanaDashboardPayloadRequest,
+    GrafanaDatasourceQueryRequest,
+    GrafanaHiddenToggleRequest,
+)
 from services.grafana.route_payloads import (
     parse_dashboard_create_payload,
     parse_dashboard_update_payload,
@@ -102,7 +109,7 @@ async def grafana_auth(
 @router.post("/bootstrap-session")
 async def bootstrap_grafana_session(
     request: Request,
-    payload: Dict = Body(default={}),
+    payload: GrafanaBootstrapSessionRequest = Body(default_factory=GrafanaBootstrapSessionRequest),
     _current_user: TokenData = Depends(require_authenticated_with_scope("grafana")),
 ):
     enforce_public_endpoint_security(
@@ -114,7 +121,7 @@ async def bootstrap_grafana_session(
         fallback_mode="allow",
     )
 
-    next_path = _normalize_grafana_next_path(payload.get("next") if isinstance(payload, dict) else None)
+    next_path = _normalize_grafana_next_path(payload.next)
     auth_header = request.headers.get("Authorization", "")
     token = None
     if auth_header.startswith("Bearer "):
@@ -142,20 +149,20 @@ async def bootstrap_grafana_session(
 @router.post("/ds/query")
 @handle_route_errors()
 async def datasource_query(
-    payload: Dict = Body(...),
+    payload: GrafanaDatasourceQueryRequest,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.QUERY_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
 ):
     is_admin = is_admin_user(current_user)
     await grafana_proxy_service.enforce_datasource_query_access(
         db=db,
-        payload=payload,
+        payload=payload.model_dump(exclude_none=True),
         user_id=current_user.user_id,
         tenant_id=current_user.tenant_id,
         group_ids=user_group_ids(current_user),
         is_admin=is_admin,
     )
-    return await grafana_service.query_datasource(payload)
+    return await grafana_service.query_datasource(payload.model_dump(exclude_none=True))
 
 
 # NOTE: Static sub-paths (/meta/filters) must be declared before parameterised
@@ -232,7 +239,7 @@ async def get_dashboard(
 @router.post("/dashboards")
 @handle_route_errors()
 async def create_dashboard(
-    payload: Dict = Body(...),
+    payload: GrafanaDashboardPayloadRequest,
     visibility: str = Query("private"),
     shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(
@@ -241,7 +248,7 @@ async def create_dashboard(
     db: Session = Depends(get_db),
 ):
     validate_visibility(visibility)
-    dashboard_create = parse_dashboard_create_payload(payload)
+    dashboard_create = parse_dashboard_create_payload(payload.model_dump(exclude_none=True))
     is_admin = is_admin_user(current_user)
     result = await grafana_proxy_service.create_dashboard(
         db=db, dashboard_create=dashboard_create, user_id=current_user.user_id,
@@ -258,7 +265,7 @@ async def create_dashboard(
 @handle_route_errors()
 async def update_dashboard(
     uid: str,
-    payload: Dict = Body(...),
+    payload: GrafanaDashboardPayloadRequest,
     visibility: Optional[str] = Query(None),
     shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(
@@ -267,7 +274,7 @@ async def update_dashboard(
     db: Session = Depends(get_db),
 ):
     validate_visibility(visibility)
-    dashboard_update = parse_dashboard_update_payload(payload)
+    dashboard_update = parse_dashboard_update_payload(payload.model_dump(exclude_none=True))
     is_admin = is_admin_user(current_user)
     result = await grafana_proxy_service.update_dashboard(
         db=db, uid=uid, dashboard_update=dashboard_update, user_id=current_user.user_id,
@@ -299,7 +306,7 @@ async def delete_dashboard(
 @handle_route_errors()
 async def hide_dashboard(
     uid: str,
-    hidden: bool = Body(True, embed=True),
+    payload: GrafanaHiddenToggleRequest = Body(default_factory=GrafanaHiddenToggleRequest),
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_DASHBOARDS, Permission.WRITE_DASHBOARDS], "grafana")
     ),
@@ -308,11 +315,11 @@ async def hide_dashboard(
     success = await run_in_threadpool(
         grafana_proxy_service.toggle_dashboard_hidden,
         db=db, uid=uid, user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id, hidden=hidden,
+        tenant_id=current_user.tenant_id, hidden=payload.hidden,
     )
     if not success:
         raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found")
-    return {"status": "success", "hidden": hidden}
+    return {"status": "success", "hidden": payload.hidden}
 
 
 # Static datasource sub-paths before /{uid}
@@ -466,7 +473,7 @@ async def delete_datasource(
 @handle_route_errors()
 async def hide_datasource(
     uid: str,
-    hidden: bool = Body(True, embed=True),
+    payload: GrafanaHiddenToggleRequest = Body(default_factory=GrafanaHiddenToggleRequest),
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_DATASOURCES, Permission.CREATE_DATASOURCES], "grafana")
     ),
@@ -475,11 +482,11 @@ async def hide_datasource(
     success = await run_in_threadpool(
         grafana_proxy_service.toggle_datasource_hidden,
         db=db, uid=uid, user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id, hidden=hidden,
+        tenant_id=current_user.tenant_id, hidden=payload.hidden,
     )
     if not success:
         raise HTTPException(status_code=404, detail=f"Datasource {uid} not found")
-    return {"status": "success", "hidden": hidden}
+    return {"status": "success", "hidden": payload.hidden}
 
 
 @router.get("/folders", response_model=List[Folder])
@@ -494,12 +501,12 @@ async def get_folders(
 @router.post("/folders", response_model=Folder)
 @handle_route_errors()
 async def create_folder(
-    title: str = Body(..., embed=True),
+    payload: GrafanaCreateFolderRequest,
     current_user: TokenData = Depends(
         require_permission_with_scope(Permission.CREATE_FOLDERS, "grafana")
     ),
 ):
-    result = await grafana_service.create_folder(title)
+    result = await grafana_service.create_folder(payload.title)
     if not result:
         raise HTTPException(status_code=500, detail="Failed to create folder")
     return result

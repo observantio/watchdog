@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AnalyzeRequestPayload(BaseModel):
@@ -30,6 +30,12 @@ class AnalyzeRequestPayload(BaseModel):
         if self.start >= self.end:
             raise ValueError("start must be less than end")
         return self
+
+
+class AnalyzeProxyPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    tenant_id: Optional[str] = None
 
 
 class AnalyzeJobStatus(str, Enum):
