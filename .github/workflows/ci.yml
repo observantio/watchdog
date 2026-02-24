@@ -52,50 +52,6 @@ jobs:
       - name: Run server tests
         run: pytest -q
 
-  becertain:
-    name: BeCertain tests (pytest)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: BeCertain
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest pytest-asyncio
-
-      - name: Run BeCertain tests
-        run: pytest -q tests
-
-  benotified:
-    name: BeNotified tests (pytest)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: BeNotified
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest pytest-asyncio
-
-      - name: Run BeNotified tests
-        run: pytest -q tests
-
   security:
     name: Security scans
     runs-on: ubuntu-latest

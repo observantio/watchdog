@@ -1,4 +1,4 @@
-name: Publish Docker Images
+name: Publish Server Image
 
 on:
   workflow_run:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   publish:
-    name: Build and publish service images
+    name: Build and publish server image
     runs-on: ubuntu-latest
     if: >
       github.event.workflow_run.conclusion == 'success' &&
@@ -37,23 +37,3 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_NAMESPACE }}/beobservant-server:latest
             ${{ secrets.DOCKERHUB_NAMESPACE }}/beobservant-server:${{ github.event.workflow_run.head_sha }}
-
-      - name: Build and push beobservant-becertain
-        uses: docker/build-push-action@v6
-        with:
-          context: ./BeCertain
-          file: ./BeCertain/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_NAMESPACE }}/beobservant-becertain:latest
-            ${{ secrets.DOCKERHUB_NAMESPACE }}/beobservant-becertain:${{ github.event.workflow_run.head_sha }}
-
-      - name: Build and push beobservant-benotified
-        uses: docker/build-push-action@v6
-        with:
-          context: ./BeNotified
-          file: ./BeNotified/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_NAMESPACE }}/beobservant-benotified:latest
-            ${{ secrets.DOCKERHUB_NAMESPACE }}/beobservant-benotified:${{ github.event.workflow_run.head_sha }}
