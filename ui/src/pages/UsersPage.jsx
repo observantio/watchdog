@@ -11,6 +11,7 @@ import TwoFactorModal from '../components/TwoFactorModal'
 import * as api from '../api'
 import { USER_ROLES } from '../utils/constants'
 import { getRoleVariant, getUserInitials } from '../components/users/userUiUtils'
+import { copyToClipboard as clipboardCopy } from '../utils/helpers'
 
 export default function UsersPage() {
   const toast = useToast();
@@ -37,13 +38,21 @@ export default function UsersPage() {
     message: '',
     onConfirm: null
   })
+  const [resetTargetUser, setResetTargetUser] = useState(null)
+  const [resetInProgress, setResetInProgress] = useState(false)
+  const [tempPasswordResult, setTempPasswordResult] = useState(null)
   const [selectedUser, setSelectedUser] = useState(null)
   const [showTwoFactor, setShowTwoFactor] = useState(false)
   
   const { user: currentUser, hasPermission } = useAuth()
 
-  const canManageUsers = hasPermission('manage:users')
   const isCurrentUserAdmin = currentUser?.role === 'admin'
+  const canManageUsers = isCurrentUserAdmin || hasPermission('manage:users') || hasPermission('manage:tenants')
+  const canDeleteUsers = isCurrentUserAdmin
+  const canResetPasswords = isCurrentUserAdmin || hasPermission('manage:users') || hasPermission('manage:tenants')
+  const canEditAllUserFields = isCurrentUserAdmin || hasPermission('manage:users')
+  const canCreateUsers = isCurrentUserAdmin || hasPermission('manage:users') || hasPermission('create:users')
+  const canEditUserPermissions = isCurrentUserAdmin || hasPermission('manage:users') || hasPermission('update:user_permissions')
 
 
   const loadData = useCallback(async () => {
@@ -52,8 +61,12 @@ export default function UsersPage() {
       if (canManageUsers) {
         const usersData = await api.getUsers()
         setUsers(usersData)
-        const groupsData = await api.getGroups()
-        setGroups(groupsData)
+        try {
+          const groupsData = await api.getGroups()
+          setGroups(groupsData)
+        } catch {
+          setGroups([])
+        }
       }
     } catch (error) {
       setUsers([])
@@ -92,6 +105,32 @@ export default function UsersPage() {
     setEditingUser(user)
   }
 
+  const handleResetPasswordTemp = async (user) => {
+    setResetTargetUser(user)
+  }
+
+  const confirmResetPasswordTemp = async () => {
+    if (!resetTargetUser) return
+    setResetInProgress(true)
+    try {
+      const res = await api.resetUserPasswordTemp(resetTargetUser.id)
+      setTempPasswordResult({
+        userId: resetTargetUser.id,
+        username: resetTargetUser.username,
+        temporary_password: res?.temporary_password || '',
+        email_sent: !!res?.email_sent,
+        message: res?.message || 'Temporary password generated.',
+      })
+      toast.success('Temporary password generated')
+      setResetTargetUser(null)
+      loadData()
+    } catch (error) {
+      toast.error('Error resetting password: ' + (error?.body?.detail || error?.message || 'Unknown error'))
+    } finally {
+      setResetInProgress(false)
+    }
+  }
+
   const openEditUser = (user) => {
     setEditUserData({
       id: user.id,
@@ -99,25 +138,31 @@ export default function UsersPage() {
       email: user.email || '',
       full_name: user.full_name || '',
       role: user.role || 'user',
-      is_active: user.is_active ?? true
+      is_active: user.is_active ?? true,
+      must_setup_mfa: user.must_setup_mfa ?? false,
     })
     setShowEditModal(true)
   }
 
   const closeEditUser = () => {
     setShowEditModal(false)
-    setEditUserData({ id: '', username: '', email: '', full_name: '', role: 'user', is_active: true })
+    setEditUserData({ id: '', username: '', email: '', full_name: '', role: 'user', is_active: true, must_setup_mfa: false })
   }
 
   const handleUpdateUser = async () => {
     try {
-      await api.updateUser(editUserData.id, {
-        email: editUserData.email,
-        full_name: editUserData.full_name,
-        role: editUserData.role,
-        is_active: editUserData.is_active,
-        must_setup_mfa: editUserData.must_setup_mfa,
-      })
+      const payload = canEditAllUserFields
+        ? {
+          email: editUserData.email,
+          full_name: editUserData.full_name,
+          role: editUserData.role,
+          is_active: editUserData.is_active,
+          must_setup_mfa: editUserData.must_setup_mfa,
+        }
+        : {
+          is_active: editUserData.is_active,
+        }
+      await api.updateUser(editUserData.id, payload)
       toast.success('User updated successfully')
       closeEditUser()
       loadData()
@@ -172,9 +217,11 @@ export default function UsersPage() {
         {/* Show header Create button only when there are users or a search is active. When no users exist the centered empty state CTA is shown instead. */}
         {!(users.length === 0 && !searchQuery) && (
           <div className="flex items-center gap-3">
-            <Button onClick={() => setShowCreateModal(true)} size="sm" variant="primary">
-              Create User
-            </Button>
+            {canCreateUsers && (
+              <Button onClick={() => setShowCreateModal(true)} size="sm" variant="primary">
+                Create User
+              </Button>
+            )}
             <Button size="sm" variant="secondary" onClick={() => navigate('/groups')}>
               <span className="material-icons mr-2">groups</span>Groups
             </Button>
@@ -209,7 +256,7 @@ export default function UsersPage() {
                 <div className="text-center py-12">
                   <h3 className="text-lg font-semibold text-sre-text mb-2">{searchQuery ? 'No users found' : 'No users yet'}</h3>
                   <p className="text-sre-text-muted mb-4">{searchQuery ? 'Try a different search term' : 'Create your first user to get started'}</p>
-                  {!searchQuery && (
+                  {!searchQuery && canCreateUsers && (
                     <div>
                       <Button onClick={() => setShowCreateModal(true)}>Create User</Button>
                     </div>
@@ -248,12 +295,26 @@ export default function UsersPage() {
                         <span className="material-icons text-sm" aria-hidden>edit</span>
                         <span>Edit</span>
                       </Button>
-                      <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => handleEditPermissions(u)} aria-label={`Edit permissions for ${u.username}`}>
-                        <span className="material-icons text-sm" aria-hidden>manage_accounts</span>
-                        <span>Permissions</span>
-                      </Button>
-                      {u.id !== currentUser?.id && (
-                        <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-red-500/10 hover:text-red-500 transition-colors" onClick={() => handleDeleteUser(u.id)} disabled={u.role === 'admin' && !isCurrentUserAdmin} aria-label={`Delete ${u.username}`}>
+                      {canEditUserPermissions && (
+                        <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-sre-primary/10 hover:text-sre-primary transition-colors" onClick={() => handleEditPermissions(u)} aria-label={`Edit permissions for ${u.username}`}>
+                          <span className="material-icons text-sm" aria-hidden>manage_accounts</span>
+                          <span>Permissions</span>
+                        </Button>
+                      )}
+                      {u.id !== currentUser?.id && canResetPasswords && u.role !== 'admin' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex items-center gap-1.5 hover:bg-yellow-500/10 hover:text-yellow-600 transition-colors"
+                          onClick={() => handleResetPasswordTemp(u)}
+                          aria-label={`Reset password for ${u.username}`}
+                        >
+                          <span className="material-icons text-sm" aria-hidden>password</span>
+                          <span>Reset Password</span>
+                        </Button>
+                      )}
+                      {u.id !== currentUser?.id && canDeleteUsers && u.role !== 'admin' && (
+                        <Button variant="ghost" size="sm" className="flex items-center gap-1.5 hover:bg-red-500/10 hover:text-red-500 transition-colors" onClick={() => handleDeleteUser(u.id)} aria-label={`Delete ${u.username}`}>
                           <span className="material-icons text-sm" aria-hidden>delete</span>
                           <span>Delete</span>
                         </Button>
@@ -302,6 +363,7 @@ export default function UsersPage() {
                         type="email"
                         value={editUserData.email}
                         onChange={(e) => setEditUserData({ ...editUserData, email: e.target.value })}
+                        disabled={!canEditAllUserFields}
                         required
                       />
                     </div>
@@ -313,6 +375,7 @@ export default function UsersPage() {
                         label="Full Name"
                         value={editUserData.full_name}
                         onChange={(e) => setEditUserData({ ...editUserData, full_name: e.target.value })}
+                        disabled={!canEditAllUserFields}
                       />
                     </div>
                     <HelpTooltip text="The display name for this user, shown throughout the interface." />
@@ -324,7 +387,7 @@ export default function UsersPage() {
                         value={editUserData.role}
                         onChange={(e) => setEditUserData({ ...editUserData, role: e.target.value })}
                         className="w-full px-3 pr-10 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
-                        disabled={editUserData.role === 'admin' && !isCurrentUserAdmin}
+                        disabled={!canEditAllUserFields || (editUserData.role === 'admin' && !isCurrentUserAdmin)}
                       >
                         {USER_ROLES.map(r => (
                           <option key={r.value} value={r.value}>{r.label}</option>
@@ -349,7 +412,7 @@ export default function UsersPage() {
                     checked={editUserData.must_setup_mfa}
                     onChange={() => setEditUserData({ ...editUserData, must_setup_mfa: !editUserData.must_setup_mfa })}
                     label="Require Two‑Factor"
-                    disabled={editUserData.id === currentUser?.id || (editUserData.role === 'admin' && !isCurrentUserAdmin)}
+                    disabled={!canEditAllUserFields || editUserData.id === currentUser?.id || (editUserData.role === 'admin' && !isCurrentUserAdmin)}
                   />
                   <HelpTooltip text="Require this user to enroll in 2FA at next login." />
                 </div>
@@ -423,6 +486,66 @@ export default function UsersPage() {
                   }
                 }}>Reset 2FA</Button>
               )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {resetTargetUser && (
+        <Modal
+          isOpen={!!resetTargetUser}
+          onClose={() => { if (!resetInProgress) setResetTargetUser(null) }}
+          title="Reset User Password"
+          size="md"
+          closeOnOverlayClick={false}
+          footer={
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setResetTargetUser(null)} disabled={resetInProgress}>Cancel</Button>
+              <Button variant="primary" onClick={confirmResetPasswordTemp} loading={resetInProgress}>
+                {resetInProgress ? 'Resetting...' : 'Generate Temporary Password'}
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-sm text-sre-text-muted">
+            This will revoke active sessions immediately and require <strong>{resetTargetUser.username}</strong> to change their password at next login.
+          </p>
+        </Modal>
+      )}
+
+      {tempPasswordResult && (
+        <Modal
+          isOpen={!!tempPasswordResult}
+          onClose={() => setTempPasswordResult(null)}
+          title="Temporary Password Generated"
+          size="md"
+          closeOnOverlayClick={false}
+          footer={
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setTempPasswordResult(null)}>Close</Button>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-sre-text-muted">{tempPasswordResult.message}</p>
+            <div className="p-3 rounded border border-sre-border bg-sre-bg-alt">
+              <div className="text-xs text-sre-text-muted mb-1">Temporary password (shown once)</div>
+              <div className="font-mono text-sm text-sre-text break-all">{tempPasswordResult.temporary_password}</div>
+            </div>
+            <div className="text-xs text-sre-text-muted">
+              Email delivery: {tempPasswordResult.email_sent ? 'sent' : 'not sent'}
+            </div>
+            <div>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  const ok = await clipboardCopy(tempPasswordResult.temporary_password)
+                  if (ok) toast.success('Temporary password copied')
+                  else toast.error('Unable to copy temporary password')
+                }}
+              >
+                Copy Temporary Password
+              </Button>
             </div>
           </div>
         </Modal>

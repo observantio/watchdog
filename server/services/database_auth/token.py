@@ -49,6 +49,7 @@ def decode_token(service, token: str) -> Optional[TokenData]:
         return None
 
     token_data = build_token_data_for_user(service, user)
+    token_data.iat = claims.get("iat")
 
     known_permissions = {p["name"] for p in service.list_all_permissions()}
     oidc_perms = set(service._extract_permissions_from_oidc_claims(claims)) & known_permissions

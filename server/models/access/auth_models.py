@@ -170,6 +170,7 @@ class TokenData(BaseModel):
     is_superuser: bool = False
     permissions: List[str]
     group_ids: List[str] = Field(default_factory=list)
+    iat: Optional[int] = None
     is_mfa_setup: bool = False  # token used only for MFA setup flows (short‑lived)
 
 

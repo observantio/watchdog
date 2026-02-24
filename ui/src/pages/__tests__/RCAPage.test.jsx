@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, render } from '@testing-library/react'
+import { fireEvent, render, waitFor } from '@testing-library/react'
 import RCAPage from '../RCAPage'
 
 const createJobMock = vi.fn(async () => ({ job_id: 'job-1', status: 'queued' }))
@@ -19,6 +19,7 @@ const jobsState = {
 const reportState = {
   loadingReport: false,
   reportError: null,
+  reportErrorStatus: null,
   report: null,
   reportMeta: null,
   insights: {},
@@ -61,6 +62,7 @@ describe('RCAPage', () => {
     jobsState.selectedJob = null
     reportState.loadingReport = false
     reportState.reportError = null
+    reportState.reportErrorStatus = null
     reportState.report = null
     reportState.reportMeta = null
     reportState.insights = {}
@@ -100,12 +102,36 @@ describe('RCAPage', () => {
     expect(getByText('Duration (s)')).toBeInTheDocument()
     expect(getByText('42')).toBeInTheDocument()
   })
+  it('clears a lookup id from storage when the report cannot be found', async () => {
+    // start with a lookup value persisted
+    localStorage.setItem('rcaPage.reportLookupId', JSON.stringify('bad-id'))
+    reportState.reportError = 'Report not found'
+    reportState.reportErrorStatus = 404
 
+    render(<RCAPage />)
+    // the component should react to the error by clearing both the stored
+    // input and the internal id state so that subsequent mounts are quiet
+    // the value should be reset to an empty string (stored as JSON) rather
+    // than left as the invalid ID
+    await waitFor(() => {
+      expect(localStorage.getItem('rcaPage.reportLookupId')).toBe(JSON.stringify(''))
+    })
+  })
   it('restores selected job id from localStorage when jobs include it', () => {
     localStorage.setItem('rcaPage.selectedJobId', 'stored-job')
     jobsState.jobs = [{ job_id: 'stored-job' }]
 
     render(<RCAPage />)
     expect(setSelectedJobIdMock).toHaveBeenCalledWith('stored-job')
+  })
+
+  it('removes stale selectedJobId from storage when jobs list changes', async () => {
+    localStorage.setItem('rcaPage.selectedJobId', 'gone-job')
+    jobsState.jobs = [{ job_id: 'other-job' }]
+
+    render(<RCAPage />)
+    await waitFor(() => {
+      expect(localStorage.getItem('rcaPage.selectedJobId')).toBeNull()
+    })
   })
 })

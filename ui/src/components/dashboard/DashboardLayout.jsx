@@ -21,7 +21,7 @@ export function DashboardLayout({ dashboardData, agentData }) {
   const layoutComponents = [
     {
       id: 'connected-services',
-      title: "Connected Services",
+      title: "Powered By",
       subtitle: "Observability stack components",
       className: "lg:col-span-2",
       content: <ConnectedServices />
@@ -52,7 +52,7 @@ export function DashboardLayout({ dashboardData, agentData }) {
     },
     {
       id: 'server-metrics',
-      title: "Observant Process",
+      title: "BeObservant Plane",
       subtitle: dashboardData.systemMetrics?.stress?.message || "Process resource utilization",
       className: "",
       content: (
@@ -64,7 +64,6 @@ export function DashboardLayout({ dashboardData, agentData }) {
     }
   ]
 
-  // Persisted, sanitized layout order (hook handles localStorage and re-sanitization)
   const [layoutOrder, setLayoutOrder] = usePersistentOrder('dashboard-layout-order', layoutComponents.length)
 
   const sanitizedLayoutOrder = (() => {
@@ -78,7 +77,6 @@ export function DashboardLayout({ dashboardData, agentData }) {
         seen.add(idx)
       }
     }
-    // Append any missing indices so we always render all sections
     for (let i = 0; i < max; i++) {
       if (!seen.has(i)) result.push(i)
     }

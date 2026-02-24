@@ -11,6 +11,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import logging
+from datetime import datetime, timezone
 from hmac import compare_digest
 from ipaddress import ip_address, ip_network
 
@@ -78,6 +79,28 @@ def apply_scoped_rate_limit(current_user: TokenData, scope: str) -> None:
         limit=config.RATE_LIMIT_USER_PER_MINUTE,
         window_seconds=60,
     )
+
+
+def _enforce_session_revocation(user, token_data: TokenData) -> None:
+    invalid_before = getattr(user, "session_invalid_before", None)
+    if invalid_before is None:
+        return
+    if getattr(invalid_before, "tzinfo", None) is None:
+        invalid_before = invalid_before.replace(tzinfo=timezone.utc)
+    token_iat = getattr(token_data, "iat", None)
+    if token_iat is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has expired or your token is invalid. Let's get you a new one.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token_iat_dt = datetime.fromtimestamp(int(token_iat), tz=timezone.utc)
+    if token_iat_dt <= invalid_before:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has expired or your token is invalid. Let's get you a new one.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def _parse_ip_allowlist(allowlist: str | None) -> list:
@@ -220,6 +243,7 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+    _enforce_session_revocation(user, token_data)
 
     token_data.org_id = getattr(user, "org_id", token_data.org_id)
     token_data.permissions = auth_service.get_user_permissions(user)
@@ -256,6 +280,15 @@ def get_current_user_or_mfa_setup(
             detail="Your session has expired or your token is invalid. Let's get you a new one.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if isinstance(token_data, dict):
+        try:
+            token_data = TokenData(**token_data)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your session has expired or your token is invalid. Let's get you a new one.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     if getattr(token_data, "is_mfa_setup", False):
         user = auth_service.get_user_by_id(token_data.user_id)
@@ -263,6 +296,7 @@ def get_current_user_or_mfa_setup(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
         if getattr(user, "mfa_enabled", False):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="MFA setup not permitted for this user")
+        _enforce_session_revocation(user, token_data)
         return token_data
 
     return get_current_user(request, credentials)

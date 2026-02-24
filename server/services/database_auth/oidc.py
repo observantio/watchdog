@@ -32,6 +32,7 @@ def extract_permissions_from_oidc_claims(service, claims: Dict[str, Any]) -> Lis
 
 
 def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User]:
+    service._lazy_init()
     email = (claims.get("email") or "").strip().lower()
     subject = (claims.get("sub") or "").strip()
     if not email:
@@ -111,6 +112,7 @@ def provision_oidc_user(
         is_superuser=False,
         hashed_password=service.hash_password(secrets.token_urlsafe(24)),
         needs_password_change=False,
+        password_changed_at=datetime.now(timezone.utc),
         must_setup_mfa=getattr(config, "REQUIRE_MFA_FOR_NEW_USERS", False),
         auth_provider=config.AUTH_PROVIDER,
         external_subject=subject or None,

@@ -173,7 +173,7 @@ export default function SilenceForm({ onSave, onCancel }) {
               {groups.map((group) => (
                 <label
                   key={group.id}
-                  className="flex items-center gap-2 p-2 bg-sre-bg-alt rounded cursor-pointer hover:bg-sre-accent/10 transition-colors"
+                  className="flex items-center gap-2 p-2 bg-sre-bg-alt rounded cursor-pointer hover:bg-sre-accent/10 transition-colors overflow-hidden"
                 >
                   <input
                     type="checkbox"
@@ -181,10 +181,11 @@ export default function SilenceForm({ onSave, onCancel }) {
                     onChange={() => toggleGroup(group.id)}
                     className="w-4 h-4"
                   />
-                  <div className="flex-1 text-sm">
-                    <div className="font-medium text-sre-text">{group.name}</div>
+                  <div className="flex-1 text-sm min-w-0">
+                    {/* min-w-0 is needed on flex children to allow truncation */}
+                    <div className="font-medium text-sre-text truncate w-full">{group.name}</div>
                     {group.description && (
-                      <div className="text-xs text-sre-text-muted truncate">{group.description}</div>
+                      <div className="text-xs text-sre-text-muted truncate w-full">{group.description}</div>
                     )}
                   </div>
                 </label>

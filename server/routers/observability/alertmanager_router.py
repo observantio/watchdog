@@ -9,9 +9,12 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 from __future__ import annotations
 
-from typing import Set
+import json
+from json import JSONDecodeError
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+import httpx
 
 from config import config
 from middleware.dependencies import (
@@ -28,6 +31,7 @@ webhook_router = APIRouter(tags=["alertmanager-webhooks"])
 
 alertmanager_service = benotified_proxy_service
 notification_service = None
+_SILENCE_META_KEY = "beobservant_meta"
 
 
 def _required_permissions(path: str, method: str) -> Set[str]:
@@ -112,6 +116,161 @@ def _check_permissions(current_user: TokenData, required: Set[str]) -> None:
 
 def _is_mutating(method: str) -> bool:
     return method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _normalize_group_ids(raw: Any) -> List[str]:
+    values = raw if isinstance(raw, list) else []
+    normalized: List[str] = []
+    seen: Set[str] = set()
+    for gid in values:
+        if gid is None:
+            continue
+        s = str(gid).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        normalized.append(s)
+    return normalized
+
+
+def _extract_silence_meta(silence: Dict[str, Any]) -> Dict[str, Any]:
+    meta = silence.get(_SILENCE_META_KEY)
+    if isinstance(meta, dict):
+        return meta
+    if isinstance(meta, str):
+        try:
+            parsed = json.loads(meta)
+        except JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    annotations = silence.get("annotations")
+    if isinstance(annotations, dict):
+        raw = annotations.get(_SILENCE_META_KEY)
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except JSONDecodeError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _validate_and_normalize_silence_payload(payload: Dict[str, Any], current_user: TokenData) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid silence payload")
+
+    normalized = dict(payload)
+    visibility = str(normalized.get("visibility", "private")).strip().lower() or "private"
+    if visibility not in {"private", "group", "tenant"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid silence visibility")
+    normalized["visibility"] = visibility
+
+    shared_group_ids = _normalize_group_ids(
+        normalized.get("sharedGroupIds", normalized.get("shared_group_ids"))
+    )
+
+    if visibility == "group":
+        if not shared_group_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one group is required when visibility is 'group'",
+            )
+        if not current_user.is_superuser:
+            actor_groups = set(_normalize_group_ids(getattr(current_user, "group_ids", [])))
+            unauthorized = [gid for gid in shared_group_ids if gid not in actor_groups]
+            if unauthorized:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User is not a member of one or more specified groups",
+                )
+    else:
+        shared_group_ids = []
+
+    normalized["sharedGroupIds"] = shared_group_ids
+    normalized["shared_group_ids"] = shared_group_ids
+    return normalized
+
+
+def _assert_silence_owner(current_user: TokenData, silence: Dict[str, Any]) -> None:
+    if current_user.is_superuser:
+        return
+    meta = _extract_silence_meta(silence)
+    creator = (
+        silence.get("created_by")
+        or silence.get("createdBy")
+        or meta.get("created_by")
+        or meta.get("createdBy")
+    )
+    creator_id = str(creator).strip() if creator is not None else ""
+    if not creator_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Silence ownership metadata is missing; update/delete is denied",
+        )
+    if creator_id != str(current_user.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update or delete silences that you created",
+        )
+
+
+def _extract_silence_id(path: str, payload: Optional[Dict[str, Any]]) -> Optional[str]:
+    parts = [p for p in path.strip("/").split("/") if p]
+    if len(parts) >= 2 and parts[0] == "silences":
+        return parts[1]
+    if isinstance(payload, dict):
+        cand = payload.get("id") or payload.get("silenceId") or payload.get("silence_id")
+        if cand is not None:
+            sid = str(cand).strip()
+            if sid:
+                return sid
+    return None
+
+
+async def _find_silence_for_mutation(
+    *,
+    request: Request,
+    current_user: TokenData,
+    silence_id: str,
+) -> Dict[str, Any]:
+    service_token = config.get_secret("BENOTIFIED_SERVICE_TOKEN")
+    if not service_token:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="BeNotified service token not configured")
+
+    context_token = benotified_proxy_service._sign_context_token(current_user=current_user, api_key_id=None)
+    headers = {
+        "X-Service-Token": service_token,
+        "X-Correlation-ID": request.headers.get("X-Request-ID", ""),
+        "X-Forwarded-For": request.client.host if request.client else "unknown",
+        "Authorization": f"Bearer {context_token}",
+    }
+    target = f"{benotified_proxy_service.base_url}/internal/v1/api/alertmanager/silences"
+    try:
+        resp = await benotified_proxy_service._client.request("GET", target, headers=headers)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="BeNotified request timed out") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to contact BeNotified") from exc
+
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json()
+        except Exception:
+            detail = resp.text or "Unable to fetch silence"
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Invalid silence response from BeNotified") from exc
+
+    silences = data if isinstance(data, list) else []
+    for item in silences:
+        if isinstance(item, dict) and str(item.get("id", "")).strip() == silence_id:
+            return item
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Silence not found")
 
 
 @webhook_router.post("/alerts/webhook")
@@ -205,6 +364,28 @@ async def alertmanager_proxy(
 ):
     required = _required_permissions(path, request.method)
     _check_permissions(current_user, required)
+    method = request.method.upper()
+    payload: Optional[Dict[str, Any]] = None
+
+    if path.strip("/").startswith("silences") and method in {"POST", "PUT"}:
+        try:
+            payload_raw = await request.json()
+        except JSONDecodeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body") from exc
+        payload = _validate_and_normalize_silence_payload(payload_raw, current_user)
+        request._body = json.dumps(payload).encode("utf-8")
+
+    if path.strip("/").startswith("silences") and method in {"PUT", "DELETE"}:
+        silence_id = _extract_silence_id(path, payload)
+        if not silence_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Silence id is required")
+        existing_silence = await _find_silence_for_mutation(
+            request=request,
+            current_user=current_user,
+            silence_id=silence_id,
+        )
+        _assert_silence_owner(current_user, existing_silence)
+
     apply_scoped_rate_limit(current_user, "alertmanager")
 
     return await benotified_proxy_service.forward(

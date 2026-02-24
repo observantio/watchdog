@@ -174,6 +174,43 @@ export default function LokiPage() {
           })
         }
       }
+      // if the user had a saved filter on a label which no longer exists, clear it so we
+      // don’t keep running queries against a missing key on every mount.
+      if (saved.selectedLabel && labelsArray && !labelsArray.includes(saved.selectedLabel)) {
+        setSelectedLabel('')
+        setSelectedValue('')
+        try {
+          const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+          let changed = false
+          if (s.selectedLabel === saved.selectedLabel) {
+            delete s.selectedLabel
+            changed = true
+          }
+          if (s.selectedValue) {
+            delete s.selectedValue
+            changed = true
+          }
+          if (changed) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+          }
+        } catch {
+          // ignore malformed storage
+        }
+      }
+
+      if (Array.isArray(saved.selectedFilters) && saved.selectedFilters.length) {
+        const validFilters = saved.selectedFilters.filter((filter) => labelsArray.includes(filter.label))
+        if (validFilters.length !== saved.selectedFilters.length) {
+          setSelectedFilters(validFilters)
+          try {
+            const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+            s.selectedFilters = validFilters
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+          } catch {
+            // ignore malformed storage
+          }
+        }
+      }
     } catch {
       setLabels([])
     }

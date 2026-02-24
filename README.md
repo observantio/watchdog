@@ -4,38 +4,23 @@ Unified observability platform for metrics, logs, traces, and alerts in one cont
 
 Built on **Grafana**, **Loki**, **Tempo**, **Mimir**, **Alertmanager**, and internal services for auth and alerting.
 
-![Be Observant opening](assets/opening.png)
-![Be Observant home](assets/observant-home.png)
-
 ## Distributed Tracing
 
 Tempo-backed tracing with tenant/org scoping enforced through API token context.
 
-![Traces summary](assets/traces-summary.png)
-![Dependency map](assets/dependency-maps.png)
 
 ## Logs
 
 Loki-backed log search and analytics with scoped access controls.
 
-![Logs summary](assets/logs-summary.png)
 
 ## Alerting and Incident Ops
 
-Alerting and incidents are powered by **BeNotified**.  
-Be Observant keeps permission checks, scope enforcement, and audit logging while proxying alert APIs.
-
-- BeNotified repo: [github.com/StefanKumarasinghe/benotified](https://github.com/StefanKumarasinghe/benotified)
-
-![Alerts board](assets/alerts-board.png)
-![InOps board](assets/inops-board.png)
+- BeNotified repo: [github.com/observantio/benotified](https://github.com/observantio/benotified)
 
 ## Grafana Visualization
 
 Grafana access is proxied through an authenticated NGINX layer with RBAC and visibility scoping.
-
-![Grafana dashboards](assets/grafana-dashboards.png)
-![Grafana proxy](assets/grafana-proxy.png)
 
 ---
 
@@ -75,11 +60,39 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Set that value in `.env`.
 
-### 2. Start the stack
+### 2. Choose a run mode
+
+Option A: source-build mode (full local development)
+
+- Requires these sibling directories:
+  - `./BeCertain`
+  - `./BeNotified`
+- If missing, clone them first:
+
+```bash
+git clone https://github.com/observantio/becertain BeCertain
+git clone https://github.com/observantio/benotified BeNotified
+```
+
+Then start:
 
 ```bash
 docker compose up -d --build
 ```
+
+Option B: image mode (no local BeCertain/BeNotified checkout)
+
+- Set image tags in `.env`:
+  - `BEOBSERVANT_IMAGE`
+  - `BENOTIFIED_IMAGE`
+  - `BECERTAIN_IMAGE`
+- Then start:
+
+```bash
+docker compose -f docker-compose.stable.yml up -d
+```
+
+The provided defaults are placeholders until you publish stable tags.
 
 ### 3. Verify health
 
@@ -99,6 +112,8 @@ curl -s http://localhost:4319/health
 
 ## Local Development
 
+Source-build compose (`docker-compose.yml`) expects local copies of `BeCertain` and `BeNotified`.
+
 ```bash
 docker compose up -d --build
 ```
@@ -112,8 +127,35 @@ docker compose up -d --build
 
 Related repos:
 
-- BeCertain: [github.com/StefanKumarasinghe/becertain](https://github.com/StefanKumarasinghe/becertain)
-- BeNotified: [github.com/StefanKumarasinghe/benotified](https://github.com/StefanKumarasinghe/benotified)
+- BeCertain: [github.com/observantio/becertain](https://github.com/observantio/becertain)
+- BeNotified: [github.com/observantio/benotified](https://github.com/observantio/benotified)
+
+---
+
+## Pre-commit Checks
+
+The repository includes a required pre-commit pipeline in `.pre-commit-config.yaml` that runs on every commit:
+
+- `server`: `python -m pytest -q`
+- `BeCertain`: `python -m pytest -q`
+- `BeNotified`: `python -m pytest -q`
+- `gateway-auth-service`: `python -m pytest -q`
+- `ui`: `npm run lint`
+- `ui`: `npm run test:run`
+- `ui`: `npm run build`
+
+Install and enable:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Run manually at any time:
+
+```bash
+pre-commit run --all-files
+```
 
 ---
 
@@ -256,3 +298,4 @@ docker compose down -v    # stop services and remove volumes
 
 - Main guide: [`USER_GUIDE.md`](./USER_GUIDE.md)
 - BeNotified service notes: [`BeNotified/README.md`](./BeNotified/README.md)
+- Notices and attribution: [`NOTICE.md`](./NOTICE.md)

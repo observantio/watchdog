@@ -513,7 +513,7 @@ export default function ApiKeyPage() {
               <Button variant="secondary" onClick={() => handleDownloadYaml(yamlModalContent)} aria-label="Download YAML" disabled={isYamlKeyShared}>
                 <span className="material-icons mr-2">download</span>Download YAML
               </Button>
-              <div className="text-sm text-sre-text-muted ml-auto">Preview below reflects overrides</div>
+              <div className="text-xs text-sre-text-muted ml-auto">sudo otelcol-contrib --config otel.yaml</div>
             </div>
 
             <div className="bg-sre-background p-3 rounded border border-sre-border text-xs overflow-auto max-h-72">

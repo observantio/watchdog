@@ -192,3 +192,91 @@ class NotificationService:
         except Exception as exc:
             logger.warning("Failed to send user welcome email to %s: %s", recipient_email, exc)
             return False
+
+    async def send_temporary_password_email(
+        self,
+        recipient_email: str,
+        username: str,
+        temporary_password: str,
+        login_url: Optional[str] = None,
+    ) -> bool:
+        enabled = str(
+            config.get_secret("PASSWORD_RESET_EMAIL_ENABLED")
+            or config.get_secret("USER_WELCOME_EMAIL_ENABLED")
+            or "false"
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return False
+
+        smtp_host = (
+            config.get_secret("PASSWORD_RESET_SMTP_HOST")
+            or config.get_secret("USER_WELCOME_SMTP_HOST")
+            or ""
+        ).strip()
+        if not smtp_host:
+            logger.info("Temporary password email skipped: SMTP host not set")
+            return False
+
+        try:
+            smtp_port = int(
+                config.get_secret("PASSWORD_RESET_SMTP_PORT")
+                or config.get_secret("USER_WELCOME_SMTP_PORT")
+                or "587"
+            )
+        except ValueError:
+            smtp_port = 587
+
+        smtp_user = (
+            config.get_secret("PASSWORD_RESET_SMTP_USERNAME")
+            or config.get_secret("USER_WELCOME_SMTP_USERNAME")
+        )
+        smtp_pass = (
+            config.get_secret("PASSWORD_RESET_SMTP_PASSWORD")
+            or config.get_secret("USER_WELCOME_SMTP_PASSWORD")
+        )
+        smtp_from = (
+            config.get_secret("PASSWORD_RESET_FROM")
+            or config.get_secret("USER_WELCOME_FROM")
+            or config.DEFAULT_ADMIN_EMAIL
+        )
+        use_starttls = self._as_bool(
+            config.get_secret("PASSWORD_RESET_SMTP_STARTTLS")
+            or config.get_secret("USER_WELCOME_SMTP_STARTTLS")
+            or "true"
+        )
+        use_ssl = self._as_bool(
+            config.get_secret("PASSWORD_RESET_SMTP_USE_SSL")
+            or config.get_secret("USER_WELCOME_SMTP_USE_SSL")
+            or "false"
+        )
+
+        app_login_url = (login_url or config.get_secret("APP_LOGIN_URL") or "").strip()
+        login_line = f"Login URL: {app_login_url}\n" if app_login_url else ""
+
+        msg = EmailMessage()
+        msg["Subject"] = "Temporary Password for Be Observant"
+        msg["From"] = smtp_from
+        msg["To"] = recipient_email
+        msg.set_content(
+            f"Hello {username},\n\n"
+            "An administrator reset your password.\n"
+            f"Temporary password: {temporary_password}\n"
+            f"{login_line}"
+            "You must change this password immediately after login.\n"
+        )
+
+        try:
+            await self._send_smtp_with_retry(
+                message=msg,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_user,
+                password=smtp_pass,
+                start_tls=use_starttls,
+                use_tls=use_ssl,
+            )
+            logger.info("Temporary password email sent to %s", recipient_email)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to send temporary password email to %s: %s", recipient_email, exc)
+            return False

@@ -150,6 +150,11 @@ class DatabaseAuthService:
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return db_password.verify_password(self, plain_password, hashed_password)
 
+    def reset_user_password_temp(self, actor_user_id: str, target_user_id: str, tenant_id: str) -> dict:
+        if self.is_external_auth_enabled() and not self.is_password_auth_enabled():
+            raise ValueError("Password resets are managed by the external identity provider")
+        return db_password.reset_user_password_temp(self, actor_user_id, target_user_id, tenant_id)
+
     def _get_fernet(self) -> Optional[Fernet]:
         return db_mfa._get_fernet(self)
 

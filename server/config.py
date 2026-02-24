@@ -254,6 +254,9 @@ class Config:
         self.RATE_LIMIT_MAX_STATES: int = int(os.getenv("RATE_LIMIT_MAX_STATES", "200000"))
         self.RATE_LIMIT_FALLBACK_MODE: str = os.getenv("RATE_LIMIT_FALLBACK_MODE", "memory").strip().lower()
         self.PASSWORD_HASH_MAX_CONCURRENCY: int = int(os.getenv("PASSWORD_HASH_MAX_CONCURRENCY", "8"))
+        # Local account password lifecycle controls (0 disables periodic expiry)
+        self.PASSWORD_RESET_INTERVAL_DAYS: int = int(os.getenv("PASSWORD_RESET_INTERVAL_DAYS", "0"))
+        self.TEMP_PASSWORD_LENGTH: int = int(os.getenv("TEMP_PASSWORD_LENGTH", "20"))
 
         # Default admin bootstrap (can be overridden via environment)
         self.DEFAULT_ADMIN_USERNAME: str = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
@@ -471,6 +474,10 @@ class Config:
             raise ValueError("BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER must be greater than 0")
         if self.BECERTAIN_ANALYZE_JOB_TTL_SECONDS <= 0:
             raise ValueError("BECERTAIN_ANALYZE_JOB_TTL_SECONDS must be greater than 0")
+        if self.PASSWORD_RESET_INTERVAL_DAYS < 0:
+            raise ValueError("PASSWORD_RESET_INTERVAL_DAYS must be >= 0")
+        if self.TEMP_PASSWORD_LENGTH < 12:
+            raise ValueError("TEMP_PASSWORD_LENGTH must be >= 12")
 
 
 class Constants:

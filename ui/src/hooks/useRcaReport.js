@@ -60,6 +60,8 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
   const [loadingPrimaryReport, setLoadingPrimaryReport] = useState(false)
   const [loadingInsights, setLoadingInsights] = useState(false)
   const [reportError, setReportError] = useState(null)
+  // track HTTP status for convenience (e.g. 404 not found)
+  const [reportErrorStatus, setReportErrorStatus] = useState(null)
   const [report, setReport] = useState(null)
   const [reportMeta, setReportMeta] = useState(null)
   const [insights, setInsights] = useState(EMPTY_INSIGHTS)
@@ -180,6 +182,7 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
     } catch (err) {
       if (seq !== requestSeq.current) return
       setReportError(err?.message || 'Failed to load RCA report')
+      setReportErrorStatus(err?.status || null)
       reset()
     } finally {
       if (seq === requestSeq.current) {
@@ -215,6 +218,7 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
     loadingInsights,
     loadingReport: loadingPrimaryReport || loadingInsights,
     reportError,
+    reportErrorStatus,
     report,
     reportMeta,
     insights,

@@ -75,4 +75,24 @@ describe('TempoPage — fetch limit and pagination', () => {
     const call = api.searchTraces.mock.calls[0][0]
     expect(call.service).toBe('svc')
   })
+
+  it('silently clears a saved trace id if the trace no longer exists', async () => {
+    // prepare saved state with a nonexistent trace
+    const saved = { selectedTrace: 'missing' }
+    localStorage.setItem('tempoPageState', JSON.stringify(saved))
+
+    api.fetchTempoServices.mockResolvedValue([])
+    api.searchTraces.mockResolvedValue({ data: [] })
+    const err = new Error('not found')
+    err.status = 404
+    api.getTrace.mockRejectedValue(err)
+
+    const { queryByText } = render(<TempoPage />)
+    // component should attempt to load and then clear state
+    await waitFor(() => expect(api.getTrace).toHaveBeenCalledWith('missing'))
+    expect(queryByText(/Failed to load trace/)).not.toBeInTheDocument()
+
+    const stored = JSON.parse(localStorage.getItem('tempoPageState') || '{}')
+    expect(stored.selectedTrace).toBeFalsy()
+  })
 })

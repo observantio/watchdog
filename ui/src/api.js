@@ -207,6 +207,10 @@ export async function resetUserMFA(userId) {
   return request(`/api/auth/users/${encodeURIComponent(userId)}/mfa/reset`, { method: 'POST' })
 }
 
+export async function resetUserPasswordTemp(userId) {
+  return requestJson(`/api/auth/users/${encodeURIComponent(userId)}/password/reset-temp`, { method: 'POST' })
+}
+
 export async function getAuthMode() {
   return request('/api/auth/mode')
 }

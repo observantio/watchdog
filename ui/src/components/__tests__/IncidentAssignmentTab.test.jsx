@@ -10,7 +10,7 @@ describe('IncidentAssignmentTab', () => {
 
     const activeIncident = { id: 'i1', assignee: '' }
     const activeIncidentDraft = { assignee: '' }
-    const users = [ { id: 'u1', username: 'alice', email: 'a@example.com' } ]
+    const users = [ { id: 'u1', username: 'alice', full_name: 'Alice A', email: 'a@example.com' } ]
 
     render(
       <IncidentAssignmentTab
@@ -21,12 +21,13 @@ describe('IncidentAssignmentTab', () => {
         activeIncidentDraft={activeIncidentDraft}
         setIncidentDrafts={setIncidentDrafts}
         filteredIncidentUsers={users}
-        getUserLabel={(u) => `${u.username}${u.email ? ` ${u.email}` : ''}`}
+        // mimic the global helper which prefers full_name
+        getUserLabel={(u) => `${u.full_name || u.username}${u.email ? ` ${u.email}` : ''}`}
       />
     )
 
     // click user -> should call setIncidentDrafts updater
-    const userBtn = screen.getByText('alice a@example.com')
+    const userBtn = screen.getByText('Alice A a@example.com')
     fireEvent.click(userBtn)
     expect(setIncidentDrafts).toHaveBeenCalled()
     const userUpdater = setIncidentDrafts.mock.calls[0][0]

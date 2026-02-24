@@ -1,0 +1,37 @@
+repos:
+  - repo: local
+    hooks:
+      - id: server-unit-tests
+        name: server unit tests
+        language: system
+        entry: bash -lc 'cd server && python -m pytest -q'
+        pass_filenames: false
+        always_run: true
+
+      - id: gateway-auth-unit-tests
+        name: gateway-auth-service unit tests
+        language: system
+        entry: bash -lc 'cd gateway-auth-service && python -m pytest -q'
+        pass_filenames: false
+        always_run: true
+
+      - id: ui-lint
+        name: ui lint
+        language: system
+        entry: bash -lc 'cd ui && npm run lint'
+        pass_filenames: false
+        always_run: true
+
+      - id: ui-tests
+        name: ui tests
+        language: system
+        entry: bash -lc 'cd ui && npm run test:run'
+        pass_filenames: false
+        always_run: true
+
+      - id: ui-build
+        name: ui build
+        language: system
+        entry: bash -lc 'cd ui && npm run build'
+        pass_filenames: false
+        always_run: true

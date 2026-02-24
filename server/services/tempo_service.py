@@ -31,6 +31,10 @@ _SERVICE_NAME_KEY = "service.name"
 _SERVICE_ALIAS_KEY = "service"
 _SERVICE_KEYS = {_SERVICE_NAME_KEY, _SERVICE_ALIAS_KEY}
 _SEARCH_LIMIT_CAP = 1000
+_COUNT_SPLIT_MIN_WINDOW_US = 30 * 1_000_000
+_COUNT_SPLIT_MAX_DEPTH = 6
+_VOLUME_FALLBACK_MAX_BUCKETS = 180
+_VOLUME_FALLBACK_CONCURRENCY = 8
 
 
 class TempoService:
@@ -110,6 +114,72 @@ class TempoService:
 
     def _extract_metric_values(self, metrics_resp: Dict[str, Any]) -> List[List[Any]]:
         return tempo_metrics.extract_metric_values(metrics_resp)
+
+    async def _count_traces_window(
+        self,
+        query: TraceQuery,
+        start_us: int,
+        end_us: int,
+        tenant_id: str,
+        *,
+        depth: int = 0,
+    ) -> int:
+        if end_us <= start_us:
+            return 0
+
+        window_query = query.model_copy(update={
+            "start": start_us,
+            "end": end_us,
+            "limit": _SEARCH_LIMIT_CAP,
+        })
+        response = await self.search_traces(window_query, tenant_id=tenant_id, fetch_full_traces=False)
+        count = int(response.total or 0)
+
+        should_split = (
+            count >= _SEARCH_LIMIT_CAP
+            and depth < _COUNT_SPLIT_MAX_DEPTH
+            and (end_us - start_us) > _COUNT_SPLIT_MIN_WINDOW_US
+        )
+        if not should_split:
+            return count
+
+        midpoint_us = start_us + ((end_us - start_us) // 2)
+        if midpoint_us <= start_us or midpoint_us >= end_us:
+            return count
+        right_start_us = midpoint_us + 1
+        if right_start_us >= end_us:
+            return count
+
+        left_count, right_count = await asyncio.gather(
+            self._count_traces_window(query, start_us, midpoint_us, tenant_id, depth=depth + 1),
+            self._count_traces_window(query, right_start_us, end_us, tenant_id, depth=depth + 1),
+        )
+        return left_count + right_count
+
+    async def _count_traces_bucketed(
+        self,
+        query: TraceQuery,
+        bucket_ranges: List[List[int]],
+        tenant_id: str,
+    ) -> List[int]:
+        counts: List[int] = [0] * len(bucket_ranges)
+        semaphore = asyncio.Semaphore(_VOLUME_FALLBACK_CONCURRENCY)
+
+        async def _count_bucket(index: int, start_us: int, end_us: int) -> None:
+            async with semaphore:
+                counts[index] = await self._count_traces_window(
+                    query,
+                    start_us,
+                    end_us,
+                    tenant_id,
+                    depth=0,
+                )
+
+        await asyncio.gather(*[
+            _count_bucket(idx, bucket[0], bucket[1])
+            for idx, bucket in enumerate(bucket_ranges)
+        ])
+        return counts
 
     def _parse_span(
         self,
@@ -306,6 +376,12 @@ class TempoService:
         })
         response = await self.search_traces(query, tenant_id=tenant_id, fetch_full_traces=False)
         traces = response.data
+        total_traces = response.total
+        if start and end and response.total >= min(config.MAX_QUERY_LIMIT, _SEARCH_LIMIT_CAP):
+            try:
+                total_traces = await self.count_traces(query, tenant_id=tenant_id)
+            except Exception:
+                logger.debug("Accurate trace count failed during metrics aggregation", exc_info=True)
 
         durations = [
             s.duration
@@ -318,7 +394,7 @@ class TempoService:
         )
 
         return {
-            "total_traces": response.total,
+            "total_traces": total_traces,
             "total_spans": sum(len(t.spans) for t in traces),
             "error_count": error_count,
             "avg_duration_us": int(sum(durations) / len(durations)) if durations else None,
@@ -347,7 +423,7 @@ class TempoService:
 
         start_s = start // 1_000_000
         total_s = max(0, (end - start) // 1_000_000)
-        num_buckets = max(1, min(240, (total_s + step - 1) // step))
+        num_buckets = max(1, min(_VOLUME_FALLBACK_MAX_BUCKETS, (total_s + step - 1) // step))
         expected_ts = [start_s + i * step for i in range(num_buckets)]
 
         def _empty_result() -> Dict[str, Any]:
@@ -374,18 +450,22 @@ class TempoService:
                 logger.debug("Metrics-based volume query failed, falling back", exc_info=True)
 
         try:
-            metrics = await self.get_trace_metrics(service=service, start=start, end=end, tenant_id=tenant_id)
-            total = int(metrics.get("total_traces") or 0)
-            if total > 0:
-                base, rem = divmod(total, num_buckets)
-                values = [
-                    [expected_ts[i], str(base + (1 if i < rem else 0))]
-                    for i in range(num_buckets)
-                ]
-                result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                return await _cache_and_return(result)
+            bucket_ranges: List[List[int]] = []
+            for ts in expected_ts:
+                bucket_start_us = ts * 1_000_000
+                bucket_end_us = min(end, bucket_start_us + (step * 1_000_000))
+                bucket_ranges.append([bucket_start_us, bucket_end_us])
+
+            base_query = TraceQuery.model_validate({
+                "service": service,
+                "limit": _SEARCH_LIMIT_CAP,
+            })
+            bucket_counts = await self._count_traces_bucketed(base_query, bucket_ranges, tenant_id)
+            values = [[expected_ts[idx], str(bucket_counts[idx])] for idx in range(num_buckets)]
+            result = {"data": {"result": [{"metric": {}, "values": values}]}}
+            return await _cache_and_return(result)
         except Exception:
-            logger.debug("Failed to estimate trace volume from totals", exc_info=True)
+            logger.debug("Failed to build trace volume from bucket counts", exc_info=True)
 
         return await _cache_and_return(_empty_result())
 
@@ -405,6 +485,20 @@ class TempoService:
                             return int(float(vals[-1][1]))
             except Exception:
                 logger.debug("Metrics-based count failed, falling back", exc_info=True)
+
+        try:
+            if query.start and query.end:
+                total = await self._count_traces_window(
+                    query.model_copy(update={"limit": _SEARCH_LIMIT_CAP}),
+                    query.start,
+                    query.end,
+                    tenant_id,
+                    depth=0,
+                )
+                self._observe("tempo_count_traces_calls_total")
+                return total
+        except Exception:
+            logger.debug("Windowed count fallback failed, using capped search", exc_info=True)
 
         capped = query.model_copy(update={"limit": min(query.limit, _SEARCH_LIMIT_CAP)})
         response = await self.search_traces(capped, tenant_id=tenant_id, fetch_full_traces=False)

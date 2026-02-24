@@ -8,6 +8,14 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 
+// utility used throughout the incidents UI to show a sensible name for a user
+export function getUserLabel(userItem) {
+  if (!userItem) return 'Unknown user'
+  const name = userItem.full_name || userItem.username || userItem.id || ''
+  const email = userItem.email ? ` ${userItem.email}` : ''
+  return `${name}${email}`
+}
+
 import {
   getIncidents, updateIncident, getUsers, getGroups, createIncidentJira,
   listJiraProjectsByIntegration, listJiraIssueTypes, listIncidentJiraComments, createIncidentJiraComment, syncIncidentJiraComments,
@@ -38,7 +46,7 @@ const IncidentCard = memo(function IncidentCard({
   droppingState,
 }) {
   const assigneeUser = incident.assignee ? userById[incident.assignee] : null
-  const assigneeLabel = assigneeUser ? (assigneeUser.username || assigneeUser.id) : (incident.assignee || 'Unassigned')
+  const assigneeLabel = assigneeUser ? getUserLabel(assigneeUser) : (incident.assignee || 'Unassigned')
 
   return (
     <div
@@ -108,7 +116,7 @@ const IncidentCard = memo(function IncidentCard({
             {incident.hideWhenResolved && (
               <Badge variant="ghost" className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-sre-border/50 bg-sre-surface/50">
                 <span className="material-icons text-sm mr-1">visibility_off</span>
-                Hide on resolve
+                Hidden
               </Badge>
             )}
           </div>
@@ -132,17 +140,6 @@ const IncidentCard = memo(function IncidentCard({
             </Button>
           </div>
         </div>
-
-        {Array.isArray(incident.sharedGroupIds) && incident.sharedGroupIds.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {incident.sharedGroupIds.slice(0, 3).map((g) => (
-              <span key={g} className="text-xs px-3 py-1.5 bg-sre-surface/70 border border-sre-border/30 rounded-full text-sre-text-muted font-medium truncate max-w-32"> {g} </span>
-            ))}
-            {incident.sharedGroupIds.length > 3 && (
-              <span className="text-xs px-3 py-1.5 bg-sre-surface/70 border border-sre-border/30 rounded-full text-sre-text-muted font-medium">+{incident.sharedGroupIds.length - 3}</span>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -370,13 +367,6 @@ export default function IncidentBoardPage() {
       })
   }, [assignableIncidentUsers, assigneeSearch])
 
-  const getUserLabel = (userItem) => {
-    if (!userItem) return 'Unknown user'
-    const name = userItem.username || userItem.id
-    const email = userItem.email ? ` ${userItem.email}` : ''
-    return `${name}${email}`
-  }
-
   // Format ISO timestamp to `DD/MM/YYYY, hh:mm:ss am/pm` (consistently used for notes/comments)
   const formatDateTime = (iso) => {
     if (!iso) return 'unknown time'
@@ -490,7 +480,7 @@ export default function IncidentBoardPage() {
         <div className="p-2 border border-sre-border rounded bg-sre-bg-alt flex items-center justify-between gap-4">
           <div className="text-sm text-sre-text">Hide when resolved</div>
           <div>
-            <label className="inline-flex items-center gap-2 cursor-pointer">
+            <label className="inline-flex items-center gap-2  p-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={draft.hideWhenResolved ?? incident.hideWhenResolved ?? false}
@@ -855,7 +845,7 @@ export default function IncidentBoardPage() {
             </div>
             <h3 className="text-xl font-semibold text-sre-text mb-2">No incidents found</h3>
             <p className="text-sre-text-muted text-center max-w-md">
-              Incidents will appear here automatically when alerts are triggered and require attention.
+              Ensure you have the permissions to view incidents and that your filters are set correctly. Try adjusting the visibility or group filters, or check back later when new incidents are created.
             </p>
           </div>
         )}
@@ -911,7 +901,7 @@ export default function IncidentBoardPage() {
             </div>
 
             {incidentModalTab === 'details' && (
-            <Card className="p-4">
+            <Card >
               <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
                 <span className="material-icons text-base mr-2">info</span>
                 Incident Details
@@ -958,7 +948,7 @@ export default function IncidentBoardPage() {
             )}
 
             {incidentModalTab === 'assignment' && (
-            <Card className="p-4">
+            <Card>
               <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
                 <span className="material-icons text-base mr-2">person</span>
                 Assignment
@@ -1030,14 +1020,13 @@ export default function IncidentBoardPage() {
             )}
 
             {incidentModalTab === 'jira' && (
-            <Card className="p-4">
+            <Card>
               <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
                 <span className="material-icons text-base mr-2">link</span>
                 Jira Integration
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
-                  label="Jira ticket summary"
                   value={activeIncidentDraft.jiraSummary ?? ''}
                   onChange={(e) => setIncidentDrafts((prev) => ({
                     ...prev,
@@ -1196,7 +1185,7 @@ export default function IncidentBoardPage() {
             </Card>)}
 
             {incidentModalTab === 'notes' && (
-            <Card className="p-4">
+            <Card>
               <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
                 <span className="material-icons text-base mr-2">notes</span>
                 Notes
@@ -1230,11 +1219,9 @@ export default function IncidentBoardPage() {
                         [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: '' }
                       }))}>
                         Clear
-                        <HelpTooltip content="Clear the note draft without saving" />
                       </Button>
                       <Button size="sm" onClick={() => handleAddNote(activeIncident.id)} disabled={!canUpdateIncidents || !(activeIncidentDraft.note || '').trim()}>
                         Add note
-                        <HelpTooltip content="Save the note to the incident record" />
                       </Button>
                     </div>
                   </div>
@@ -1293,8 +1280,19 @@ export default function IncidentBoardPage() {
                     <div className="space-y-3 max-h-44 overflow-auto pr-2">
                       {activeIncident.notes.slice().reverse().slice(0, 10).map((note, idx) => {
                         const key = note.createdAt ? String(note.createdAt) : `${note.author}-${idx}`
-                        const noteAuthorUser = userById[note.author]
+                                const noteAuthorUser = userById[note.author]
                         const noteAuthorLabel = noteAuthorUser ? getUserLabel(noteAuthorUser) : (note.author || 'unknown')
+                        // clean up the text itself: drop trailing suffixes from usernames
+                        // (e.g. "admin-39fd1d43" → "admin") and translate any uuids
+                        // found in the string into real people when we have them cached.
+                        let displayText = note.text || ''
+                        // replace full uuid occurrences with user labels when available
+                        displayText = displayText.replace(/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/g, (id) => {
+                          const u = userById[id]
+                          return u ? getUserLabel(u) : id
+                        })
+                        // remove any trailing dash+hex from a leading word (common system notes)
+                        displayText = displayText.replace(/^([^\s-]+)-[0-9a-f]+/, '$1')
                         const collapsed = !expandedNotes.has(key)
                         return (
                           <div key={`${activeIncident.id}-modal-note-${key}`} className="p-3 bg-sre-bg rounded-lg border border-sre-border flex gap-3 items-start">
@@ -1314,7 +1312,7 @@ export default function IncidentBoardPage() {
                                     className="text-sre-text-muted hover:text-sre-text"
                                     onClick={() => setIncidentDrafts((prev) => ({
                                       ...prev,
-                                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}"${note.text}" - ${noteAuthorLabel}\n\n` }
+                                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}"${displayText}" - ${noteAuthorLabel}\n\n` }
                                     }))}
                                   >
                                     <span className="text-xs">Quote</span>
@@ -1325,7 +1323,7 @@ export default function IncidentBoardPage() {
                                     className="text-sre-text-muted hover:text-sre-text"
                                     onClick={async () => {
                                       try {
-                                        await navigator.clipboard.writeText(note.text)
+                                        await navigator.clipboard.writeText(displayText)
                                         toast.success('Note copied')
                                       } catch (e) {
                                         toast.error('Copy failed')
@@ -1350,7 +1348,7 @@ export default function IncidentBoardPage() {
                               </div>
 
                               <div className={`mt-2 text-sm text-sre-text-muted ${collapsed ? 'line-clamp-3' : ''}`}>
-                                {note.text}
+                                {displayText}
                               </div>
                             </div>
                           </div>
@@ -1441,15 +1439,13 @@ export default function IncidentBoardPage() {
                 }}
               >
                 Cancel
-                <HelpTooltip content="Close modal without saving changes" />
               </Button>
               <Button
                 onClick={() => handleSaveIncident(activeIncident)}
                 disabled={!canUpdateIncidents}
                 title={!canUpdateIncidents ? 'Missing update:incidents permission' : 'Save Changes (Ctrl+S)'}
               >
-                Save changes <span className="ml-2 text-xs text-sre-text-muted">Ctrl+S</span>
-                <HelpTooltip content="Save all incident updates and close modal (Ctrl+S)" />
+                Save changes
               </Button>
             </div>
           </div>

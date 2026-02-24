@@ -70,7 +70,7 @@ describe('IncidentBoardPage — UI refresh & persistence', () => {
   it('refreshes incidents after saving assignment (no reload needed)', async () => {
     const initial = { id: 'i1', alertName: 'Alert 1', status: 'open', assignee: '', fingerprint: 'f1', lastSeenAt: new Date().toISOString(), severity: 'warning', notes: [] }
     const updated = { ...initial, assignee: 'u2' }
-    const user = { id: 'u2', username: 'alice', email: 'alice@example.com' }
+    const user = { id: 'u2', username: 'alice', email: 'alice@example.com', full_name: 'Alice Example' }
 
     api.getIncidents
       .mockResolvedValueOnce([initial])
@@ -84,13 +84,31 @@ describe('IncidentBoardPage — UI refresh & persistence', () => {
     await findByText('Alert 1')
 
     fireEvent.click(getByTitle('View notes'))
+    // open notes so we can later verify note text transformation
     fireEvent.click(getByText('Assignment'))
     fireEvent.click(getByText('Assign to me'))
     fireEvent.click(getByText('Save changes'))
 
     await waitFor(() => expect(api.updateIncident).toHaveBeenCalledWith('i1', expect.objectContaining({ assignee: 'u2' })))
     await waitFor(() => expect(api.getIncidents.mock.calls.length).toBeGreaterThanOrEqual(2))
-    await waitFor(() => expect(screen.getByText((txt) => /alice/.test(txt) || /u2/.test(txt))).toBeTruthy())
+    // ensure we display the user's full_name rather than raw id
+    await waitFor(() => expect(screen.getByText(/Alice Example/)).toBeTruthy())
+  })
+
+  it('renders note text with IDs replaced by user labels', async () => {
+    // prepare incident with existing note containing uuid
+    const noteId = '123e4567-e89b-12d3-a456-426614174000'
+    const initial = { id: 'i1', alertName: 'Alert 1', status: 'open', assignee: '', fingerprint: 'f1', lastSeenAt: new Date().toISOString(), severity: 'warning', notes: [{ author: 'admin', text: `Assigned to ${noteId} by admin`, createdAt: new Date().toISOString() }] }
+    api.getIncidents.mockResolvedValue([initial])
+    api.getUsers.mockResolvedValue([{ id: noteId, username: 'bob' }])
+    api.getGroups.mockResolvedValue([])
+
+    const { findByText } = render(<IncidentBoardPage />)
+    await findByText('Alert 1')
+    fireEvent.click(screen.getByTitle('View notes'))
+    // note should show 'bob' rather than the raw uuid
+    await waitFor(() => expect(screen.queryByText(noteId)).not.toBeInTheDocument())
+    expect(screen.getByText(/bob/)).toBeInTheDocument()
   })
 
   it('persists visibility tab and selected group to localStorage', async () => {

@@ -28,6 +28,7 @@ from models.access.user_models import (
     LoginRequest, RegisterRequest, UserResponse,
     UserCreate, UserUpdate, UserPasswordUpdate,
     TotpEnrollResponse, MfaVerifyRequest, MfaDisableRequest, RecoveryCodesResponse,
+    TempPasswordResetResponse,
 )
 from models.access.group_models import (
     Group, GroupCreate, GroupUpdate, GroupMembersUpdate
@@ -635,7 +636,7 @@ async def list_users(
     limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Page size"),
     offset: int = Query(0, ge=0, description="Page offset"),
     current_user: TokenData = Depends(
-        require_any_permission_with_scope([Permission.READ_USERS, Permission.MANAGE_USERS], "auth")
+        require_any_permission_with_scope([Permission.READ_USERS, Permission.MANAGE_USERS, Permission.MANAGE_TENANTS], "auth")
     )
 ):
     users = await run_in_threadpool(auth_service.list_users, current_user.tenant_id, limit=limit, offset=offset)
@@ -669,9 +670,21 @@ async def update_user(
     user_id: str,
     user_update: UserUpdate,
     current_user: TokenData = Depends(
-        require_any_permission_with_scope([Permission.UPDATE_USERS, Permission.MANAGE_USERS], "auth")
+        require_any_permission_with_scope([Permission.UPDATE_USERS, Permission.MANAGE_USERS, Permission.MANAGE_TENANTS], "auth")
     )
 ):
+    current_perms = set(getattr(current_user, "permissions", []) or [])
+    is_admin_actor = bool(getattr(current_user, "is_superuser", False) or current_user.role == Role.ADMIN)
+    has_manage_users = Permission.MANAGE_USERS.value in current_perms or Permission.UPDATE_USERS.value in current_perms
+    has_manage_tenants = Permission.MANAGE_TENANTS.value in current_perms
+    if has_manage_tenants and not has_manage_users and not is_admin_actor:
+        update_fields = set(user_update.model_dump(exclude_unset=True).keys())
+        if update_fields - {"is_active"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="manage:tenants can only activate/deactivate non-admin users",
+            )
+
     user = await run_in_threadpool(auth_service.update_user, user_id, user_update, current_user.tenant_id, current_user.user_id)
 
     if not user:
@@ -710,13 +723,65 @@ async def update_user_password(
     return {"message": "Password updated successfully"}
 
 
+@router.post("/users/{user_id}/password/reset-temp", response_model=TempPasswordResetResponse)
+async def reset_user_password_temp(
+    user_id: str,
+    current_user: TokenData = Depends(require_authenticated_with_scope("auth")),
+):
+    perms = set(getattr(current_user, "permissions", []) or [])
+    is_admin_actor = bool(getattr(current_user, "is_superuser", False) or current_user.role == Role.ADMIN)
+    can_manage = (
+        Permission.MANAGE_USERS.value in perms
+        or Permission.MANAGE_TENANTS.value in perms
+    )
+    if not (is_admin_actor or can_manage):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted to reset passwords")
+
+    target_user = await run_in_threadpool(auth_service.get_user_by_id, user_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
+    if target_user.role == Role.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin account passwords cannot be reset")
+
+    result = await run_in_threadpool(
+        auth_service.reset_user_password_temp,
+        current_user.user_id,
+        user_id,
+        current_user.tenant_id,
+    )
+    temporary_password = result.get("temporary_password", "")
+    target_email = result.get("target_email")
+    target_username = result.get("target_username") or target_user.username
+
+    email_sent = False
+    if target_email:
+        try:
+            email_sent = await notification_service.send_temporary_password_email(
+                recipient_email=target_email,
+                username=target_username,
+                temporary_password=temporary_password,
+                login_url=None,
+            )
+        except Exception as exc:
+            logger.warning("Temporary password email skipped: %s", exc)
+
+    return TempPasswordResetResponse(
+        temporary_password=temporary_password,
+        email_sent=bool(email_sent),
+        message="Temporary password generated; user must change password on next login.",
+    )
+
+
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: str,
-    current_user: TokenData = Depends(
-        require_any_permission_with_scope([Permission.DELETE_USERS, Permission.MANAGE_USERS], "auth")
-    )
+    current_user: TokenData = Depends(require_authenticated_with_scope("auth"))
 ):
+    if not (current_user.is_superuser or current_user.role == Role.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can delete users",
+        )
     if current_user.user_id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -724,10 +789,10 @@ async def delete_user(
         )
 
     target_user = await run_in_threadpool(auth_service.get_user_by_id, user_id)
-    if target_user and target_user.role == Role.ADMIN and current_user.role != Role.ADMIN and not current_user.is_superuser:
+    if target_user and target_user.role == Role.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can delete admin accounts"
+            detail="Admin accounts cannot be deleted"
         )
     success = await run_in_threadpool(auth_service.delete_user, user_id, current_user.tenant_id, current_user.user_id)
 

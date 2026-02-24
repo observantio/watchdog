@@ -69,6 +69,41 @@ export default function TempoPage() {
   const { isAuthenticated, loading: authLoading } = useAuth()
   const toast = useToast()
 
+  const removePersistedSelectedTrace = useCallback((traceId) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      if (stored.selectedTrace === traceId) {
+        delete stored.selectedTrace
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+      }
+    } catch {
+      // ignore malformed local storage payloads
+    }
+  }, [])
+
+  const prunePersistedSelectedTraceIds = useCallback((invalidIds) => {
+    if (!invalidIds || invalidIds.size === 0) return
+
+    setSelectedTraceIds((prev) => {
+      const next = new Set(prev)
+      invalidIds.forEach((id) => next.delete(id))
+      return next
+    })
+
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      if (Array.isArray(stored.selectedTraceIds)) {
+        stored.selectedTraceIds = stored.selectedTraceIds.filter((id) => !invalidIds.has(id))
+      }
+      if (stored.selectedTrace && invalidIds.has(stored.selectedTrace)) {
+        delete stored.selectedTrace
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+    } catch {
+      // ignore malformed local storage payloads
+    }
+  }, [])
+
   const loadServices = useCallback(async () => {
     try {
       const data = await fetchTempoServices()
@@ -117,7 +152,8 @@ export default function TempoPage() {
   // if we restored a selected trace id at startup, refetch it into detail modal
   useEffect(() => {
     if (saved.selectedTrace && !selectedTrace) {
-      handleTraceClick(saved.selectedTrace)
+      // load quietly; if the ID is stale we'll remove it without alarming the user
+      void handleTraceClick(saved.selectedTrace, { silent: true })
     }
     // if we were on the graph view and had selected ids, reload them
     if (viewMode === 'graph' && selectedTraceIds.size > 0 && graphTraces.length === 0) {
@@ -145,7 +181,12 @@ export default function TempoPage() {
     }
   }, [traces, services.length])
 
-  const handleTraceClick = useCallback(async (traceId) => {
+  // when a trace id is clicked or restored from storage we load its details.
+  // the "silent" flag is used during rehydration to avoid showing an error
+  // message when the stored id no longer exists. regardless of who initiated
+  // the lookup we also clean up localStorage if a 404 occurs so the stale value
+  // doesn't keep us retrying on every mount.
+  const handleTraceClick = useCallback(async (traceId, { silent = false } = {}) => {
     try {
       const trace = await getTrace(traceId)
       if (trace?.spans) {
@@ -157,12 +198,24 @@ export default function TempoPage() {
           }))
         })
       } else {
-        setError('Trace data is incomplete — no spans returned')
+        if (!silent) setError('Trace data is incomplete — no spans returned')
       }
+      return true
     } catch (e) {
-      setError(`Failed to load trace: ${e.message}`)
+      // clear saved state if the trace has disappeared
+      if (e.status === 404) {
+        removePersistedSelectedTrace(traceId)
+        prunePersistedSelectedTraceIds(new Set([traceId]))
+        setSelectedTrace(null)
+        if (!silent) {
+          setError(`Trace not found: ${traceId}`)
+        }
+      } else {
+        if (!silent) setError(`Failed to load trace: ${e.message}`)
+      }
+      return false
     }
-  }, [])
+  }, [prunePersistedSelectedTraceIds, removePersistedSelectedTrace])
 
   function toggleSelectTrace(traceId, checked) {
     setSelectedTraceIds(prev => {
@@ -188,23 +241,31 @@ export default function TempoPage() {
     const concurrency = Math.min(8, ids.length)
     const queue = ids.slice()
     const results = []
+    const invalidIds = new Set()
 
     const worker = async () => {
       while (queue.length) {
         const id = queue.shift()
         try {
           const t = await getTrace(id)
-          if (t) results.push(t)
+          if (t && t.spans && t.spans.length) {
+            results.push(t)
+          } else {
+            invalidIds.add(id)
+          }
         } catch (e) {
-          // ignore individual failures
+          if (e?.status === 404) {
+            invalidIds.add(id)
+          }
         }
       }
     }
 
     try {
       await Promise.all(Array.from({ length: concurrency }).map(() => worker()))
+      prunePersistedSelectedTraceIds(invalidIds)
       if (results.length === 0) {
-        toast && toast.error && toast.error('Failed to load any selected traces')
+        setGraphTraces([])
         return
       }
       setGraphTraces(results)

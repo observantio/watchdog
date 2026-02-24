@@ -17,7 +17,8 @@ export function buildOtelYaml(otlpToken, endpoints = {}) {
 
   const tokenHeader = otlpToken ? `x-otlp-token: "${otlpToken}"` : `# x-otlp-token: <not available>`
 
-  return `receivers:
+  return `
+  receivers:
   hostmetrics:
     collection_interval: 30s
     scrapers:
@@ -70,7 +71,7 @@ processors:
     spike_limit_mib: 128
 
   resourcedetection:
-    detectors: [env, system, docker]
+    detectors: [env, system]
     timeout: 5s
     override: false
 
@@ -80,7 +81,7 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp/loki:
+  otlp_http/loki:
     endpoint: "${lokiEndpoint}"
     headers:
       ${tokenHeader}
@@ -96,7 +97,7 @@ exporters:
       num_consumers: 10
       queue_size: 1000
 
-  otlphttp/tempo:
+  otlp_http/tempo:
     endpoint: "${tempoEndpoint}"
     headers:
       ${tokenHeader}
@@ -127,12 +128,12 @@ service:
     logs:
       receivers: [otlp, filelog]
       processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlphttp/loki]
+      exporters: [otlp_http/loki]
 
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlphttp/tempo]
+      exporters: [otlp_http/tempo]
 
     metrics:
       receivers: [hostmetrics, otlp]
@@ -149,6 +150,6 @@ service:
             exporter:
               prometheus:
                 host: 0.0.0.0
-                port: 8888
+                port: 8889
 `
 }

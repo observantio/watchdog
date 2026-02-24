@@ -97,6 +97,7 @@ def create_user(service, user_create: UserCreate, tenant_id: str, creator_id: Op
             is_active=user_create.is_active,
             hashed_password=service.hash_password(raw_password),
             needs_password_change=(not is_external),
+            password_changed_at=datetime.now(timezone.utc),
             auth_provider=auth_provider,
             external_subject=external_subject,
             must_setup_mfa=getattr(user_create, "must_setup_mfa", False),
@@ -172,13 +173,10 @@ def update_user(
             updater_user = db.query(User).filter_by(id=updater_id, tenant_id=tenant_id).first()
 
         if user.role == Role.ADMIN and updater_user and updater_user.role != Role.ADMIN and not updater_user.is_superuser:
-            allowed = {"group_ids"}
-            for field in update_data:
-                if field not in allowed:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Only administrators can modify admin accounts",
-                    )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only administrators can modify admin accounts",
+            )
 
         if getattr(user, "auth_provider", "local") != "local" and "email" in update_data:
             raise HTTPException(
@@ -228,6 +226,21 @@ def delete_user(service, user_id: str, tenant_id: str, deleter_id: Optional[str]
         user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
         if not user:
             return False
+        if user.role == Role.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin accounts cannot be deleted",
+            )
+
+        if deleter_id:
+            deleter = db.query(User).filter_by(id=deleter_id, tenant_id=tenant_id).first()
+            if not deleter:
+                return False
+            if deleter.role != Role.ADMIN and not deleter.is_superuser:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only administrators can delete users",
+                )
 
         if deleter_id:
             service._log_audit(db, tenant_id, deleter_id, "delete_user", "users", user_id, {

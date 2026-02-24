@@ -88,6 +88,8 @@ class User(UserBase):
     updated_at: datetime
     last_login: Optional[datetime] = None
     needs_password_change: bool = False
+    password_changed_at: Optional[datetime] = None
+    session_invalid_before: Optional[datetime] = None
     grafana_user_id: Optional[int] = None
     api_keys: List[ApiKey] = Field(default_factory=list)
     mfa_enabled: bool = False
@@ -158,3 +160,9 @@ class MfaDisableRequest(BaseModel):
 
 class RecoveryCodesResponse(BaseModel):
     recovery_codes: List[str]
+
+
+class TempPasswordResetResponse(BaseModel):
+    temporary_password: str
+    email_sent: bool
+    message: str

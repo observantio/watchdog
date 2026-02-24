@@ -131,6 +131,8 @@ class User(Base):
     is_active:             Mapped[bool]                = mapped_column(Boolean,      default=True, nullable=False)
     is_superuser:          Mapped[bool]                = mapped_column(Boolean,      default=False, nullable=False)
     needs_password_change: Mapped[bool]                = mapped_column(Boolean,      default=False, nullable=False)
+    password_changed_at:   Mapped[Optional[datetime]]  = mapped_column(DateTime,     nullable=True)
+    session_invalid_before: Mapped[Optional[datetime]] = mapped_column(DateTime,     nullable=True)
     mfa_enabled:           Mapped[bool]                = mapped_column(Boolean,      default=False, nullable=False)
     must_setup_mfa:        Mapped[bool]                = mapped_column(Boolean,      default=False, nullable=False)
     totp_secret:           Mapped[Optional[str]]       = mapped_column(Text)

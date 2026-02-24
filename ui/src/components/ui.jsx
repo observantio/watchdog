@@ -247,8 +247,8 @@ export function Select({ label, error, helperText, children, className, ...props
           'w-full px-4 pr-10 py-2 bg-sre-surface border border-sre-border rounded-lg',
           'text-sre-text',
           'focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent',
-          'transition-all duration-200 cursor-pointer',
-          error && 'border-sre-error focus:ring-sre-error',
+          'transition-all duration-200 cursor-pointer',          // ensure long option labels don’t force the select to grow outside its container
+          'truncate',          error && 'border-sre-error focus:ring-sre-error',
           className
         )}
         {...props}

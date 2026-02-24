@@ -4,6 +4,54 @@ This guide covers authentication, core features, workflows, and operational runb
 
 ---
 
+## Running The Stack
+
+Two compose modes are supported:
+
+1. Source-build mode (`docker-compose.yml`)
+- Use for active development.
+- Requires sibling repos in this workspace, you might need to rename it to these folders:
+  - `./BeCertain`
+  - `./BeNotified`
+  
+- If missing, clone them before `docker compose up -d --build`.
+
+2. Image mode (`docker-compose.stable.yml`)
+- Use when you want a packaged stack and do not want local source checkouts.
+- Set these in `.env`:
+  - `BEOBSERVANT_IMAGE`
+  - `BENOTIFIED_IMAGE`
+  - `BECERTAIN_IMAGE`
+- Then run `docker compose -f docker-compose.stable.yml up -d`.
+- Default values are placeholders and must be replaced with published tags.
+
+---
+
+## Developer Pre-commit
+
+This repository uses pre-commit quality gates for local development. Each commit runs:
+
+- `server` unit tests
+- `BeCertain` unit tests
+- `BeNotified` unit tests
+- `gateway-auth-service` unit tests
+- `ui` lint, tests, and production build
+
+Setup:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Optional manual run:
+
+```bash
+pre-commit run --all-files
+```
+
+---
+
 ## Signing In
 
 Navigate to `http://localhost:5173` (or your deployed URL).

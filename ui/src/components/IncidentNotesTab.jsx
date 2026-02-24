@@ -24,7 +24,8 @@ export default function IncidentNotesTab({
   syncIncidentJiraComments,
   loadData,
   loadJiraComments,
-  createIncidentJiraComment
+  createIncidentJiraComment,
+  userById = {}
 }) {
   return (
     <Card className="p-4">
@@ -80,7 +81,6 @@ export default function IncidentNotesTab({
                   type="button"
                   className="text-xs text-sre-text-muted hover:text-sre-text flex items-center gap-2"
                   onClick={() => {
-                    // expand/collapse all notes by note key
                     const notes = activeIncident.notes.slice().reverse().slice(0, 10)
                     const keys = notes.map(n => n.createdAt ? String(n.createdAt) : `${n.author}-${notes.indexOf(n)}`)
                     const allExpanded = keys.every(k => expandedNotes.has(k))
@@ -120,16 +120,25 @@ export default function IncidentNotesTab({
             <div className="space-y-3 max-h-44 overflow-auto pr-2">
               {activeIncident.notes.slice().reverse().slice(0, 10).map((note, idx) => {
                 const key = note.createdAt ? String(note.createdAt) : `${note.author}-${idx}`
+                const noteAuthorUser = userById[note.author]
+                const noteAuthorLabel = noteAuthorUser ? getUserLabel(noteAuthorUser) : (note.author || 'unknown')
+                // prepare display text same as IncidentBoardPage logic
+                let displayText = note.text || ''
+                displayText = displayText.replace(/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/g, (id) => {
+                  const u = userById[id]
+                  return u ? getUserLabel(u) : id
+                })
+                displayText = displayText.replace(/^([^\s-]+)-[0-9a-f]+/, '$1')
                 const collapsed = !expandedNotes.has(key)
                 return (
                   <div key={`${activeIncident.id}-modal-note-${key}`} className="p-3 bg-sre-bg rounded-lg border border-sre-border flex gap-3 items-start">
                     <div className="w-8 h-8 rounded-md bg-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold text-sm flex-shrink-0">
-                      {String(note.author || '').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase()}
+                      {String(noteAuthorLabel || '').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-xs text-sre-text truncate">
-                          <span className="font-medium text-sre-text">{note.author}</span>
+                          <span className="font-medium text-sre-text">{noteAuthorLabel}</span>
                           <span className="text-sre-text-muted ml-2 text-xs">· {formatDateTime(note.createdAt)}</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -139,7 +148,7 @@ export default function IncidentNotesTab({
                             className="text-sre-text-muted hover:text-sre-text"
                             onClick={() => setIncidentDrafts((prev) => ({
                               ...prev,
-                              [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}> ${note.text}\n\n` }
+                              [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}> ${displayText}\n\n` }
                             }))}
                           >
                             <span className="material-icons text-sm">format_quote</span>
@@ -150,7 +159,7 @@ export default function IncidentNotesTab({
                             className="text-sre-text-muted hover:text-sre-text"
                             onClick={async () => {
                               try {
-                                await navigator.clipboard.writeText(note.text)
+                                await navigator.clipboard.writeText(displayText)
                                 toast.success('Note copied')
                               } catch (e) {
                                 toast.error('Copy failed')
@@ -175,7 +184,7 @@ export default function IncidentNotesTab({
                       </div>
 
                       <div className={`mt-2 text-sm text-sre-text-muted ${collapsed ? 'line-clamp-3' : ''}`}>
-                        {note.text}
+                        {displayText}
                       </div>
                     </div>
                   </div>

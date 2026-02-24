@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, NoSuchTableError
+from sqlalchemy import inspect, text
 
 from config import config
 from database import get_db_session
@@ -78,6 +79,8 @@ def ensure_default_api_key(service, db, user: User):
 def ensure_default_setup(service):
     try:
         with get_db_session() as db:
+            _ensure_user_security_columns(service, db)
+            _backfill_password_changed_at(service, db)
             default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
             ensure_permissions(service, db)
 
@@ -121,6 +124,7 @@ def ensure_default_setup(service):
                     is_active=True,
                     is_superuser=True,
                     hashed_password=service.hash_password(config.DEFAULT_ADMIN_PASSWORD),
+                    password_changed_at=datetime.now(timezone.utc),
                     must_setup_mfa=True,
                 )
                 db.add(admin_user)
@@ -136,3 +140,34 @@ def ensure_default_setup(service):
     except Exception as exc:
         service.logger.error("Error during default setup: %s", exc)
         raise
+
+
+def _ensure_user_security_columns(service, db) -> None:
+    # Keep schema compatible for existing deployments where users table predates these fields.
+    insp = inspect(db.bind)
+    try:
+        cols = {c.get("name") for c in insp.get_columns("users")}
+    except NoSuchTableError:
+        return
+
+    # Use SQL that works on PostgreSQL and modern SQLite.
+    if "password_changed_at" not in cols:
+        db.execute(text("ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP"))
+    if "session_invalid_before" not in cols:
+        db.execute(text("ALTER TABLE users ADD COLUMN session_invalid_before TIMESTAMP"))
+    db.flush()
+
+
+def _backfill_password_changed_at(service, db) -> None:
+    # Backfill legacy local users so periodic expiry works deterministically.
+    db.execute(
+        text(
+            """
+            UPDATE users
+            SET password_changed_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)
+            WHERE auth_provider = 'local'
+              AND password_changed_at IS NULL
+            """
+        )
+    )
+    db.flush()

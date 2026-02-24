@@ -31,6 +31,8 @@ def to_user_schema(service, user) -> UserSchema:
         updated_at=user.updated_at,
         last_login=user.last_login,
         needs_password_change=getattr(user, "needs_password_change", False),
+        password_changed_at=getattr(user, "password_changed_at", None),
+        session_invalid_before=getattr(user, "session_invalid_before", None),
         api_keys=service.list_api_keys(user.id),
         mfa_enabled=getattr(user, "mfa_enabled", False),
         must_setup_mfa=getattr(user, "must_setup_mfa", False),

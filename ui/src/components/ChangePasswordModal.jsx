@@ -39,11 +39,15 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
     },
     {
       title: 'Alerts — Quiet Guardians',
-      body: 'With Alertmanager, you can set up powerful alerting rules and notifications to stay on top of your system’s health. It’s flexible, reliable, and integrates seamlessly with the rest of the platform.'
+      body: 'With Be Notified built on top of Alertmanager, you can set up powerful alerting rules and notifications to stay on top of your system’s health. It’s flexible, reliable, and integrates seamlessly with the rest of the platform. It can ingest alerts from any source, so you can centralize your alerting and never miss a critical issue again.'
     },
     {
       title: 'Dashboards — Windows of Truth',
       body: 'What about dashboards? Be Observant has you covered there too. With Grafana, you can create beautiful, customizable dashboards to visualize your data and share insights with your team.'
+    },
+    {
+      title: 'RCA — Root Cause Analysis',
+      body: 'With Be Certain, you can easily identify and resolve issues quickly. Our integrated root cause analysis tools help you understand the underlying causes of problems, so you can fix them faster and prevent future occurrences. It is runs AI powered RCA on your traces and logs, giving you actionable insights to resolve incidents faster than ever before.'
     },
     {
       title: 'Teams — Shared Stewardship',
@@ -51,7 +55,7 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
     },
     {
       title: 'Open Source — Freedom to Observe',
-      body: 'Best of all, Be Observant is open source and self-hosted, giving you full control over your data and your monitoring. No vendor lock-in, no hidden costs, just a powerful observability platform that puts you in the driver’s seat. Support us by starring the project on GitHub and sharing it with your friends and colleagues. Let’s build a better monitoring future together!'
+      body: 'Best of all, Be Observant is open source and self-hosted, giving you full control over your data and your monitoring. No vendor lock-in, no hidden costs, just a powerful observability platform that puts you in the driver’s seat. You will only be running to costs to run these servers. Support us by starring the project on GitHub and sharing it with your friends and colleagues.  Let’s build a better monitoring future together!'
     }
   ]
 

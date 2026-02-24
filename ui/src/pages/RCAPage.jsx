@@ -73,6 +73,7 @@ export default function RCAPage() {
     loadingInsights,
     loadingReport,
     reportError,
+    reportErrorStatus,
     report,
     reportMeta,
     insights,
@@ -148,6 +149,19 @@ export default function RCAPage() {
     }
   }, [jobs, setSelectedJobId])
 
+  // if the job referenced in storage disappears from the returned list we should
+  // also clear it so we don't keep an orphaned selection around.
+  useEffect(() => {
+    if (selectedJobId && jobs.length > 0 && !jobs.some((j) => j.job_id === selectedJobId)) {
+      setSelectedJobId(null)
+      try {
+        localStorage.removeItem(JOB_STORAGE_KEY)
+      } catch {
+        // ignore
+      }
+    }
+  }, [jobs, selectedJobId])
+
   // if the user had previously looked up a report id we automatically re-open
   // the modal when the page comes back, giving the sense of restoring state.
   useEffect(() => {
@@ -155,6 +169,22 @@ export default function RCAPage() {
       setViewModalOpen(true)
     }
   }, [reportLookupId])
+
+  // when a lookup ID is invalid (e.g. the report was deleted or the key changed)
+  // the backend will return a 404. Rather than continuously retrying on every
+  // mount we clear the stored value so the UI stops spamming error messages.
+  useEffect(() => {
+    if (reportErrorStatus === 404 && reportLookupId) {
+      setReportLookupInput('')
+      setReportLookupId(null)
+      setViewModalOpen(false)
+      try {
+        localStorage.removeItem(REPORT_STORAGE_KEY)
+      } catch {
+        // ignore
+      }
+    }
+  }, [reportErrorStatus, reportLookupId, setReportLookupInput, setReportLookupId])
 
   async function handleDeleteReport() {
     if (!selectedReportId) return

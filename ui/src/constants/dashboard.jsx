@@ -82,8 +82,7 @@ export const getMetricsConfig = (data) => {
   const getTraceValue = () => {
     if (loadingTraces) return <span className="animate-pulse">Loading...</span>
     if (traceCount !== null) {
-      if (traceCount >= 1000) return '1000+'
-      return String(traceCount)
+      return Number(traceCount).toLocaleString()
     }
     return 'N/A'
   }

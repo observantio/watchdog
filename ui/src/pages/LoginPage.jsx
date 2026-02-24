@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [mfaRequired, setMfaRequired] = useState(false)
   const [mfaCode, setMfaCode] = useState('')
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false)
   const [showMfaSetup, setShowMfaSetup] = useState(false)
   const [setupStep, setSetupStep] = useState(0)
   const [setupLoading, setSetupLoading] = useState(false)
@@ -75,6 +76,7 @@ export default function LoginPage() {
       // Detect MFA challenge
       if (err?.status === 401 && err?.body?.detail === 'MFA required') {
         setMfaRequired(true)
+        setUseRecoveryCode(false)
         setError('')
         return
       }
@@ -106,7 +108,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     if (!mfaCode) {
-      setError('You need to enter the authentication code from your authenticator app to continue')
+      setError(useRecoveryCode ? 'Enter one of your recovery codes to continue' : 'Enter the authentication code from your authenticator app to continue')
       return
     }
     setLoading(true)
@@ -114,7 +116,7 @@ export default function LoginPage() {
       await login(username.trim(), password, mfaCode)
       navigate('/')
     } catch (err) {
-      setError(err?.body?.detail || err?.message || 'You\'re session has expired or your token is invalid. Let\'s get you a new one.')
+      setError(err?.body?.detail || err?.message || 'Invalid authenticator or recovery code, or your session expired.')
     } finally {
       setLoading(false)
     }
@@ -377,20 +379,48 @@ export default function LoginPage() {
           ) : mfaRequired ? (
             <form onSubmit={handleVerifyMfa} className="space-y-4">
               <div>
-                <label htmlFor="mfa" className="block text-sm font-medium text-sre-text mb-1">Authentication code</label>
+                <label htmlFor="mfa" className="block text-sm font-medium text-sre-text mb-1">
+                  {useRecoveryCode ? 'Recovery code' : 'Authentication code'}
+                </label>
                 <input
                   id="mfa"
                   type="text"
                   value={mfaCode}
                   onChange={(e) => setMfaCode(e.target.value)}
-                  placeholder="Enter 6-digit code"
+                  placeholder={useRecoveryCode ? 'Enter recovery code' : 'Enter 6-digit code'}
                   className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
                   autoFocus
                 />
+                <p className="text-xs text-sre-text-muted mt-2">
+                  {useRecoveryCode
+                    ? 'Recovery codes are single-use. Enter one exactly as saved.'
+                    : 'Use the code from your authenticator app, or switch to a recovery code if unavailable.'}
+                </p>
               </div>
+              <button
+                type="button"
+                className="text-xs text-sre-primary underline"
+                onClick={() => {
+                  setUseRecoveryCode((prev) => !prev)
+                  setMfaCode('')
+                  setError('')
+                }}
+              >
+                {useRecoveryCode ? 'Use authenticator code instead' : 'Use recovery code instead'}
+              </button>
               <div className="flex gap-2 justify-end">
                 <button type="submit" className="px-4 py-2 bg-sre-primary text-white rounded" disabled={loading}>{loading ? 'Verifying...' : 'Verify'}</button>
-                <button type="button" className="px-4 py-2 bg-sre-surface border rounded" onClick={() => setMfaRequired(false)}>Back</button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-sre-surface border rounded"
+                  onClick={() => {
+                    setMfaRequired(false)
+                    setUseRecoveryCode(false)
+                    setMfaCode('')
+                  }}
+                >
+                  Back
+                </button>
               </div>
             </form>
           ) : (
