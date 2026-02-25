@@ -112,3 +112,25 @@ async def test_delete_report_by_id_proxies(monkeypatch):
     result = await becertain_router.delete_report_by_id("rep-1", _request(), _user())
     assert result.deleted is True
     assert captured["upstream_path"] == "/api/v1/reports/rep-1"
+
+
+@pytest.mark.asyncio
+async def test_get_analyze_job_result_tolerates_unknown_running_status(monkeypatch):
+    async def fake_request_json(**kwargs):
+        return {
+            "job_id": "job-2",
+            "report_id": "rep-2",
+            "status": "in_progress",
+            "tenant_id": "tenant-a",
+            "requested_by": "u1",
+            "result": None,
+        }
+
+    monkeypatch.setattr("routers.observability.becertain_router.becertain_proxy_service.request_json", fake_request_json)
+    result = await becertain_router.get_analyze_job_result(
+        job_id="job-2",
+        request=_request(),
+        current_user=_user(),
+    )
+    # unknown statuses are normalized to a non-terminal status for resilience
+    assert result.status.value == "pending"

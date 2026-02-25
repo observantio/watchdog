@@ -37,8 +37,6 @@ export function DashboardLayout({ dashboardData, agentData }) {
         <DataVolume
           loadingLogs={dashboardData.loadingLogs}
           logVolumeSeries={dashboardData.logVolumeSeries}
-          loadingTempoVolume={dashboardData.loadingTempoVolume}
-          tempoVolumeSeries={dashboardData.tempoVolumeSeries}
         />
       )
     },

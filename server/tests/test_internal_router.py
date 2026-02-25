@@ -58,3 +58,27 @@ def test_success(monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json() == {"org_id": "org123"}
+
+
+def test_success_post_body(monkeypatch):
+    monkeypatch.setattr(config, "GATEWAY_INTERNAL_SERVICE_TOKEN", "secret")
+    client = TestClient(app)
+    resp = client.post(
+        "/api/internal/otlp/validate",
+        headers={"X-Internal-Token": "secret"},
+        json={"token": "good"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"org_id": "org123"}
+
+
+def test_success_post_header_token(monkeypatch):
+    monkeypatch.setattr(config, "GATEWAY_INTERNAL_SERVICE_TOKEN", "secret")
+    client = TestClient(app)
+    resp = client.post(
+        "/api/internal/otlp/validate",
+        headers={"X-Internal-Token": "secret", "X-OTLP-Token": "good"},
+        json={},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"org_id": "org123"}

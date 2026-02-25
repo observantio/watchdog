@@ -36,6 +36,29 @@ const sharedKey = {
   updated_at: null,
 }
 
+const ownedKey = {
+  id: 'k-owned',
+  name: 'Owned Key',
+  key: 'org-owned',
+  otlp_token: 'bo_test_token',
+  owner_user_id: 'u2',
+  owner_username: 'me',
+  is_shared: false,
+  can_use: true,
+  shared_with: [],
+  is_default: false,
+  is_enabled: false,
+  created_at: '2025-01-02T00:00:00Z',
+  updated_at: null,
+}
+
+const defaultOwnedKey = {
+  ...ownedKey,
+  id: 'k-default',
+  name: 'Default Owned Key',
+  is_default: true,
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -86,5 +109,30 @@ describe('ApiKeyPage (shared-key UX)', () => {
     fireEvent.click(confirmBtn)
 
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('You are not authorized to delete this key'))
+  })
+
+  it('only allows YAML generation for owned keys', async () => {
+    currentUser.api_keys = [{ ...sharedKey, is_enabled: true }, ownedKey]
+    const Page = (await import('../ApiKeyPage')).default
+
+    render(<Page />)
+
+    const btn = await screen.findByRole('button', { name: /Generate Agent YAML/i })
+    expect(btn).toBeEnabled()
+    fireEvent.click(btn)
+
+    const dialog = await screen.findByRole('dialog')
+    const { within } = await import('@testing-library/react')
+    expect(within(dialog).queryByRole('option', { name: /Shared Key/i })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: /Owned Key/i })).toBeInTheDocument()
+  })
+
+  it('does not render Share action for default keys', async () => {
+    currentUser.api_keys = [defaultOwnedKey]
+    const Page = (await import('../ApiKeyPage')).default
+
+    render(<Page />)
+
+    expect(screen.queryByRole('button', { name: `Share ${defaultOwnedKey.name}` })).not.toBeInTheDocument()
   })
 })

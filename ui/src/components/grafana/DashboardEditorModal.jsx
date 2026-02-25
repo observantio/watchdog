@@ -14,16 +14,10 @@ const SAMPLE_MIMIR_DASHBOARD = {
   version: 1,
   time: { from: 'now-1h', to: 'now' },
   panels: [
-    { type: 'row', title: 'Alerts', gridPos: { x: 0, y: 0, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'ALERTS', gridPos: { x: 0, y: 1, w: 12, h: 8 }, datasource: { type: 'prometheus', uid: 'mimir-prometheus' }, targets: [{ expr: 'ALERTS', refId: 'A' }] },
-    { type: 'timeseries', title: 'ALERTS_FOR_STATE', gridPos: { x: 12, y: 1, w: 12, h: 8 }, datasource: { type: 'prometheus', uid: 'mimir-prometheus' }, targets: [{ expr: 'ALERTS_FOR_STATE', refId: 'A' }] },
-
     { type: 'row', title: 'CPU', gridPos: { x: 0, y: 9, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'Process CPU Time', gridPos: { x: 0, y: 10, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(process_cpu_time_seconds_total[5m])', refId: 'A' }] },
     { type: 'timeseries', title: 'System CPU Time', gridPos: { x: 12, y: 10, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_cpu_time_seconds_total[5m])', refId: 'A' }] },
 
     { type: 'row', title: 'Memory', gridPos: { x: 0, y: 18, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'Process Memory Usage', gridPos: { x: 0, y: 19, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'process_memory_usage_bytes', refId: 'A' }] },
     { type: 'timeseries', title: 'Virtual Memory', gridPos: { x: 12, y: 19, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'process_memory_virtual_bytes', refId: 'A' }] },
     { type: 'timeseries', title: 'System Memory Usage', gridPos: { x: 0, y: 27, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'system_memory_usage_bytes', refId: 'A' }] },
 

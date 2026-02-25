@@ -66,6 +66,15 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 notification_service = NotificationService()
 
 
+def _invalidate_grafana_proxy_auth_cache() -> None:
+    try:
+        from services.grafana.proxy_auth_ops import clear_proxy_auth_cache
+
+        clear_proxy_auth_cache()
+    except Exception as exc:
+        logger.warning("Failed to invalidate Grafana proxy auth cache: %s", exc)
+
+
 def _require_admin_with_audit_permission(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AUDIT_LOGS, "auth"))):
     if str(getattr(current_user, "role", "")).lower() != Role.ADMIN.value and not getattr(current_user, "is_superuser", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required to view audit logs")
@@ -245,13 +254,15 @@ async def oidc_authorize_url(request: Request, payload: OIDCAuthURLRequest):
     if not await run_in_threadpool(auth_service.is_external_auth_enabled):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC is not enabled")
     try:
-        url = await run_in_threadpool(
+        oidc_session = await run_in_threadpool(
             auth_service.get_oidc_authorization_url,
-            redirect_uri=payload.redirect_uri,
-            state=payload.state,
-            nonce=payload.nonce,
+            payload.redirect_uri,
+            payload.state,
+            payload.nonce,
+            payload.code_challenge,
+            payload.code_challenge_method,
         )
-        return OIDCAuthURLResponse(authorization_url=url)
+        return OIDCAuthURLResponse(**oidc_session)
     except Exception as exc:
         logger.error("Failed to build OIDC authorization URL: %s", exc)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to initialize OIDC login")
@@ -268,7 +279,14 @@ async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest
     )
     if not await run_in_threadpool(auth_service.is_external_auth_enabled):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC is not enabled")
-    token_or_challenge = await run_in_threadpool(auth_service.exchange_oidc_authorization_code, payload.code, payload.redirect_uri)
+    token_or_challenge = await run_in_threadpool(
+        auth_service.exchange_oidc_authorization_code,
+        payload.code,
+        payload.redirect_uri,
+        payload.transaction_id,
+        payload.state,
+        payload.code_verifier,
+    )
     if not token_or_challenge:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed")
     if isinstance(token_or_challenge, dict) and token_or_challenge.get('mfa_setup_required'):
@@ -422,6 +440,15 @@ async def update_api_key(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_API_KEYS, "auth"))
 ):
     return await run_in_threadpool(auth_service.update_api_key, current_user.user_id, key_id, key_update)
+
+
+@router.post("/api-keys/{key_id}/otlp-token/regenerate", response_model=ApiKey)
+@handle_route_errors()
+async def regenerate_api_key_otlp_token(
+    key_id: str,
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_API_KEYS, "auth"))
+):
+    return await run_in_threadpool(auth_service.regenerate_api_key_otlp_token, current_user.user_id, key_id)
 
 
 @router.delete("/api-keys/{key_id}")
@@ -651,7 +678,15 @@ async def create_user(
         require_any_permission_with_scope([Permission.CREATE_USERS, Permission.MANAGE_USERS], "auth")
     )
 ):
-    user = await run_in_threadpool(auth_service.create_user, user_create, current_user.tenant_id)
+    user = await run_in_threadpool(
+        auth_service.create_user,
+        user_create,
+        current_user.tenant_id,
+        current_user.user_id,
+        current_user.role,
+        list(getattr(current_user, "permissions", []) or []),
+        bool(getattr(current_user, "is_superuser", False)),
+    )
     try:
         await notification_service.send_user_welcome_email(
             recipient_email=user.email,
@@ -662,6 +697,7 @@ async def create_user(
     except Exception as exc:
         logger.warning("User welcome email skipped: %s", exc)
 
+    _invalidate_grafana_proxy_auth_cache()
     return await run_in_threadpool(auth_service.build_user_response, user, _role_permission_strings(user.role))
 
 
@@ -677,19 +713,29 @@ async def update_user(
     is_admin_actor = bool(getattr(current_user, "is_superuser", False) or current_user.role == Role.ADMIN)
     has_manage_users = Permission.MANAGE_USERS.value in current_perms or Permission.UPDATE_USERS.value in current_perms
     has_manage_tenants = Permission.MANAGE_TENANTS.value in current_perms
+    update_fields = set(user_update.model_dump(exclude_unset=True).keys())
+
     if has_manage_tenants and not has_manage_users and not is_admin_actor:
-        update_fields = set(user_update.model_dump(exclude_unset=True).keys())
         if update_fields - {"is_active"}:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="manage:tenants can only activate/deactivate non-admin users",
             )
 
+    sensitive_fields = {"role", "org_id", "group_ids"}
+    if (update_fields & sensitive_fields) and not is_admin_actor:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can modify role, tenant scope, or group memberships",
+        )
+
     user = await run_in_threadpool(auth_service.update_user, user_id, user_update, current_user.tenant_id, current_user.user_id)
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
 
+    if update_fields & {"role", "group_ids", "org_id", "is_active"}:
+        _invalidate_grafana_proxy_auth_cache()
     return await run_in_threadpool(auth_service.build_user_response, user, _role_permission_strings(user.role))
 
 
@@ -730,14 +776,11 @@ async def reset_user_password_temp(
 ):
     perms = set(getattr(current_user, "permissions", []) or [])
     is_admin_actor = bool(getattr(current_user, "is_superuser", False) or current_user.role == Role.ADMIN)
-    can_manage = (
-        Permission.MANAGE_USERS.value in perms
-        or Permission.MANAGE_TENANTS.value in perms
-    )
-    if not (is_admin_actor or can_manage):
+    can_manage_users = Permission.MANAGE_USERS.value in perms
+    if not (is_admin_actor or can_manage_users):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted to reset passwords")
 
-    target_user = await run_in_threadpool(auth_service.get_user_by_id, user_id)
+    target_user = await run_in_threadpool(auth_service.get_user_by_id_in_tenant, user_id, current_user.tenant_id)
     if not target_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
     if target_user.role == Role.ADMIN:
@@ -788,7 +831,7 @@ async def delete_user(
             detail="Cannot delete your own account"
         )
 
-    target_user = await run_in_threadpool(auth_service.get_user_by_id, user_id)
+    target_user = await run_in_threadpool(auth_service.get_user_by_id_in_tenant, user_id, current_user.tenant_id)
     if target_user and target_user.role == Role.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -799,6 +842,7 @@ async def delete_user(
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
 
+    _invalidate_grafana_proxy_auth_cache()
     return {"message": "User deleted successfully"}
 
 
@@ -814,7 +858,9 @@ async def create_group(
         require_any_permission_with_scope([Permission.CREATE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    return await run_in_threadpool(auth_service.create_group, group_create, current_user.tenant_id)
+    group = await run_in_threadpool(auth_service.create_group, group_create, current_user.tenant_id, current_user.user_id)
+    _invalidate_grafana_proxy_auth_cache()
+    return group
 
 
 @router.get("/groups/{group_id}", response_model=Group)
@@ -840,9 +886,10 @@ async def update_group(
         require_any_permission_with_scope([Permission.UPDATE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    group = await run_in_threadpool(auth_service.update_group, group_id, group_update, current_user.tenant_id)
+    group = await run_in_threadpool(auth_service.update_group, group_id, group_update, current_user.tenant_id, current_user.user_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
+    _invalidate_grafana_proxy_auth_cache()
     return group
 
 
@@ -853,11 +900,12 @@ async def delete_group(
         require_any_permission_with_scope([Permission.DELETE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    success = await run_in_threadpool(auth_service.delete_group, group_id, current_user.tenant_id)
+    success = await run_in_threadpool(auth_service.delete_group, group_id, current_user.tenant_id, current_user.user_id)
 
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
 
+    _invalidate_grafana_proxy_auth_cache()
     return {"message": "Group deleted successfully"}
 
 
@@ -869,9 +917,19 @@ async def update_user_permissions(
         require_any_permission_with_scope([Permission.UPDATE_USER_PERMISSIONS, Permission.MANAGE_USERS], "auth")
     )
 ):
-    success = await run_in_threadpool(auth_service.update_user_permissions, user_id, permission_names, current_user.tenant_id)
+    success = await run_in_threadpool(
+        auth_service.update_user_permissions,
+        user_id,
+        permission_names,
+        current_user.tenant_id,
+        current_user.user_id,
+        current_user.role,
+        list(getattr(current_user, "permissions", []) or []),
+        bool(getattr(current_user, "is_superuser", False)),
+    )
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_NOT_FOUND)
+    _invalidate_grafana_proxy_auth_cache()
     return {"success": True, "permissions": permission_names}
 
 
@@ -883,9 +941,19 @@ async def update_group_permissions(
         require_any_permission_with_scope([Permission.UPDATE_GROUP_PERMISSIONS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    success = await run_in_threadpool(auth_service.update_group_permissions, group_id, permission_names, current_user.tenant_id)
+    success = await run_in_threadpool(
+        auth_service.update_group_permissions,
+        group_id,
+        permission_names,
+        current_user.tenant_id,
+        current_user.user_id,
+        current_user.role,
+        list(getattr(current_user, "permissions", []) or []),
+        bool(getattr(current_user, "is_superuser", False)),
+    )
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
+    _invalidate_grafana_proxy_auth_cache()
     return {"success": True, "permissions": permission_names}
 
 
@@ -897,9 +965,19 @@ async def update_group_members(
         require_any_permission_with_scope([Permission.UPDATE_GROUP_MEMBERS, Permission.MANAGE_GROUPS], "auth")
     )
 ):
-    success = await run_in_threadpool(auth_service.update_group_members, group_id, members.user_ids, current_user.tenant_id)
+    success = await run_in_threadpool(
+        auth_service.update_group_members,
+        group_id,
+        members.user_ids,
+        current_user.tenant_id,
+        current_user.user_id,
+        current_user.role,
+        list(getattr(current_user, "permissions", []) or []),
+        bool(getattr(current_user, "is_superuser", False)),
+    )
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=GROUP_NOT_FOUND)
+    _invalidate_grafana_proxy_auth_cache()
     return {"success": True, "user_ids": members.user_ids}
 
 

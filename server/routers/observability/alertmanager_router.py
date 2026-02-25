@@ -34,7 +34,7 @@ notification_service = None
 _SILENCE_META_KEY = "beobservant_meta"
 
 
-def _required_permissions(path: str, method: str) -> Set[str]:
+def _required_permissions(path: str, method: str) -> Optional[Set[str]]:
     p = f"/{path.strip('/')}" if path else "/"
     m = method.upper()
 
@@ -100,7 +100,7 @@ def _required_permissions(path: str, method: str) -> Set[str]:
     if p == "/public/rules":
         return set()
 
-    return {Permission.READ_ALERTS.value}
+    return None
 
 
 def _check_permissions(current_user: TokenData, required: Set[str]) -> None:
@@ -363,6 +363,8 @@ async def alertmanager_proxy(
     current_user: TokenData = Depends(get_current_user),
 ):
     required = _required_permissions(path, request.method)
+    if required is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Route is not authorized")
     _check_permissions(current_user, required)
     method = request.method.upper()
     payload: Optional[Dict[str, Any]] = None

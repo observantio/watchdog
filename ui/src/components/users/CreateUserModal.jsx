@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
 import HelpTooltip from '../HelpTooltip'
 import * as api from '../../api'
+import { copyToClipboard } from '../../utils/helpers'
 import {
   USERNAME_REGEX,
   generateStrongPassword,
@@ -47,7 +48,10 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
 
   const handleCopyPassword = async () => {
     try {
-      await navigator.clipboard.writeText(formData.password);
+      const copied = await copyToClipboard(formData.password)
+      if (!copied) {
+        throw new Error('Clipboard is unavailable in this browser context')
+      }
       toast.success('Password copied to clipboard');
     } catch (err) {
       toast.error('Failed to copy password: ' + (err?.message || 'Unknown error'));

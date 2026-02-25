@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchHealth, getAlerts, getLogVolume, searchDashboards, getSilences, getDatasources, fetchSystemMetrics, fetchTraceMetrics, getTraceVolume } from '../api'
+import { fetchHealth, getAlerts, getLogVolume, searchDashboards, getSilences, getDatasources, fetchSystemMetrics } from '../api'
 import { getVolumeValues } from '../utils/lokiQueryUtils'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -7,7 +7,6 @@ export function useDashboardData() {
   const { hasPermission } = useAuth()
   const canReadAlerts = hasPermission('read:alerts')
   const canReadDashboards = hasPermission('read:dashboards')
-  const canReadTraces = hasPermission('read:traces')
   const canReadLogs = hasPermission('read:logs')
 
   // Health state
@@ -18,19 +17,10 @@ export function useDashboardData() {
   const [alertCount, setAlertCount] = useState(null)
   const [loadingAlerts, setLoadingAlerts] = useState(true)
 
-  // Traces state
-  const [traceCount, setTraceCount] = useState(null)
-  const [traceErrorCount, setTraceErrorCount] = useState(null)
-  const [loadingTraces, setLoadingTraces] = useState(true)
-
   // Logs state
   const [logVolume, setLogVolume] = useState(null)
   const [logVolumeSeries, setLogVolumeSeries] = useState([])
   const [loadingLogs, setLoadingLogs] = useState(true)
-
-  // Tempo volume state
-  const [tempoVolumeSeries, setTempoVolumeSeries] = useState([])
-  const [loadingTempoVolume, setLoadingTempoVolume] = useState(true)
 
   // Dashboards state
   const [dashboardCount, setDashboardCount] = useState(null)
@@ -64,8 +54,6 @@ export function useDashboardData() {
   useEffect(() => {
     let active = true
     const nowMs = Date.now()
-    const endUs = nowMs * 1000
-    const startUs = endUs - (60 * 60 * 1000000)
     const endNs = nowMs * 1000000
     const startNs = endNs - (60 * 60 * 1000000000)
 
@@ -94,32 +82,6 @@ export function useDashboardData() {
         if (active) setAlertCount(0)
       } finally {
         if (active) setLoadingAlerts(false)
-      }
-    })()
-
-    // Fetch traces
-    ;(async () => {
-      if (!canReadTraces) {
-        if (active) {
-          setTraceCount(null)
-          setTraceErrorCount(null)
-          setLoadingTraces(false)
-        }
-        return
-      }
-      try {
-        const metrics = await fetchTraceMetrics({ start: Math.floor(startUs), end: Math.floor(endUs) })
-        if (active) {
-          setTraceCount(typeof metrics?.total_traces === 'number' ? metrics.total_traces : 0)
-          setTraceErrorCount(typeof metrics?.error_count === 'number' ? metrics.error_count : null)
-        }
-      } catch {
-        if (active) {
-          setTraceCount(0)
-          setTraceErrorCount(null)
-        }
-      } finally {
-        if (active) setLoadingTraces(false)
       }
     })()
 
@@ -160,30 +122,6 @@ export function useDashboardData() {
         }
       } finally {
         if (active) setLoadingLogs(false)
-      }
-    })()
-
-    // Fetch tempo volume
-    ;(async () => {
-      if (!canReadTraces) {
-        if (active) {
-          setTempoVolumeSeries([])
-          setLoadingTempoVolume(false)
-        }
-        return
-      }
-      try {
-        const res = await getTraceVolume({ start: Math.floor(startUs), end: Math.floor(endUs), step: 60 })
-        try {
-          const series = getVolumeValues(res)
-          if (active) setTempoVolumeSeries(series)
-        } catch (e) {
-          if (active) setTempoVolumeSeries([])
-        }
-      } catch (e) {
-        if (active) setTempoVolumeSeries([])
-      } finally {
-        if (active) setLoadingTempoVolume(false)
       }
     })()
 
@@ -250,7 +188,7 @@ export function useDashboardData() {
     return () => {
       active = false
     }
-  }, [canReadAlerts, canReadDashboards, canReadLogs, canReadTraces])
+  }, [canReadAlerts, canReadDashboards, canReadLogs])
 
   return {
     // Health
@@ -261,19 +199,10 @@ export function useDashboardData() {
     alertCount,
     loadingAlerts,
 
-    // Traces
-    traceCount,
-    traceErrorCount,
-    loadingTraces,
-
     // Logs
     logVolume,
     logVolumeSeries,
     loadingLogs,
-
-    // Tempo volume
-    tempoVolumeSeries,
-    loadingTempoVolume,
 
     // Dashboards
     dashboardCount,

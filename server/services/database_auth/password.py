@@ -69,7 +69,7 @@ def reset_user_password_temp(service, actor_user_id: str, target_user_id: str, t
             or str(actor_role).lower() == "role.admin"
         )
         actor_perms = {getattr(p, "name", "") for p in (getattr(actor, "permissions", None) or [])}
-        actor_can_manage = "manage:users" in actor_perms or "manage:tenants" in actor_perms
+        actor_can_manage = "manage:users" in actor_perms
         if not (actor_is_admin or actor_can_manage):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted to reset passwords")
 

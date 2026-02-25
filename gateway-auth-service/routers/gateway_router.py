@@ -23,6 +23,7 @@ _service = GatewayAuthService()
 @router.api_route("/validate", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 @router.api_route("/validate/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def validate_otlp_token(request: Request, path: str = ""):
+    _service.enforce_ip_allowlist(request)
     _service.enforce_rate_limit(request)
 
     token = _service.extract_otlp_token(request.headers.get("x-otlp-token"))

@@ -8,8 +8,8 @@ import PageHeader from './ui/PageHeader'
 export default function Dashboard() {
   const dashboardData = useDashboardData()
   const agentData = useAgentActivity()
-  const [metricOrder, setMetricOrder] = usePersistentOrder('dashboard-metric-order', 8)
   const metrics = useMemo(() => getMetricsConfig(dashboardData), [dashboardData])
+  const [metricOrder, setMetricOrder] = usePersistentOrder('dashboard-metric-order', metrics.length)
   const handleMetricOrderChange = (newOrder) => {
     setMetricOrder(newOrder)
   }
@@ -35,5 +35,4 @@ export default function Dashboard() {
     </div>
   )
 }
-
 

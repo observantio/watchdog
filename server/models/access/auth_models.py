@@ -168,17 +168,24 @@ class TokenData(BaseModel):
 
 class OIDCAuthURLRequest(BaseModel):
     redirect_uri: str
-    state: str
-    nonce: str
+    state: Optional[str] = None
+    nonce: Optional[str] = None
+    code_challenge: Optional[str] = None
+    code_challenge_method: Optional[str] = None
 
 
 class OIDCCodeExchangeRequest(BaseModel):
     code: str
     redirect_uri: str
+    state: Optional[str] = None
+    transaction_id: Optional[str] = None
+    code_verifier: Optional[str] = None
 
 
 class OIDCAuthURLResponse(BaseModel):
     authorization_url: str
+    transaction_id: Optional[str] = None
+    state: Optional[str] = None
 
 
 class AuthModeResponse(BaseModel):

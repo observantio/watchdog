@@ -3,9 +3,36 @@ import { createRcaAnalyzeJob, deleteRcaReport, listRcaJobs } from '../api'
 import { useToast } from '../contexts/ToastContext'
 
 const JOB_POLL_MS = 5000
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'deleted'])
+
+function isTerminalStatus(value) {
+  return TERMINAL_JOB_STATUSES.has(String(value || '').toLowerCase())
+}
 
 function hasActiveJobs(items) {
-  return (items || []).some((job) => job.status === 'queued' || job.status === 'running')
+  return (items || []).some((job) => !isTerminalStatus(job?.status))
+}
+
+function mergeJobs(authoritative, local = []) {
+  const byId = new Map()
+  for (const job of authoritative || []) {
+    if (job?.job_id) byId.set(job.job_id, job)
+  }
+
+  for (const job of local || []) {
+    if (!job?.job_id) continue
+    if (byId.has(job.job_id)) continue
+    // Keep optimistic/active local jobs when the upstream list lags behind.
+    if (!isTerminalStatus(job.status)) byId.set(job.job_id, job)
+  }
+
+  return Array.from(byId.values())
+    .sort((a, b) => {
+      const aTime = Date.parse(a?.created_at || a?.started_at || a?.finished_at || '') || 0
+      const bTime = Date.parse(b?.created_at || b?.started_at || b?.finished_at || '') || 0
+      return bTime - aTime
+    })
+    .slice(0, 30)
 }
 
 export function useRcaJobs() {
@@ -21,10 +48,13 @@ export function useRcaJobs() {
     try {
       const res = await listRcaJobs({ limit: 30 })
       const items = Array.isArray(res?.items) ? res.items : []
-      setJobs(items)
-      if (items.length > 0 && (!selectedJobId || !items.some((job) => job.job_id === selectedJobId))) {
-        setSelectedJobId(items[0].job_id)
-      }
+      setJobs((prev) => {
+        const merged = mergeJobs(items, prev)
+        if (merged.length > 0 && (!selectedJobId || !merged.some((job) => job.job_id === selectedJobId))) {
+          setSelectedJobId(merged[0].job_id)
+        }
+        return merged
+      })
     } catch (err) {
       toast?.error?.(err?.message || 'Failed to load RCA jobs')
     } finally {
@@ -87,6 +117,9 @@ export function useRcaJobs() {
         return [created, ...withoutOptimistic].slice(0, 30)
       })
       setSelectedJobId(created.job_id)
+      // Pull authoritative state from server immediately so queued/running
+      // transitions are reflected without requiring a full page reload.
+      await refreshJobs()
       toast?.success?.('RCA analysis job created')
       return created
     } catch (err) {
@@ -96,7 +129,7 @@ export function useRcaJobs() {
     } finally {
       setCreatingJob(false)
     }
-  }, [toast])
+  }, [refreshJobs, toast])
 
   const removeJobByReportId = useCallback((reportId) => {
     setJobs((prev) => {

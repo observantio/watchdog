@@ -207,12 +207,21 @@ export async function getAuthMode() {
   return request('/api/auth/mode')
 }
 
-export async function getOIDCAuthorizeUrl(redirect_uri, state, nonce) {
-  return requestJson('/api/auth/oidc/authorize-url', { payload: { redirect_uri, state, nonce } })
+export async function getOIDCAuthorizeUrl(
+  redirect_uri,
+  { state = null, nonce = null, code_challenge = null, code_challenge_method = null } = {},
+) {
+  return requestJson('/api/auth/oidc/authorize-url', {
+    payload: { redirect_uri, state, nonce, code_challenge, code_challenge_method },
+  })
 }
 
-export async function exchangeOIDCCode(code, redirect_uri) {
-  return requestJson('/api/auth/oidc/exchange', { payload: { code, redirect_uri } })
+export async function exchangeOIDCCode(
+  code,
+  redirect_uri,
+  { state = null, transaction_id = null, code_verifier = null } = {},
+) {
+  return requestJson('/api/auth/oidc/exchange', { payload: { code, redirect_uri, state, transaction_id, code_verifier } })
 }
 
 export async function register(username, email, password, full_name) {
@@ -261,6 +270,10 @@ export async function createApiKey(payload) {
 
 export async function updateApiKey(keyId, payload) {
   return requestJson(`/api/auth/api-keys/${keyId}`, { method: 'PATCH', payload })
+}
+
+export async function regenerateApiKeyOtlpToken(keyId) {
+  return requestJson(`/api/auth/api-keys/${keyId}/otlp-token/regenerate`, { method: 'POST' })
 }
 
 export async function deleteApiKey(keyId) {
@@ -355,22 +368,6 @@ export async function getPermissions() {
 
 export async function getRoleDefaults() {
   return request('/api/auth/role-defaults')
-}
-
-export async function fetchTraceMetrics(params = {}) {
-  const search = new URLSearchParams(params)
-  const qs = search.toString()
-  const path = qs ? `/api/tempo/metrics?${qs}` : '/api/tempo/metrics'
-  return request(path)
-}
-
-export async function getTraceVolume({ service, start, end, step = 300 } = {}) {
-  const params = new URLSearchParams()
-  if (service) params.append('service', service)
-  params.append('step', step.toString())
-  if (start) params.append('start', start)
-  if (end) params.append('end', end)
-  return request(`/api/tempo/volume?${params.toString()}`)
 }
 
 export async function updateUserPermissions(userId, permissions) {

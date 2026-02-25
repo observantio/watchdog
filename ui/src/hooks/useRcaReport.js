@@ -54,6 +54,8 @@ const EMPTY_INSIGHT_ERRORS = {
   deployments: null,
 }
 
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'deleted'])
+
 const TAB_INSIGHT_KEYS = {
   topology: ['topology'],
   causal: ['granger', 'bayesian', 'mlWeights', 'deployments'],
@@ -270,14 +272,15 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
       setReportErrorStatus(null)
       return
     }
-    if (selectedJob?.status === 'completed') {
+    const normalizedStatus = String(selectedJob?.status || '').toLowerCase()
+    if (normalizedStatus === 'completed') {
       loadReport()
-    } else if (selectedJob?.status === 'failed') {
+    } else if (normalizedStatus === 'failed' || normalizedStatus === 'cancelled' || normalizedStatus === 'deleted') {
       requestSeq.current += 1
       reset()
-      setReportError(selectedJob?.error || 'RCA job failed')
+      setReportError(selectedJob?.error || 'RCA job did not complete')
       setReportErrorStatus(null)
-    } else if (selectedJob?.status === 'queued' || selectedJob?.status === 'running') {
+    } else if (!TERMINAL_JOB_STATUSES.has(normalizedStatus)) {
       requestSeq.current += 1
       reset()
       setReportError(null)

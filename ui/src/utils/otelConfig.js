@@ -9,8 +9,7 @@ export function buildOtelYaml(otlpToken, endpoints = {}) {
 
   const tokenHeader = otlpToken ? `x-otlp-token: "${otlpToken}"` : `# x-otlp-token: <not available>`
 
-  return `
-  receivers:
+  return `receivers:
   hostmetrics:
     collection_interval: 30s
     scrapers:

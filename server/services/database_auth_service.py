@@ -10,6 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 
 import logging
+import hashlib
 import secrets
 import threading
 from typing import Any, Dict, List, Optional, Union
@@ -54,6 +55,7 @@ from services.auth.api_key_ops import (
     delete_api_key_share as delete_api_key_share_op,
     list_api_key_shares as list_api_key_shares_op,
     list_api_keys as list_api_keys_op,
+    regenerate_api_key_otlp_token as regenerate_api_key_otlp_token_op,
     replace_api_key_shares as replace_api_key_shares_op,
     update_api_key as update_api_key_op,
 )
@@ -175,6 +177,10 @@ class DatabaseAuthService:
     def _generate_otlp_token() -> str:
         return f"bo_{secrets.token_urlsafe(32)}"
 
+    @staticmethod
+    def _hash_otlp_token(token: str) -> str:
+        return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
     def _resolve_default_otlp_token(self) -> str:
         return config.DEFAULT_OTLP_TOKEN or self._generate_otlp_token()
 
@@ -224,11 +230,39 @@ class DatabaseAuthService:
     ) -> Optional[Union[Token, dict]]:
         return db_auth.login(self, username, password, mfa_code)
 
-    def exchange_oidc_authorization_code(self, code: str, redirect_uri: str) -> Optional[Union[Token, dict]]:
-        return db_auth.exchange_oidc_authorization_code(self, code, redirect_uri)
+    def exchange_oidc_authorization_code(
+        self,
+        code: str,
+        redirect_uri: str,
+        transaction_id: Optional[str] = None,
+        state: Optional[str] = None,
+        code_verifier: Optional[str] = None,
+    ) -> Optional[Union[Token, dict]]:
+        return db_auth.exchange_oidc_authorization_code(
+            self,
+            code,
+            redirect_uri,
+            transaction_id=transaction_id,
+            state=state,
+            code_verifier=code_verifier,
+        )
 
-    def get_oidc_authorization_url(self, redirect_uri: str, state: str, nonce: str) -> str:
-        return db_auth.get_oidc_authorization_url(self, redirect_uri, state, nonce)
+    def get_oidc_authorization_url(
+        self,
+        redirect_uri: str,
+        state: Optional[str] = None,
+        nonce: Optional[str] = None,
+        code_challenge: Optional[str] = None,
+        code_challenge_method: Optional[str] = None,
+    ) -> Dict[str, str]:
+        return db_auth.get_oidc_authorization_url(
+            self,
+            redirect_uri,
+            state=state,
+            nonce=nonce,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method,
+        )
 
     def provision_external_user(
         self, *, email: str, username: str, full_name: Optional[str]
@@ -286,14 +320,33 @@ class DatabaseAuthService:
     def _to_group_schema(self, group: Group) -> GroupSchema:
         return db_schema.to_group_schema(self, group)
 
-    def get_user_by_id(self, user_id: str) -> Optional[UserSchema]:
-        return get_user_by_id_op(self, user_id)
+    def get_user_by_id(self, user_id: str, tenant_id: Optional[str] = None) -> Optional[UserSchema]:
+        return get_user_by_id_op(self, user_id, tenant_id)
+
+    def get_user_by_id_in_tenant(self, user_id: str, tenant_id: str) -> Optional[UserSchema]:
+        return get_user_by_id_op(self, user_id, tenant_id)
 
     def get_user_by_username(self, username: str) -> Optional[UserSchema]:
         return get_user_by_username_op(self, username)
 
-    def create_user(self, user_create: UserCreate, tenant_id: str, creator_id: Optional[str] = None) -> UserSchema:
-        return create_user_op(self, user_create, tenant_id, creator_id)
+    def create_user(
+        self,
+        user_create: UserCreate,
+        tenant_id: str,
+        creator_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        actor_permissions: Optional[List[str]] = None,
+        actor_is_superuser: bool = False,
+    ) -> UserSchema:
+        return create_user_op(
+            self,
+            user_create,
+            tenant_id,
+            creator_id,
+            actor_role=actor_role,
+            actor_permissions=actor_permissions,
+            actor_is_superuser=actor_is_superuser,
+        )
 
     def list_users(self, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
         return list_users_op(self, tenant_id, limit=limit, offset=offset)
@@ -309,8 +362,26 @@ class DatabaseAuthService:
     def delete_user(self, user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
         return delete_user_op(self, user_id, tenant_id, deleter_id)
 
-    def update_user_permissions(self, user_id: str, permission_names: List[str], tenant_id: str) -> bool:
-        return update_user_permissions_op(self, user_id, permission_names, tenant_id)
+    def update_user_permissions(
+        self,
+        user_id: str,
+        permission_names: List[str],
+        tenant_id: str,
+        actor_user_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        actor_permissions: Optional[List[str]] = None,
+        actor_is_superuser: bool = False,
+    ) -> bool:
+        return update_user_permissions_op(
+            self,
+            user_id,
+            permission_names,
+            tenant_id,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+            actor_permissions=actor_permissions,
+            actor_is_superuser=actor_is_superuser,
+        )
 
     def update_password(self, user_id: str, password_update: UserPasswordUpdate, tenant_id: str) -> bool:
         if self.is_external_auth_enabled():
@@ -325,6 +396,9 @@ class DatabaseAuthService:
 
     def update_api_key(self, user_id: str, key_id: str, key_update: ApiKeyUpdate) -> ApiKey:
         return update_api_key_op(self, user_id, key_id, key_update)
+
+    def regenerate_api_key_otlp_token(self, user_id: str, key_id: str) -> ApiKey:
+        return regenerate_api_key_otlp_token_op(self, user_id, key_id)
 
     def delete_api_key(self, user_id: str, key_id: str) -> bool:
         return delete_api_key_op(self, user_id, key_id)
@@ -372,12 +446,46 @@ class DatabaseAuthService:
         return update_group_op(self, group_id, group_update, tenant_id, updater_id)
 
     def update_group_permissions(
-        self, group_id: str, permission_names: List[str], tenant_id: str
+        self,
+        group_id: str,
+        permission_names: List[str],
+        tenant_id: str,
+        actor_user_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        actor_permissions: Optional[List[str]] = None,
+        actor_is_superuser: bool = False,
     ) -> bool:
-        return update_group_permissions_op(self, group_id, permission_names, tenant_id)
+        return update_group_permissions_op(
+            self,
+            group_id,
+            permission_names,
+            tenant_id,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+            actor_permissions=actor_permissions,
+            actor_is_superuser=actor_is_superuser,
+        )
 
-    def update_group_members(self, group_id: str, user_ids: List[str], tenant_id: str) -> bool:
-        return update_group_members_op(self, group_id, user_ids, tenant_id)
+    def update_group_members(
+        self,
+        group_id: str,
+        user_ids: List[str],
+        tenant_id: str,
+        actor_user_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        actor_permissions: Optional[List[str]] = None,
+        actor_is_superuser: bool = False,
+    ) -> bool:
+        return update_group_members_op(
+            self,
+            group_id,
+            user_ids,
+            tenant_id,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+            actor_permissions=actor_permissions,
+            actor_is_superuser=actor_is_superuser,
+        )
 
         
     def _log_audit(

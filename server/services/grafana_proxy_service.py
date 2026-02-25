@@ -23,6 +23,7 @@ from services.grafana_service import GrafanaService, GrafanaAPIError
 from services.grafana.proxy_auth_ops import (
     is_admin_user, is_resource_accessible, extract_dashboard_uid,
     extract_datasource_uid, extract_datasource_id, extract_proxy_token, authorize_proxy_request,
+    clear_proxy_auth_cache,
 )
 from services.grafana.dashboard_ops import (
     check_dashboard_access, get_accessible_dashboard_uids, build_dashboard_search_context,
@@ -102,6 +103,9 @@ class GrafanaProxyService:
     ) -> Dict[str, str]:
         return await authorize_proxy_request(self, request, db, auth_service, token, orig)
 
+    def clear_proxy_auth_cache(self) -> None:
+        clear_proxy_auth_cache()
+
     def _check_dashboard_access(
         self, db: Session, dashboard_uid: str, user_id: str, tenant_id: str,
         group_ids: List[str], require_write: bool = False,
@@ -124,8 +128,7 @@ class GrafanaProxyService:
         self, db: Session, payload: Dict[str, Any], user_id: str,
         tenant_id: str, group_ids: List[str], is_admin: bool = False,
     ) -> None:
-        if not is_admin:
-            await enforce_datasource_query_access(self, db, user_id, tenant_id, group_ids, "/api/ds/query", "POST", payload)
+        await enforce_datasource_query_access(self, db, user_id, tenant_id, group_ids, "/api/ds/query", "POST", payload)
 
     def _get_accessible_dashboard_uids(
         self, db: Session, user_id: str, tenant_id: str, group_ids: List[str],

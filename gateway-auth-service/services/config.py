@@ -18,6 +18,12 @@ GATEWAY_RATE_LIMIT_STRICT: bool = os.getenv("GATEWAY_RATE_LIMIT_STRICT", "false"
 
 IP_ALLOWLIST: str = os.getenv("GATEWAY_IP_ALLOWLIST", "").strip()
 ALLOWLIST_FAIL_OPEN: bool = os.getenv("GATEWAY_ALLOWLIST_FAIL_OPEN", "false").lower() in ("1", "true", "yes", "on")
+TRUST_PROXY_HEADERS: bool = os.getenv("GATEWAY_TRUST_PROXY_HEADERS", "false").lower() in ("1", "true", "yes", "on")
+TRUSTED_PROXY_CIDRS: list[str] = [
+    entry.strip()
+    for entry in os.getenv("GATEWAY_TRUSTED_PROXY_CIDRS", "").split(",")
+    if entry.strip()
+]
 
 TOKEN_CACHE_TTL: int = int(os.getenv("GATEWAY_TOKEN_CACHE_TTL", "60"))
 TOKEN_CACHE_REDIS_URL: str = os.getenv("GATEWAY_TOKEN_CACHE_REDIS_URL", "").strip()

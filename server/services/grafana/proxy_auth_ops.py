@@ -30,16 +30,35 @@ _proxy_auth_cache_ops = 0
 _HEADER_SAFE_RE = re.compile(r"[\r\n\x00]")
 
 
-def _cache_key(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+def _normalize_cache_path(path: str) -> str:
+    p = (path or "").strip().lower()
+    if not p:
+        return "/"
+    if "?" in p:
+        p = p.split("?", 1)[0]
+    if not p.startswith("/"):
+        p = f"/{p}"
+    return p
+
+
+def _cache_key(token: str, method: str, path: str, tenant_id: str) -> str:
+    raw = "|".join(
+        [
+            hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            (method or "GET").upper(),
+            _normalize_cache_path(path),
+            str(tenant_id or ""),
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _sanitize_header_value(value: str) -> str:
     return _HEADER_SAFE_RE.sub("", value)
 
 
-def _cache_get(token: str) -> Optional[Dict]:
-    key = _cache_key(token)
+def _cache_get(token: str, method: str, path: str, tenant_id: str) -> Optional[Dict]:
+    key = _cache_key(token, method, path, tenant_id)
     with _PROXY_AUTH_CACHE_LOCK:
         entry = _PROXY_AUTH_CACHE.get(key)
         if entry and entry.get("expires", 0) > time.monotonic():
@@ -49,9 +68,9 @@ def _cache_get(token: str) -> Optional[Dict]:
     return None
 
 
-def _cache_set(token: str, headers: Dict) -> None:
+def _cache_set(token: str, method: str, path: str, tenant_id: str, headers: Dict) -> None:
     global _proxy_auth_cache_ops
-    key = _cache_key(token)
+    key = _cache_key(token, method, path, tenant_id)
     now = time.monotonic()
     with _PROXY_AUTH_CACHE_LOCK:
         _proxy_auth_cache_ops += 1
@@ -60,6 +79,11 @@ def _cache_set(token: str, headers: Dict) -> None:
             for k in expired:
                 _PROXY_AUTH_CACHE.pop(k, None)
         _PROXY_AUTH_CACHE[key] = {"expires": now + _PROXY_AUTH_CACHE_TTL, "headers": headers}
+
+
+def clear_proxy_auth_cache() -> None:
+    with _PROXY_AUTH_CACHE_LOCK:
+        _PROXY_AUTH_CACHE.clear()
 
 
 def _has_any_permission(token_data: TokenData, required: Set[str]) -> bool:
@@ -179,8 +203,6 @@ def is_resource_accessible(service, resource, token_data: TokenData, *, require_
     hidden_by = getattr(resource, "hidden_by", None) or []
     if token_data.user_id in hidden_by:
         return False
-    if is_admin_user(service, token_data):
-        return True
     if resource.created_by == token_data.user_id:
         return True
     if not require_write and (bool(getattr(resource, "is_default", False)) or bool(getattr(resource, "read_only", False))):
@@ -256,16 +278,22 @@ async def authorize_proxy_request(
     if not token_to_verify:
         raise HTTPException(status_code=401, detail="You need to log in to access this resource.")
 
-    cached = _cache_get(token_to_verify)
-    if cached is not None:
-        return cached
-
     token_data = await run_in_threadpool(auth_service.decode_token, token_to_verify)
     if not token_data:
         raise HTTPException(status_code=401, detail="Your session has expired or your token is invalid. Let's get you a new one.")
 
     if isinstance(token_data, dict):
         token_data = TokenData(**token_data)
+
+    original_uri = orig or request.headers.get("X-Original-URI", "")
+    original_method = (request.headers.get("X-Original-Method") or request.method or "GET").upper()
+    original_path = original_uri.split("?", 1)[0] if original_uri else ""
+    if not original_path:
+        raise HTTPException(status_code=400, detail="Missing original URI context")
+
+    cached = _cache_get(token_to_verify, original_method, original_path, token_data.tenant_id)
+    if cached is not None:
+        return cached
 
     user = await run_in_threadpool(auth_service.get_user_by_id, token_data.user_id)
     if not user or not getattr(user, "is_active", False):
@@ -292,11 +320,6 @@ async def authorize_proxy_request(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     is_admin = is_admin_user(service, token_data)
-    original_uri = orig or request.headers.get("X-Original-URI", "")
-    original_method = (request.headers.get("X-Original-Method") or request.method or "GET").upper()
-    original_path = original_uri.split("?", 1)[0] if original_uri else ""
-    if not original_path:
-        raise HTTPException(status_code=400, detail="Missing original URI context")
 
     required_permissions = _required_permissions_for_path(original_path, original_method)
 
@@ -310,55 +333,54 @@ async def authorize_proxy_request(
     if not is_admin and (not required_permissions or not _has_any_permission(token_data, required_permissions)):
         raise HTTPException(status_code=403, detail="Insufficient permissions for this Grafana action")
 
-    if not is_admin:
-        dashboard_write_intent = _is_dashboard_write_intent(original_path, original_method)
-        datasource_write_intent = _is_datasource_write_intent(original_path, original_method)
+    dashboard_write_intent = _is_dashboard_write_intent(original_path, original_method)
+    datasource_write_intent = _is_datasource_write_intent(original_path, original_method)
 
-        dashboard_uid = extract_dashboard_uid(service, original_path)
-        if dashboard_uid:
-            dashboard = await run_in_threadpool(
-                lambda: db.query(GrafanaDashboard)
-                .options(joinedload(GrafanaDashboard.shared_groups))
-                .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
-                .first()
-            )
-            if dashboard:
-                if not is_resource_accessible(service, dashboard, token_data, require_write=dashboard_write_intent):
-                    raise HTTPException(status_code=403, detail="Dashboard access denied")
-            elif dashboard_write_intent:
-                raise HTTPException(status_code=403, detail="Dashboard write denied: unregistered dashboard")
+    dashboard_uid = extract_dashboard_uid(service, original_path)
+    if dashboard_uid:
+        dashboard = await run_in_threadpool(
+            lambda: db.query(GrafanaDashboard)
+            .options(joinedload(GrafanaDashboard.shared_groups))
+            .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
+            .first()
+        )
+        if dashboard:
+            if not is_resource_accessible(service, dashboard, token_data, require_write=dashboard_write_intent):
+                raise HTTPException(status_code=403, detail="Dashboard access denied")
+        else:
+            raise HTTPException(status_code=403, detail="Dashboard access denied")
 
-        datasource_uid = extract_datasource_uid(service, original_path)
-        if datasource_uid:
-            datasource = await run_in_threadpool(
-                lambda: db.query(GrafanaDatasource)
-                .options(joinedload(GrafanaDatasource.shared_groups))
-                .filter(GrafanaDatasource.grafana_uid == datasource_uid)
-                .first()
-            )
-            if datasource:
-                if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
-                    raise HTTPException(status_code=403, detail="Datasource access denied")
-                if datasource_write_intent:
-                    await _enforce_writable_datasource(service, str(getattr(datasource, 'grafana_uid', '')))
-            elif datasource_write_intent:
-                raise HTTPException(status_code=403, detail="Datasource write denied: unregistered datasource")
+    datasource_uid = extract_datasource_uid(service, original_path)
+    if datasource_uid:
+        datasource = await run_in_threadpool(
+            lambda: db.query(GrafanaDatasource)
+            .options(joinedload(GrafanaDatasource.shared_groups))
+            .filter(GrafanaDatasource.grafana_uid == datasource_uid)
+            .first()
+        )
+        if datasource:
+            if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
+                raise HTTPException(status_code=403, detail="Datasource access denied")
+            if datasource_write_intent:
+                await _enforce_writable_datasource(service, str(getattr(datasource, 'grafana_uid', '')))
+        else:
+            raise HTTPException(status_code=403, detail="Datasource access denied")
 
-        datasource_id = extract_datasource_id(service, original_path)
-        if datasource_id is not None:
-            datasource = await run_in_threadpool(
-                lambda: db.query(GrafanaDatasource)
-                .options(joinedload(GrafanaDatasource.shared_groups))
-                .filter(GrafanaDatasource.grafana_id == datasource_id)
-                .first()
-            )
-            if datasource:
-                if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
-                    raise HTTPException(status_code=403, detail="Datasource access denied")
-                if datasource_write_intent:
-                    await _enforce_writable_datasource(service, str(getattr(datasource, 'grafana_uid', '')))
-            elif datasource_write_intent:
-                raise HTTPException(status_code=403, detail="Datasource write denied: unregistered datasource")
+    datasource_id = extract_datasource_id(service, original_path)
+    if datasource_id is not None:
+        datasource = await run_in_threadpool(
+            lambda: db.query(GrafanaDatasource)
+            .options(joinedload(GrafanaDatasource.shared_groups))
+            .filter(GrafanaDatasource.grafana_id == datasource_id)
+            .first()
+        )
+        if datasource:
+            if not is_resource_accessible(service, datasource, token_data, require_write=datasource_write_intent):
+                raise HTTPException(status_code=403, detail="Datasource access denied")
+            if datasource_write_intent:
+                await _enforce_writable_datasource(service, str(getattr(datasource, 'grafana_uid', '')))
+        else:
+            raise HTTPException(status_code=403, detail="Datasource access denied")
 
     grafana_role = "Viewer"
     if is_admin:
@@ -378,5 +400,5 @@ async def authorize_proxy_request(
         "X-WEBAUTH-ROLE": grafana_role,
     }
 
-    _cache_set(token_to_verify, headers)
+    _cache_set(token_to_verify, original_method, original_path, token_data.tenant_id, headers)
     return headers

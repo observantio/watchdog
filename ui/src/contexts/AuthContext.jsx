@@ -6,6 +6,26 @@ import * as api from '../api'
 const AuthContext = createContext(null)
 const OIDC_STATE_KEY = 'oidc_state'
 const OIDC_NONCE_KEY = 'oidc_nonce'
+const OIDC_TX_KEY = 'oidc_tx'
+const OIDC_CODE_VERIFIER_KEY = 'oidc_code_verifier'
+
+function randomOidcToken(length = 64) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+  if (!globalThis.crypto?.getRandomValues) {
+    return `${Date.now()}-${Math.random()}`
+  }
+  const bytes = new Uint8Array(length)
+  globalThis.crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('')
+}
+
+async function pkceChallengeFromVerifier(verifier) {
+  if (!globalThis.crypto?.subtle || !globalThis.TextEncoder) return null
+  const bytes = new globalThis.TextEncoder().encode(verifier)
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+  const hashBytes = Array.from(new Uint8Array(digest), (b) => String.fromCharCode(b)).join('')
+  return globalThis.btoa(hashBytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
 
 function syncGrafanaAuthCookie(authToken) {
   if (typeof document === 'undefined') return
@@ -151,33 +171,59 @@ export function AuthProvider({ children }) {
   const startOIDCLogin = useCallback(async () => {
     const state = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
     const nonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
+    const codeVerifier = randomOidcToken(96)
+    const codeChallenge = await pkceChallengeFromVerifier(codeVerifier)
 
     sessionStorage.setItem(OIDC_STATE_KEY, state)
     sessionStorage.setItem(OIDC_NONCE_KEY, nonce)
+    sessionStorage.setItem(OIDC_CODE_VERIFIER_KEY, codeVerifier)
 
     const redirectUri = `${globalThis.location.origin}/#/auth/callback`
-    const response = await api.getOIDCAuthorizeUrl(redirectUri, state, nonce)
+    const response = await api.getOIDCAuthorizeUrl(redirectUri, {
+      state,
+      nonce,
+      code_challenge: codeChallenge,
+      code_challenge_method: codeChallenge ? 'S256' : null,
+    })
     if (!response?.authorization_url) {
       throw new Error('OIDC authorization URL was not returned by the server')
+    }
+    if (!response?.transaction_id) {
+      throw new Error('OIDC transaction was not returned by the server')
+    }
+    sessionStorage.setItem(OIDC_TX_KEY, response.transaction_id)
+    if (response?.state) {
+      sessionStorage.setItem(OIDC_STATE_KEY, response.state)
     }
     globalThis.location.href = response.authorization_url
   }, [])
 
   const finishOIDCLogin = useCallback(async ({ code, state }) => {
     const expectedState = sessionStorage.getItem(OIDC_STATE_KEY)
+    const transactionId = sessionStorage.getItem(OIDC_TX_KEY)
+    const codeVerifier = sessionStorage.getItem(OIDC_CODE_VERIFIER_KEY)
     if (!code) {
       throw new Error('Missing OIDC authorization code')
     }
     if (!state || !expectedState || state !== expectedState) {
       throw new Error('Invalid OIDC state')
     }
+    if (!transactionId) {
+      throw new Error('Missing OIDC transaction')
+    }
 
     const redirectUri = `${globalThis.location.origin}/#/auth/callback`
-    const response = await api.exchangeOIDCCode(code, redirectUri)
+    const response = await api.exchangeOIDCCode(code, redirectUri, {
+      state,
+      transaction_id: transactionId,
+      code_verifier: codeVerifier,
+    })
     const { access_token } = response || {}
 
     sessionStorage.removeItem(OIDC_STATE_KEY)
     sessionStorage.removeItem(OIDC_NONCE_KEY)
+    sessionStorage.removeItem(OIDC_TX_KEY)
+    sessionStorage.removeItem(OIDC_CODE_VERIFIER_KEY)
 
     // prefer cookie-based session; accept access_token as in-memory fallback
     setToken(access_token || null)
@@ -202,6 +248,10 @@ export function AuthProvider({ children }) {
     setUser(null)
     api.setAuthToken(null)
     syncGrafanaAuthCookie(null)
+    sessionStorage.removeItem(OIDC_STATE_KEY)
+    sessionStorage.removeItem(OIDC_NONCE_KEY)
+    sessionStorage.removeItem(OIDC_TX_KEY)
+    sessionStorage.removeItem(OIDC_CODE_VERIFIER_KEY)
   }, [])
 
   const updateUser = useCallback((userData) => {
@@ -217,6 +267,10 @@ export function AuthProvider({ children }) {
     setUser(null)
     api.setAuthToken(null)
     syncGrafanaAuthCookie(null)
+    sessionStorage.removeItem(OIDC_STATE_KEY)
+    sessionStorage.removeItem(OIDC_NONCE_KEY)
+    sessionStorage.removeItem(OIDC_TX_KEY)
+    sessionStorage.removeItem(OIDC_CODE_VERIFIER_KEY)
   }, [])
 
   const hasPermission = useCallback((permission) => user?.permissions?.includes(permission) || false, [user?.permissions])

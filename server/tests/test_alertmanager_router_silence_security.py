@@ -93,3 +93,7 @@ def test_assert_silence_owner_allows_creator():
         {"id": "s1", "created_by": "u1"},
     )
 
+
+def test_unknown_alertmanager_route_fails_closed():
+    required = alertmanager_router._required_permissions("totally/unknown/path", "POST")
+    assert required is None

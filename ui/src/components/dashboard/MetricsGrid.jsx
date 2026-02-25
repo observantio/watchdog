@@ -37,6 +37,7 @@ export function MetricsGrid({ metrics, metricOrder, onMetricOrderChange }) {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       {metricOrder.map((metricIndex, displayIndex) => {
         const metric = metrics[metricIndex]
+        if (!metric) return null
         return (
           <button
             key={metric.id}

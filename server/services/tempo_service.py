@@ -22,8 +22,6 @@ from services.common.http_client import create_async_client
 from services.common.ttl_cache import TTLCache
 
 from services.tempo import parsers as tempo_parsers
-from services.tempo import promql as tempo_promql
-from services.tempo import metrics as tempo_metrics
 from services.tempo import params as tempo_params
 
 logger = logging.getLogger(__name__)
@@ -31,8 +29,6 @@ logger = logging.getLogger(__name__)
 _SERVICE_NAME_KEY = "service.name"
 _SERVICE_ALIAS_KEY = "service"
 _SERVICE_KEYS = {_SERVICE_NAME_KEY, _SERVICE_ALIAS_KEY}
-_SEARCH_LIMIT_CAP = 1000
-_VOLUME_FALLBACK_MAX_BUCKETS = 180
 
 
 class TempoService:
@@ -42,18 +38,11 @@ class TempoService:
         self._client = create_async_client(self.timeout)
         self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
         self._services_cache = TTLCache()
-        self._volume_cache = TTLCache()
-        self._volume_inflight: Dict[str, asyncio.Future] = {}
-        self._volume_inflight_lock = asyncio.Lock()
-        self._metrics_enabled = True
         self._metrics: Dict[str, float] = {
             "tempo_search_total": 0,
             "tempo_search_duration_sum_seconds": 0.0,
             "tempo_search_errors_total": 0,
             "tempo_full_trace_fetch_total": 0,
-            "tempo_count_traces_calls_total": 0,
-            "tempo_metrics_queries_total": 0,
-            "tempo_metrics_query_errors_total": 0,
         }
 
     def _observe(self, metric: str, value: float = 1.0) -> None:
@@ -80,74 +69,6 @@ class TempoService:
         finally:
             self._observe("tempo_search_total")
             self._observe("tempo_search_duration_sum_seconds", time.perf_counter() - started)
-
-    async def _query_metrics_range(
-        self,
-        promql: str,
-        start_us: Optional[int],
-        end_us: Optional[int],
-        step_s: int = 300,
-        tenant_id: str = config.DEFAULT_ORG_ID,
-    ) -> Dict[str, Any]:
-        result, metrics_enabled = await tempo_metrics.query_metrics_range(
-            client=self._client,
-            promql=promql,
-            start_us=start_us,
-            end_us=end_us,
-            step_s=step_s,
-            tenant_id=tenant_id,
-            mimir_url=config.MIMIR_URL,
-            get_headers=self._get_headers,
-            observe=self._observe,
-            metrics_enabled=self._metrics_enabled,
-        )
-        self._metrics_enabled = metrics_enabled
-        return result
-
-
-    def _build_count_promql(self, service: Optional[str], range_s: int) -> str:
-        return tempo_promql.build_count_promql(service, range_s)
-
-    def _extract_metric_values(self, metrics_resp: Dict[str, Any]) -> List[List[Any]]:
-        return tempo_metrics.extract_metric_values(metrics_resp)
-
-    async def _get_or_build_volume(
-        self,
-        cache_key: str,
-        builder,
-    ) -> Dict[str, Any]:
-        cached = await self._volume_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        owner = False
-        async with self._volume_inflight_lock:
-            cached = await self._volume_cache.get(cache_key)
-            if cached is not None:
-                return cached
-            future = self._volume_inflight.get(cache_key)
-            if future is None:
-                future = asyncio.get_running_loop().create_future()
-                self._volume_inflight[cache_key] = future
-                owner = True
-
-        if not owner:
-            return await future
-
-        try:
-            result = await builder()
-            if not future.done():
-                future.set_result(result)
-            return result
-        except Exception as exc:
-            if not future.done():
-                future.set_exception(exc)
-                # Mark retrieved for the owner path when there are no waiters.
-                _ = future.exception()
-            raise
-        finally:
-            async with self._volume_inflight_lock:
-                self._volume_inflight.pop(cache_key, None)
 
     def _parse_span(
         self,
@@ -328,106 +249,3 @@ class TempoService:
             fetch_full_traces=False,
         )
         return sorted({span.operation_name for trace in response.data for span in trace.spans})
-
-    async def get_trace_metrics(
-        self,
-        service: Optional[str] = None,
-        start: Optional[int] = None,
-        end: Optional[int] = None,
-        tenant_id: str = config.DEFAULT_ORG_ID,
-    ) -> Dict[str, Any]:
-        query = TraceQuery.model_validate(
-            {
-                "service": service,
-                "start": start,
-                "end": end,
-                "limit": min(config.MAX_QUERY_LIMIT, _SEARCH_LIMIT_CAP),
-            }
-        )
-        total_traces = await self.count_traces(query, tenant_id=tenant_id)
-
-        return {
-            "total_traces": total_traces,
-            "total_spans": None,
-            "error_count": None,
-            "avg_duration_us": None,
-            "max_duration_us": None,
-            "min_duration_us": None,
-            "service": service,
-        }
-
-    async def get_trace_volume(
-        self,
-        service: Optional[str] = None,
-        start: Optional[int] = None,
-        end: Optional[int] = None,
-        step: int = 300,
-        tenant_id: str = config.DEFAULT_ORG_ID,
-    ) -> Dict[str, Any]:
-        now_us = int(time.time() * 1_000_000)
-        end = end or now_us
-        start = start or (end - 3_600 * 1_000_000)
-        step = max(1, step)
-        step_us = step * 1_000_000
-
-        # Align to step boundaries to improve cache hit rate for polled dashboards.
-        start = (start // step_us) * step_us
-        end = (end // step_us) * step_us
-        if end <= start:
-            end = start + step_us
-
-        cache_key = f"{tenant_id}:{service or '__all__'}:{start}:{end}:{step}"
-
-        start_s = start // 1_000_000
-        total_s = max(0, (end - start) // 1_000_000)
-        num_buckets = max(1, min(_VOLUME_FALLBACK_MAX_BUCKETS, (total_s + step - 1) // step))
-        expected_ts = [start_s + i * step for i in range(num_buckets)]
-
-        def _empty_result() -> Dict[str, Any]:
-            return {"data": {"result": [{"metric": {}, "values": [[ts, "0"] for ts in expected_ts]}]}}
-
-        async def _cache_and_return(result: Dict[str, Any]) -> Dict[str, Any]:
-            await self._volume_cache.set(cache_key, result, self._cache_ttl_seconds)
-            return result
-
-        async def _build() -> Dict[str, Any]:
-            try:
-                resp = await self._query_metrics_range(
-                    self._build_count_promql(service, step),
-                    start,
-                    end,
-                    step,
-                    tenant_id=tenant_id,
-                )
-                raw_values = self._extract_metric_values(resp)
-                ts_map = {int(ts): int(float(v)) for ts, v in raw_values}
-                normalized = [[ts, str(ts_map.get(ts, 0))] for ts in expected_ts]
-                result = {"data": {"result": [{"metric": {}, "values": normalized}]}}
-                return await _cache_and_return(result)
-            except Exception:
-                logger.debug("Failed to query trace volume from Mimir", exc_info=True)
-
-            return await _cache_and_return(_empty_result())
-
-        return await self._get_or_build_volume(cache_key, _build)
-
-    async def count_traces(self, query: TraceQuery, tenant_id: str = config.DEFAULT_ORG_ID) -> int:
-        self._observe("tempo_count_traces_calls_total")
-        if not query.start or not query.end:
-            return 0
-        duration_s = max(1, (query.end - query.start) // 1_000_000)
-        try:
-            resp = await self._query_metrics_range(
-                self._build_count_promql(query.service, duration_s),
-                query.start,
-                query.end,
-                duration_s,
-                tenant_id=tenant_id,
-            )
-            values = self._extract_metric_values(resp)
-            if not values:
-                return 0
-            return int(float(values[-1][1]))
-        except Exception:
-            logger.debug("Mimir trace count query failed", exc_info=True)
-            return 0

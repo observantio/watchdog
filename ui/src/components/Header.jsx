@@ -44,6 +44,7 @@ NavItem.propTypes = {
 function ApiKeyDropdown({ apiKeys, activeKeyId, onSelect, disabled, compact = false }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const selectableKeys = apiKeys.filter((k) => !k.is_shared || k.can_use)
 
   useEffect(() => {
     const onClick = (e) => {
@@ -53,7 +54,7 @@ function ApiKeyDropdown({ apiKeys, activeKeyId, onSelect, disabled, compact = fa
     return () => document.removeEventListener('click', onClick)
   }, [])
 
-  const selectedKey = apiKeys?.find(k => k.id === activeKeyId)
+  const selectedKey = selectableKeys?.find(k => k.id === activeKeyId)
   const btnClass = compact
     ? 'px-2 py-1 text-xs bg-sre-surface border border-sre-border rounded text-sre-text flex items-center justify-between'
     : 'px-3 py-2 min-w-[190px] text-xs bg-sre-surface border border-sre-border rounded text-sre-text flex items-center justify-between'
@@ -78,7 +79,7 @@ function ApiKeyDropdown({ apiKeys, activeKeyId, onSelect, disabled, compact = fa
           role="listbox"
           className="absolute top-full mt-1 w-full bg-sre-bg-card border border-sre-border rounded shadow-lg z-50 py-1 max-h-60 overflow-y-auto"
         >
-          {apiKeys.map((k) => (
+          {selectableKeys.map((k) => (
             <li key={k.id} role="option" aria-selected={k.id === activeKeyId}>
               <button
                 type="button"

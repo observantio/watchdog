@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from middleware import dependencies
 from models.access.auth_models import Role, TokenData
@@ -27,6 +28,20 @@ def _token_data(*, role: Role = Role.USER, perms=None) -> TokenData:
         iat=int(datetime.now(timezone.utc).timestamp()),
         is_mfa_setup=False,
     )
+
+
+def _request_with_scope_header(org_id: str) -> Request:
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-scope-orgid", org_id.encode("utf-8"))],
+        "client": ("127.0.0.1", 12345),
+        "scheme": "http",
+        "query_string": b"",
+    }
+    return Request(scope)
 
 
 def test_session_revocation_requires_iat_when_invalid_before_set():
@@ -66,8 +81,8 @@ async def test_reset_temp_password_blocks_admin_target(monkeypatch):
     monkeypatch.setattr(auth_router, "run_in_threadpool", _run_sync)
     monkeypatch.setattr(
         auth_router.auth_service,
-        "get_user_by_id",
-        lambda _uid: SimpleNamespace(id="u2", username="admin-user", role=Role.ADMIN),
+        "get_user_by_id_in_tenant",
+        lambda _uid, _tenant_id: SimpleNamespace(id="u2", username="admin-user", role=Role.ADMIN),
     )
 
     current_user = _token_data(perms=["manage:users"])
@@ -91,3 +106,52 @@ async def test_manage_tenants_update_restricted_to_active_flag():
         await auth_router.update_user("u2", UserUpdate(email="new@example.com"), current_user)
     assert exc.value.status_code == 403
 
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_change_role_org_or_groups():
+    current_user = _token_data(role=Role.USER, perms=["update:users"])
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.update_user("u2", UserUpdate(role=Role.ADMIN), current_user)
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_manage_tenants_cannot_reset_temp_password():
+    current_user = _token_data(perms=["manage:tenants"])
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.reset_user_password_temp("u2", current_user)
+    assert exc.value.status_code == 403
+
+
+def test_resolve_tenant_id_rejects_scope_conflict(monkeypatch):
+    req = _request_with_scope_header("org-shared")
+    current_user = _token_data()
+    monkeypatch.setattr(
+        dependencies,
+        "_load_allowed_org_ids_for_user",
+        lambda *, current_user, default_org_id: {"tenant-a", "org-shared"},
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "_scope_exists_in_other_tenants",
+        lambda *, org_id, tenant_id: True,
+    )
+    with pytest.raises(HTTPException) as exc:
+        dependencies.resolve_tenant_id(req, current_user)
+    assert exc.value.status_code == 403
+
+
+def test_resolve_tenant_id_allows_non_conflicting_allowed_scope(monkeypatch):
+    req = _request_with_scope_header("org-owned")
+    current_user = _token_data()
+    monkeypatch.setattr(
+        dependencies,
+        "_load_allowed_org_ids_for_user",
+        lambda *, current_user, default_org_id: {"tenant-a", "org-owned"},
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "_scope_exists_in_other_tenants",
+        lambda *, org_id, tenant_id: False,
+    )
+    assert dependencies.resolve_tenant_id(req, current_user) == "org-owned"

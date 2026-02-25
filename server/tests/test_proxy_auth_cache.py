@@ -9,6 +9,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 import time
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 
 from services.grafana_proxy_service import GrafanaProxyService
 from models.access.auth_models import TokenData
@@ -81,15 +83,51 @@ def test_authorize_proxy_request_is_cached():
     assert auth.get_user_calls == 1
     assert auth.get_perms_calls == 1
 
-    # second call with same token should be served from cache (no extra decode_token call)
+    # second call with same token/path/method should be served from cache for authz checks
     headers2 = asyncio.run(authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/"))
     assert headers1 == headers2
-    assert auth.decode_calls == 1
+    assert auth.decode_calls == 2
     assert auth.get_user_calls == 1
     assert auth.get_perms_calls == 1
 
     # wait for cache expiry and ensure decode_token is invoked again
     time.sleep(11)
     headers3 = asyncio.run(authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/"))
-    assert auth.decode_calls == 2
+    assert auth.decode_calls == 3
+    assert auth.get_user_calls == 2
+    assert auth.get_perms_calls == 2
     assert headers3 == headers1
+
+
+def test_cache_is_scoped_by_method_and_path():
+    import importlib
+    import sys
+
+    proxy_mod_name = "services.grafana.proxy_auth_ops"
+    if proxy_mod_name in sys.modules:
+        importlib.reload(sys.modules[proxy_mod_name])
+    proxy_mod = importlib.import_module(proxy_mod_name)
+    proxy_mod._PROXY_AUTH_CACHE.clear()
+
+    svc = GrafanaProxyService()
+    auth = FakeAuthService()
+    req = DummyRequest()
+    db = DummyDB()
+    authorize_proxy_request = proxy_mod.authorize_proxy_request
+
+    headers = asyncio.run(authorize_proxy_request(svc, req, db, auth, token="tok-123", orig="/grafana/"))
+    assert isinstance(headers, dict)
+
+    req.method = "POST"
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            authorize_proxy_request(
+                svc,
+                req,
+                db,
+                auth,
+                token="tok-123",
+                orig="/grafana/api/dashboards/db",
+            )
+        )
+    assert exc.value.status_code == 403

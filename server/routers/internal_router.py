@@ -13,7 +13,8 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, status
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
 from config import config
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 _auth_service = DatabaseAuthService()
+
+
+class OtlpValidateRequest(BaseModel):
+    token: str | None = None
 
 
 def _get_internal_token() -> str:
@@ -37,8 +42,7 @@ def _verify_service_token(x_internal_token: str = Header(...)) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
 
 
-@router.get("/otlp/validate", dependencies=[Depends(_verify_service_token)])
-async def validate_otlp_token(token: str):
+def _validate_token_or_404(token: str):
     try:
         org_id = _auth_service.validate_otlp_token(token)
     except SQLAlchemyError:
@@ -48,3 +52,20 @@ async def validate_otlp_token(token: str):
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
     return {"org_id": org_id}
+
+
+@router.get("/otlp/validate", dependencies=[Depends(_verify_service_token)])
+async def validate_otlp_token_query(token: str = Query(..., min_length=1)):
+    # Deprecated compatibility path: token query parameter.
+    return _validate_token_or_404(token)
+
+
+@router.post("/otlp/validate", dependencies=[Depends(_verify_service_token)])
+async def validate_otlp_token_post(
+    payload: OtlpValidateRequest,
+    x_otlp_token: str | None = Header(None),
+):
+    token = (payload.token or x_otlp_token or "").strip()
+    if not token:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing token")
+    return _validate_token_or_404(token)

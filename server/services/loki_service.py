@@ -440,7 +440,8 @@ class LokiService:
     ) -> Dict[str, Any]:
         step = max(1, int(step))
         start_ns, end_ns = self._normalize_range_for_step(start, end, step)
-        query_for_key = str(query_str or "").strip()
+        query_str = str(query_str or "").strip() or '{service_name=~".+"}'
+        query_for_key = query_str
         cache_key = f"{tenant_id}:{query_for_key}:{start_ns}:{end_ns}:{step}"
 
         async def _build() -> Dict[str, Any]:

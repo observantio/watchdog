@@ -90,7 +90,6 @@ export default function RcaJobComposer({ onCreate, creating }) {
             value={logQuery}
             onChange={(e) => setLogQuery(e.target.value)}
           />
-          <p className="text-xs text-sre-text-muted mt-1">{`e.g. {service="api"} |= "error"`}</p>
         </div>
 
         <div>

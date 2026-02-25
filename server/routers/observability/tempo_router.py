@@ -1,5 +1,5 @@
 """
-Router for Tempo trace querying, trace retrieval by ID, service and operation listing, and trace metrics with multi-tenant access control and query validation.
+Router for Tempo trace querying, trace retrieval by ID, and service/operation listing with multi-tenant access control and query validation.
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -77,28 +77,3 @@ async def get_operations(
 ) -> List[str]:
     tenant_id = resolve_tenant_id(request, current_user)
     return await tempo_service.get_operations(service, tenant_id=tenant_id)
-
-
-@router.get("/metrics")
-async def get_trace_metrics(
-    request: Request,
-    service: Optional[str] = Query(None, description="Service name filter"),
-    start: Optional[int] = Query(None, description="Start time in microseconds"),
-    end: Optional[int] = Query(None, description="End time in microseconds"),
-    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
-) -> dict:
-    tenant_id = resolve_tenant_id(request, current_user)
-    return await tempo_service.get_trace_metrics(service, start, end, tenant_id=tenant_id)
-
-
-@router.get("/volume")
-async def get_trace_volume(
-    request: Request,
-    service: Optional[str] = Query(None, description="Service name filter"),
-    start: Optional[int] = Query(None, description="Start time in microseconds"),
-    end: Optional[int] = Query(None, description="End time in microseconds"),
-    step: int = Query(300, ge=1, description="Resolution step in seconds"),
-    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
-) -> dict:
-    tenant_id = resolve_tenant_id(request, current_user)
-    return await tempo_service.get_trace_volume(service=service, start=start, end=end, step=step, tenant_id=tenant_id)

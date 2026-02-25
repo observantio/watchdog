@@ -18,6 +18,8 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config import config
+from database import get_db_session
+from db_models import ApiKeyShare, User, UserApiKey
 from middleware.rate_limit import enforce_rate_limit, enforce_ip_rate_limit, client_ip
 from models.access.auth_models import Permission, TokenData
 from services.database_auth_service import DatabaseAuthService
@@ -54,22 +56,85 @@ def resolve_tenant_id(request: Request, current_user: TokenData) -> str:
         return candidate_org_id
 
     try:
-        user_keys = auth_service.list_api_keys(current_user.user_id)
+        allowed_org_ids = _load_allowed_org_ids_for_user(current_user=current_user, default_org_id=default_org_id)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to resolve tenant scope",
         )
 
-    allowed_org_ids = {key.key for key in user_keys if getattr(key, "is_enabled", True)}
-    allowed_org_ids.add(default_org_id)
-    if candidate_org_id in allowed_org_ids:
-        return candidate_org_id
+    if candidate_org_id not in allowed_org_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant scope not permitted for this user",
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Tenant scope not permitted for this user",
-    )
+    if _scope_exists_in_other_tenants(org_id=candidate_org_id, tenant_id=current_user.tenant_id):
+        # Fail closed when a scope key is reused by other tenants.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant scope is ambiguous across tenants",
+        )
+
+    return candidate_org_id
+
+
+def _load_allowed_org_ids_for_user(*, current_user: TokenData, default_org_id: str) -> set[str]:
+    allowed_org_ids: set[str] = set()
+
+    with get_db_session() as db:
+        user = (
+            db.query(User)
+            .filter_by(id=current_user.user_id, tenant_id=current_user.tenant_id)
+            .first()
+        )
+        if not user or not getattr(user, "is_active", False):
+            return {default_org_id}
+
+        active_org_id = str(getattr(user, "org_id", "") or default_org_id)
+        if active_org_id:
+            allowed_org_ids.add(active_org_id)
+
+        own_enabled_rows = (
+            db.query(UserApiKey.key)
+            .filter(
+                UserApiKey.user_id == current_user.user_id,
+                UserApiKey.tenant_id == current_user.tenant_id,
+                UserApiKey.is_enabled.is_(True),
+            )
+            .all()
+        )
+        allowed_org_ids.update(str(row[0]) for row in own_enabled_rows if row and row[0])
+
+        shared_rows = (
+            db.query(UserApiKey.key)
+            .join(ApiKeyShare, ApiKeyShare.api_key_id == UserApiKey.id)
+            .filter(
+                ApiKeyShare.shared_user_id == current_user.user_id,
+                ApiKeyShare.can_use.is_(True),
+                ApiKeyShare.tenant_id == current_user.tenant_id,
+                UserApiKey.tenant_id == current_user.tenant_id,
+                UserApiKey.is_enabled.is_(True),
+            )
+            .all()
+        )
+        allowed_org_ids.update(str(row[0]) for row in shared_rows if row and row[0])
+
+    allowed_org_ids.add(str(default_org_id))
+    return {org_id for org_id in allowed_org_ids if org_id}
+
+
+def _scope_exists_in_other_tenants(*, org_id: str, tenant_id: str) -> bool:
+    with get_db_session() as db:
+        conflict = (
+            db.query(UserApiKey.id)
+            .filter(
+                UserApiKey.key == org_id,
+                UserApiKey.tenant_id != tenant_id,
+            )
+            .first()
+        )
+        return conflict is not None
 
 
 def apply_scoped_rate_limit(current_user: TokenData, scope: str) -> None:

@@ -22,7 +22,6 @@ describe('TempoPage — fetch limit and pagination', () => {
   it('allows a separate search limit (max traces) and sends it to the API', async () => {
     api.fetchTempoServices.mockResolvedValue([])
     api.searchTraces.mockResolvedValue({ data: [] })
-    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 0 })
 
     const { getByText } = render(<TempoPage />)
 
@@ -45,7 +44,6 @@ describe('TempoPage — fetch limit and pagination', () => {
     // create 45 fake traces
     const fakeTraces = Array.from({ length: 45 }, (_, i) => ({ traceID: `t${i}` }))
     api.searchTraces.mockResolvedValue({ data: fakeTraces })
-    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 45 })
 
     const { getByText } = render(<TempoPage />)
     const searchBtn = getByText(/Search Traces/i)
@@ -69,7 +67,6 @@ describe('TempoPage — fetch limit and pagination', () => {
 
     api.fetchTempoServices.mockResolvedValue([])
     api.searchTraces.mockResolvedValue({ data: [] })
-    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 0 })
 
     render(<TempoPage />)
 
@@ -86,7 +83,6 @@ describe('TempoPage — fetch limit and pagination', () => {
 
     api.fetchTempoServices.mockResolvedValue([])
     api.searchTraces.mockResolvedValue({ data: [] })
-    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 0 })
     const err = new Error('not found')
     err.status = 404
     api.getTrace.mockRejectedValue(err)

@@ -146,10 +146,14 @@ class BeNotifiedProxyService:
             "X-Correlation-ID": corr,
             "X-Forwarded-For": request.client.host if request.client else "unknown",
         }
-        for passthrough in ("x-beobservant-webhook-token", "x-scope-orgid", "X-Scope-OrgID"):
-            value = request.headers.get(passthrough)
-            if value:
-                headers[passthrough] = value
+        webhook_token = request.headers.get("x-beobservant-webhook-token")
+        if webhook_token:
+            headers["x-beobservant-webhook-token"] = webhook_token
+        if current_user is None:
+            for scope_header in ("x-scope-orgid", "X-Scope-OrgID"):
+                value = request.headers.get(scope_header)
+                if value:
+                    headers[scope_header] = value
         if context_token:
             headers["Authorization"] = f"Bearer {context_token}"
 

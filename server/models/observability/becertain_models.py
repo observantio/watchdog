@@ -39,12 +39,27 @@ class AnalyzeProxyPayload(BaseModel):
 
 
 class AnalyzeJobStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    PROCESSING = "processing"
+    SUBMITTED = "submitted"
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
     DELETED = "deleted"
+
+    @classmethod
+    def _missing_(cls, value):  # type: ignore[override]
+        # Be tolerant to upstream transient status variants so proxy responses
+        # remain parseable and UI polling can continue.
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            for member in cls:
+                if member.value == normalized:
+                    return member
+        return cls.PENDING
 
 
 class AnalyzeJobCreateResponse(BaseModel):

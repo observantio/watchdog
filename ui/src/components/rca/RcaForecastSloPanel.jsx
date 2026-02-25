@@ -120,7 +120,7 @@ export default function RcaForecastSloPanel({ report, forecast, slo, compact = f
         />
 
         <div className="border border-sre-border rounded-xl bg-sre-surface/20 p-3">
-          <h4 className="text-sm font-semibold text-sre-text mb-2">Budget and Degradation</h4>
+          <h4 className="text-sm font-semibold text-sre-text mb-2">Budget</h4>
           {budgetStatus ? (
             <div className="space-y-2">
               <p className="text-xs text-sre-text-muted">
@@ -142,20 +142,21 @@ export default function RcaForecastSloPanel({ report, forecast, slo, compact = f
           ) : (
             <p className="text-xs text-sre-text-muted">No budget status returned.</p>
           )}
-          <div className="mt-3">
-            <p className="text-xs text-sre-text-muted mb-1">Degradation Signals</p>
-            {degradationSignals.length === 0 ? (
-              <p className="text-xs text-sre-text-muted">No degradation signals detected.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {degradationSignals.slice(0, 20).map((signal, index) => (
-                  <span key={`${signal?.metric_name || signal?.metric || 'signal'}-${index}`} className="text-xs px-2 py-1 rounded-md border border-sre-border bg-sre-surface">
-                    {signal?.metric_name || signal?.metric || 'signal'}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+        </div>
+
+        <div className="border border-sre-border rounded-xl bg-sre-surface/20 p-3">
+          <h4 className="text-sm font-semibold text-sre-text mb-2">Degradation</h4>
+          {degradationSignals.length === 0 ? (
+            <p className="text-xs text-sre-text-muted">No degradation signals detected.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {degradationSignals.slice(0, 20).map((signal, index) => (
+                <span key={`${signal?.metric_name || signal?.metric || 'signal'}-${index}`} className="text-xs px-2 py-1 rounded-md border border-sre-border bg-sre-surface">
+                  {signal?.metric_name || signal?.metric || 'signal'}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </>

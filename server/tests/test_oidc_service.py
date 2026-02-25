@@ -16,6 +16,8 @@ from tests._env import ensure_test_env
 
 ensure_test_env()
 
+import pytest
+
 from services.auth.oidc_service import OIDCService
 
 
@@ -38,6 +40,52 @@ class OidcServiceTests(unittest.TestCase):
         self.assertIn('client_id=client-1', url)
         self.assertIn('state=state123', url)
         self.assertIn('nonce=nonce456', url)
+
+    def test_oidc_transaction_one_time_use(self):
+        service = OIDCService()
+        with patch.object(service, '_get_well_known', return_value={'authorization_endpoint': 'https://idp.example/auth'}), \
+             patch('services.auth.oidc_service.config.OIDC_CLIENT_ID', 'client-1'), \
+             patch('services.auth.oidc_service.config.OIDC_SCOPES', 'openid profile'):
+            session = service.start_authorization_transaction(
+                redirect_uri='http://localhost/callback',
+                state='state123',
+                nonce='nonce456',
+            )
+            first = service.consume_authorization_transaction(
+                transaction_id=session['transaction_id'],
+                state='state123',
+                redirect_uri='http://localhost/callback',
+            )
+            self.assertEqual(first.get('nonce'), 'nonce456')
+            with self.assertRaises(ValueError):
+                service.consume_authorization_transaction(
+                    transaction_id=session['transaction_id'],
+                    state='state123',
+                    redirect_uri='http://localhost/callback',
+                )
+
+
+def test_oidc_pkce_mismatch_is_rejected():
+    service = OIDCService()
+    with patch.object(service, '_get_well_known', return_value={'authorization_endpoint': 'https://idp.example/auth'}), \
+         patch('services.auth.oidc_service.config.OIDC_CLIENT_ID', 'client-1'), \
+         patch('services.auth.oidc_service.config.OIDC_SCOPES', 'openid profile'):
+        verifier = "correct-verifier"
+        challenge = service._pkce_s256(verifier)
+        session = service.start_authorization_transaction(
+            redirect_uri='http://localhost/callback',
+            state='state123',
+            nonce='nonce456',
+            code_challenge=challenge,
+            code_challenge_method='S256',
+        )
+        with pytest.raises(ValueError):
+            service.consume_authorization_transaction(
+                transaction_id=session['transaction_id'],
+                state='state123',
+                redirect_uri='http://localhost/callback',
+                code_verifier='wrong-verifier',
+            )
 
 
 if __name__ == '__main__':

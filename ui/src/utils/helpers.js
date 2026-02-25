@@ -143,8 +143,26 @@ export function getSpanColorClass(name, hasError = false) {
  */
 export async function copyToClipboard(text) {
   try {
-    await navigator.clipboard.writeText(text)
-    return true
+    if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fall through to legacy copy path below.
+  }
+
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = String(text ?? '')
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    textarea.setSelectionRange(0, textarea.value.length)
+    const ok = document.execCommand('copy')
+    textarea.remove()
+    return Boolean(ok)
   } catch {
     return false
   }

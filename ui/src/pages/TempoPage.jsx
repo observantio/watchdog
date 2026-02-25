@@ -4,7 +4,7 @@ import PageHeader from '../components/ui/PageHeader'
 import AutoRefreshControl from '../components/ui/AutoRefreshControl'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { fetchTempoServices, searchTraces, getTrace, fetchTraceMetrics } from '../api'
+import { fetchTempoServices, searchTraces, getTrace } from '../api'
 import { Card, Button, Select, Input, Alert, Badge, Spinner } from '../components/ui'
 import ServiceGraph from '../components/tempo/ServiceGraph'
 const TraceResults = lazy(() => import('../components/tempo/TraceResults'))
@@ -55,7 +55,6 @@ export default function TempoPage() {
   // maximum number of traces to request from the backend (search limit)
   const [searchLimit, setSearchLimit] =
     useState(saved.searchLimit || DEFAULT_QUERY_LIMITS.traces || TRACE_PAGE_SIZE)
-  const [mimirTotalTraces, setMimirTotalTraces] = useState(null)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
 
@@ -312,21 +311,23 @@ export default function TempoPage() {
         limit: searchLimit,
         fetchFull: false
       }
-      const [res, metrics] = await Promise.all([
-        searchTraces(searchParams),
-        fetchTraceMetrics({ service, start: Math.floor(start), end: Math.floor(end) }),
-      ])
+      const res = await searchTraces(searchParams)
 
       setTraces(res)
-      setMimirTotalTraces(typeof metrics?.total_traces === 'number' ? metrics.total_traces : null)
       setTracePage(1)
+      const resultIds = new Set((res?.data || []).map((t) => t?.traceID || t?.traceId || t?.id).filter(Boolean))
+      prunePersistedSelectedTraceIds(new Set([...selectedTraceIds].filter((id) => !resultIds.has(id))))
+      const selectedId = selectedTrace?.traceId || selectedTrace?.traceID || selectedTrace?.id
+      if (selectedId && !resultIds.has(selectedId)) {
+        setSelectedTrace(null)
+        removePersistedSelectedTrace(selectedId)
+      }
 
       if (!services.length && res?.data?.length) {
         const discovered = discoverServices(res.data)
         if (discovered.length) setServices(discovered)
       }
     } catch (e) {
-      setMimirTotalTraces(null)
       setError(e.message)
     } finally {
       setLoading(false)
@@ -344,13 +345,8 @@ export default function TempoPage() {
   }, [traces, statusFilter])
 
   const traceStats = useMemo(() => {
-    const stats = computeTraceStats(filteredTraces)
-    if (!stats) return null
-    return {
-      ...stats,
-      total: typeof mimirTotalTraces === 'number' ? mimirTotalTraces : stats.total,
-    }
-  }, [filteredTraces, mimirTotalTraces])
+    return computeTraceStats(filteredTraces)
+  }, [filteredTraces])
 
   const pagedTraces = useMemo(() => {
     const start = (tracePage - 1) * pageSize
@@ -375,7 +371,7 @@ export default function TempoPage() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader icon="timeline" title="Tracing" subtitle="Search and analyze distributed traces across your services">
+      <PageHeader icon={null} title="Tracing" subtitle="Search and analyze distributed traces across your services">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             {[
@@ -419,7 +415,11 @@ export default function TempoPage() {
       {traceStats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           {[
-            { label: 'Total Traces (Mimir)', value: traceStats.total, color: 'text-sre-text' },
+            {
+              label: 'Total Traces',
+              value: Number(traceStats.total).toLocaleString(),
+              color: 'text-sre-text',
+            },
             { label: 'Avg Duration', value: formatDuration(traceStats.avgDuration), color: 'text-sre-text' },
             { label: 'Max Duration', value: formatDuration(traceStats.maxDuration), color: 'text-sre-text' },
             { label: 'Error Rate', value: `${traceStats.errorRate.toFixed(1)}%`, color: traceStats.errorRate > 5 ? 'text-red-500' : 'text-green-500' },

@@ -7,7 +7,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 import httpx
 
@@ -73,17 +73,44 @@ def login(
 
 
 def exchange_oidc_authorization_code(
-    service, code: str, redirect_uri: str
+    service,
+    code: str,
+    redirect_uri: str,
+    transaction_id: Optional[str] = None,
+    state: Optional[str] = None,
+    code_verifier: Optional[str] = None,
 ) -> Optional[Union[Token, dict]]:
     if not service.is_external_auth_enabled():
         return None
     try:
-        oidc_token = service.oidc_service.exchange_authorization_code(code, redirect_uri)
+        txn: Dict[str, str] = {}
+        if transaction_id or state:
+            txn = service.oidc_service.consume_authorization_transaction(
+                transaction_id=transaction_id,
+                state=state,
+                redirect_uri=redirect_uri,
+                code_verifier=code_verifier,
+            )
+        else:
+            service.logger.warning("OIDC exchange received without transaction context; using compatibility fallback")
+        oidc_token = service.oidc_service.exchange_authorization_code(
+            code,
+            redirect_uri,
+            code_verifier=(code_verifier if txn.get("code_challenge") else None),
+        )
         access_token = oidc_token.get("access_token")
         if not access_token:
             return None
         claims = service.oidc_service.verify_access_token(access_token)
         if not claims:
+            return None
+        expected_nonce = str(txn.get("nonce") or "").strip()
+        token_nonce = str((claims or {}).get("nonce") or "").strip()
+        if expected_nonce and token_nonce and expected_nonce != token_nonce:
+            service.logger.warning("OIDC nonce mismatch during authorization code exchange")
+            return None
+        if expected_nonce and not token_nonce:
+            service.logger.warning("OIDC token nonce missing during authorization code exchange")
             return None
         user = service._sync_user_from_oidc_claims(claims)
         if not user or not user.is_active:
@@ -101,8 +128,21 @@ def exchange_oidc_authorization_code(
         return None
 
 
-def get_oidc_authorization_url(service, redirect_uri: str, state: str, nonce: str) -> str:
-    return service.oidc_service.build_authorization_url(redirect_uri, state, nonce)
+def get_oidc_authorization_url(
+    service,
+    redirect_uri: str,
+    state: Optional[str] = None,
+    nonce: Optional[str] = None,
+    code_challenge: Optional[str] = None,
+    code_challenge_method: Optional[str] = None,
+) -> Dict[str, str]:
+    return service.oidc_service.start_authorization_transaction(
+        redirect_uri=redirect_uri,
+        state=state,
+        nonce=nonce,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
+    )
 
 
 def provision_external_user(

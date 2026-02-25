@@ -186,6 +186,7 @@ class UserApiKey(Base):
     name:       Mapped[str]           = mapped_column(String(100), nullable=False)
     key:        Mapped[str]           = mapped_column(String(200), nullable=False, index=True)
     otlp_token: Mapped[Optional[str]] = mapped_column(String(200), unique=True, index=True)
+    otlp_token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
     is_default: Mapped[bool]          = mapped_column(Boolean,     default=False, nullable=False)
     is_enabled: Mapped[bool]          = mapped_column(Boolean,     default=True,  nullable=False, index=True)
     created_at: Mapped[datetime]      = mapped_column(DateTime,    default=_now, nullable=False)
@@ -193,6 +194,22 @@ class UserApiKey(Base):
 
     user:   Mapped["User"]           = relationship("User",       back_populates="api_keys")
     shares: Mapped[List["ApiKeyShare"]] = relationship("ApiKeyShare", back_populates="api_key", cascade=_CASCADE)
+    __table_args__ = (
+        Index(
+            "uq_user_api_keys_user_default_true",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_default = true"),
+            sqlite_where=text("is_default = 1"),
+        ),
+        Index(
+            "uq_user_api_keys_user_enabled_true",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_enabled = true"),
+            sqlite_where=text("is_enabled = 1"),
+        ),
+    )
 
 
 class ApiKeyShare(Base):

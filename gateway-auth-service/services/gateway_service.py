@@ -14,7 +14,6 @@ import json
 import logging
 import ssl
 import urllib.error
-import urllib.parse
 import urllib.request
 from ipaddress import ip_address, ip_network
 from typing import Optional
@@ -82,12 +81,37 @@ class GatewayAuthService:
         self._ssl_ctx = _build_ssl_context()
 
     @staticmethod
-    def _client_ip(request: Request) -> str:
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            first = xff.split(",", 1)[0].strip()
-            if first:
-                return first
+    def _trusted_proxy_peer(request: Request) -> bool:
+        if not gw_config.TRUST_PROXY_HEADERS:
+            return False
+        peer = request.client.host if request.client else ""
+        if not peer:
+            return False
+        try:
+            peer_ip = ip_address(peer)
+        except ValueError:
+            return False
+        if not gw_config.TRUSTED_PROXY_CIDRS:
+            return True
+        for cidr in gw_config.TRUSTED_PROXY_CIDRS:
+            try:
+                if peer_ip in ip_network(cidr, strict=False):
+                    return True
+            except ValueError:
+                continue
+        return False
+
+    @classmethod
+    def _client_ip(cls, request: Request) -> str:
+        if cls._trusted_proxy_peer(request):
+            xff = request.headers.get("x-forwarded-for")
+            if xff:
+                first = xff.split(",", 1)[0].strip()
+                if first:
+                    return first
+            x_real_ip = request.headers.get("x-real-ip", "").strip()
+            if x_real_ip:
+                return x_real_ip
         return request.client.host if request.client else "unknown"
 
     @staticmethod
@@ -113,12 +137,48 @@ class GatewayAuthService:
         self._rate_limiter.enforce(self._client_ip(request))
 
     def _fetch_org_from_api(self, token: str) -> Optional[str]:
-        url = f"{gw_config.AUTH_API_URL}?token={urllib.parse.quote(token)}"
+        if not token:
+            return None
+        url = gw_config.AUTH_API_URL
         headers = {}
         if gw_config.INTERNAL_SERVICE_TOKEN:
             headers["X-Internal-Token"] = gw_config.INTERNAL_SERVICE_TOKEN
+        headers["Content-Type"] = "application/json"
+        headers["X-OTLP-Token"] = token
+        req = urllib.request.Request(
+            url,
+            headers=headers,
+            data=json.dumps({"token": token}).encode("utf-8"),
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=2, context=self._ssl_ctx) as resp:
+                if resp.status == 200:
+                    try:
+                        data = json.loads(resp.read())
+                    except Exception:
+                        return None
+                    return data.get("org_id")
+                if resp.status == 404:
+                    return None
+                raise DatabaseUnavailable(f"unexpected status {resp.status}")
+        except urllib.error.HTTPError as e:
+            if e.code in {404, 405}:
+                return self._fetch_org_from_api_legacy_query(token)
+            logger.warning("Auth API HTTPError %s", e)
+            raise DatabaseUnavailable from e
+        except Exception as e:
+            logger.warning("Auth API request failed: %s", e)
+            raise DatabaseUnavailable from e
 
-        req = urllib.request.Request(url, headers=headers)
+    def _fetch_org_from_api_legacy_query(self, token: str) -> Optional[str]:
+        from urllib.parse import quote
+
+        legacy_url = f"{gw_config.AUTH_API_URL}?token={quote(token)}"
+        headers = {}
+        if gw_config.INTERNAL_SERVICE_TOKEN:
+            headers["X-Internal-Token"] = gw_config.INTERNAL_SERVICE_TOKEN
+        req = urllib.request.Request(legacy_url, headers=headers, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=2, context=self._ssl_ctx) as resp:
                 if resp.status == 200:

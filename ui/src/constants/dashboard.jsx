@@ -47,9 +47,6 @@ export const getMetricsConfig = (data) => {
     health,
     loadingAlerts,
     alertCount,
-    loadingTraces,
-    traceCount,
-    traceErrorCount,
     loadingLogs,
     logVolume,
     loadingDashboards,
@@ -69,21 +66,6 @@ export const getMetricsConfig = (data) => {
     if (loadingAlerts) return <span className="animate-pulse">Loading...</span>
     if (alertCount === null) return '0'
     return String(alertCount)
-  }
-
-  const getTraceValue = () => {
-    if (loadingTraces) return <span className="animate-pulse">Loading...</span>
-    if (traceCount !== null) {
-      return Number(traceCount).toLocaleString()
-    }
-    return 'N/A'
-  }
-
-  const getTraceStatus = () => {
-    if (traceErrorCount === null) return traceCount > 0 ? 'success' : 'default'
-    if (traceErrorCount > 0) return 'warning'
-    if (traceCount > 0) return 'success'
-    return 'default'
   }
 
   const getLogValue = () => {
@@ -110,8 +92,6 @@ export const getMetricsConfig = (data) => {
     return 'N/A'
   }
 
-  const traceTrend = traceErrorCount > 0 ? `${traceErrorCount} with errors` : traceCount > 0 ? 'No errors' : 'No traces'
-
   return [
     {
       id: 'service-status',
@@ -134,18 +114,6 @@ export const getMetricsConfig = (data) => {
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
-      ),
-    },
-    {
-      id: 'traces',
-      label: "Traces (last 1h)",
-      value: getTraceValue(),
-      trend: traceTrend,
-      status: getTraceStatus(),
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3v18h18" />
         </svg>
       ),
     },

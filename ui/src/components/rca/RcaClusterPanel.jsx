@@ -203,27 +203,49 @@ export default function RcaClusterPanel({ report, compact = false }) {
           </div>
 
           {selectedPoint && (
-            <div className={`${compact ? '' : 'border border-sre-border rounded-xl'} p-3 bg-sre-surface/30`}>
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <p className="text-sm font-semibold text-sre-text">Cluster {selectedPoint.clusterId}</p>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-sre-primary/15 text-sre-primary border border-sre-primary/30">
+            <div className={`${compact ? '' : 'border border-sre-border rounded-2xl'} overflow-hidden bg-sre-surface/40`}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-sre-border bg-sre-surface/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-sre-primary animate-pulse" />
+                  <p className="text-sm font-semibold text-sre-text">Cluster {selectedPoint.clusterId}</p>
+                </div>
+                <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-sre-primary/10 text-sre-primary border border-sre-primary/20">
                   {formatNumber(selectedPoint.size)} anomalies
                 </span>
               </div>
-              <p className="text-xs text-sre-text-muted">
-                Centroid timestamp: {formatTimestamp(selectedPoint.ts)} | Centroid value: {formatNumber(selectedPoint.value)}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {selectedPoint.metrics.slice(0, 24).map((metric) => (
-                  <span key={metric} className="text-xs px-2 py-1 rounded-md bg-sre-surface border border-sre-border text-sre-text">
-                    {metric}
-                  </span>
-                ))}
-                {selectedPoint.metrics.length > 24 && (
-                  <span className="text-xs px-2 py-1 rounded-md bg-sre-surface border border-sre-border text-sre-text-muted">
-                    +{selectedPoint.metrics.length - 24} more
-                  </span>
-                )}
+
+              <div className="px-4 py-3 flex items-center gap-6 border-b border-sre-border/60">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] uppercase tracking-widest text-sre-text-muted font-medium">Centroid Time</span>
+                  <span className="text-xs font-mono text-sre-text">{formatTimestamp(selectedPoint.ts)}</span>
+                </div>
+                <div className="w-px h-8 bg-sre-border" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] uppercase tracking-widest text-sre-text-muted font-medium">Centroid Value</span>
+                  <span className="text-xs font-mono text-sre-text">{formatNumber(selectedPoint.value)}</span>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 flex flex-col gap-2">
+                <span className="text-[10px] uppercase tracking-widest text-sre-text-muted font-medium">
+                  Affected Metrics
+                  <span className="ml-1.5 text-sre-primary normal-case tracking-normal">({selectedPoint.metrics.length})</span>
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedPoint.metrics.slice(0, 24).map((metric) => (
+                    <span
+                      key={metric}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-sre-surface border border-sre-border text-sre-text hover:border-sre-primary/40 hover:text-sre-primary transition-colors cursor-default"
+                    >
+                      {metric}
+                    </span>
+                  ))}
+                  {selectedPoint.metrics.length > 24 && (
+                    <span className="text-xs px-2.5 py-1 rounded-lg bg-sre-primary/10 border border-sre-primary/20 text-sre-primary font-medium">
+                      +{selectedPoint.metrics.length - 24} more
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )}

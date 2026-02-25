@@ -232,6 +232,7 @@ def validate_otlp_token(service, token: str) -> Optional[str]:
     default_token = getattr(config, "DEFAULT_OTLP_TOKEN", None)
     if default_token and secrets.compare_digest(str(token), str(default_token)):
         return config.DEFAULT_ORG_ID
+    token_hash = service._hash_otlp_token(token)
     try:
         with get_db_session() as db:
             api_key = (
@@ -239,7 +240,7 @@ def validate_otlp_token(service, token: str) -> Optional[str]:
                 .join(User, User.id == UserApiKey.user_id)
                 .join(Tenant, Tenant.id == User.tenant_id)
                 .filter(
-                    UserApiKey.otlp_token == token,
+                    UserApiKey.otlp_token_hash == token_hash,
                     UserApiKey.is_enabled.is_(True),
                     User.is_active.is_(True),
                     Tenant.is_active.is_(True),

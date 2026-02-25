@@ -112,7 +112,9 @@ def get_accessible_dashboard_uids(service, db: Session, user_id: str, tenant_id:
     query = query.filter(or_(*conditions))
     capped = query.with_entities(GrafanaDashboard.grafana_uid).limit(int(config.MAX_QUERY_LIMIT)).all()
 
-    return [uid for (uid,) in capped], True
+    # Do not allow implicit access to unregistered/system dashboards.
+    # Visibility enforcement is based on local metadata ownership + visibility.
+    return [uid for (uid,) in capped], False
 
 
 def build_dashboard_search_context(
@@ -212,14 +214,10 @@ async def search_dashboards(
         query=query, tag=tag, starred=starred
     )
 
-    if is_admin:
-        accessible_uids = {d.uid for d in all_dashboards}
-        allow_system = True
-    else:
-        accessible_uids, allow_system = get_accessible_dashboard_uids(
-            service, db, user_id, tenant_id, group_ids
-        )
-        accessible_uids = set(accessible_uids)
+    accessible_uids, allow_system = get_accessible_dashboard_uids(
+        service, db, user_id, tenant_id, group_ids
+    )
+    accessible_uids = set(accessible_uids)
 
     effective_context = search_context or build_dashboard_search_context(service, db, tenant_id=tenant_id)
     all_registered_uids = effective_context.get("all_registered_uids", set())
@@ -262,22 +260,22 @@ async def get_dashboard(service, db: Session, uid: str, user_id: str, tenant_id:
         GrafanaDashboard.grafana_uid == uid,
         GrafanaDashboard.tenant_id == tenant_id,
     ).first()
+    if not db_dashboard:
+        return None
     if db_dashboard and check_dashboard_access(service, db, uid, user_id, tenant_id, group_ids) is None:
         return None
     result = await service.grafana_service.get_dashboard(uid)
     if not result:
         return None
-    if db_dashboard:
-        payload = dict(result)
-        shared_group_ids = [group.id for group in (getattr(db_dashboard, "shared_groups", None) or [])]
-        payload["visibility"] = db_dashboard.visibility or "private"
-        payload["shared_group_ids"] = shared_group_ids
-        payload["sharedGroupIds"] = shared_group_ids
-        payload["created_by"] = db_dashboard.created_by
-        payload["is_owned"] = bool(db_dashboard.created_by == user_id)
-        payload["is_hidden"] = bool(user_id in (getattr(db_dashboard, "hidden_by", None) or []))
-        return payload
-    return result
+    payload = dict(result)
+    shared_group_ids = [group.id for group in (getattr(db_dashboard, "shared_groups", None) or [])]
+    payload["visibility"] = db_dashboard.visibility or "private"
+    payload["shared_group_ids"] = shared_group_ids
+    payload["sharedGroupIds"] = shared_group_ids
+    payload["created_by"] = db_dashboard.created_by
+    payload["is_owned"] = bool(db_dashboard.created_by == user_id)
+    payload["is_hidden"] = bool(user_id in (getattr(db_dashboard, "hidden_by", None) or []))
+    return payload
 
 
 def _dashboard_has_datasource(dashboard_obj: Any) -> bool:

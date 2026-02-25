@@ -13,37 +13,3 @@ datasources:
       httpHeaderName1: X-Scope-OrgID
     secureJsonData:
       httpHeaderValue1: ${MIMIR_TENANT_ID}
-
-  - name: Loki
-    uid: loki
-    type: loki
-    access: proxy
-    url: http://loki:3100
-    editable: true
-    jsonData:
-      httpHeaderName1: X-Scope-OrgID
-    secureJsonData:
-      httpHeaderValue1: ${MIMIR_TENANT_ID}
-
-  - name: Tempo
-    uid: tempo
-    type: tempo
-    access: proxy
-    url: http://tempo:3200
-    editable: true
-    jsonData:
-      httpHeaderName1: X-Scope-OrgID
-      tracesToLogsV2:
-        datasourceUid: loki
-        spanStartTimeShift: '-1h'
-        spanEndTimeShift: '1h'
-        filterByTraceID: true
-        filterBySpanID: false
-      tracesToMetrics:
-        datasourceUid: mimir
-      serviceMap:
-        datasourceUid: mimir
-      nodeGraph:
-        enabled: true
-    secureJsonData:
-      httpHeaderValue1: ${MIMIR_TENANT_ID}

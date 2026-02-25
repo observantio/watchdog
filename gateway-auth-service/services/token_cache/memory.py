@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+import hashlib
 from threading import Lock
 from typing import Optional
 
@@ -28,22 +29,28 @@ class TokenCache:
         self._lock = Lock()
         self._ops = 0
 
+    @staticmethod
+    def _cache_key(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
     def get(self, token: str) -> tuple[bool, Optional[str]]:
+        key = self._cache_key(token)
         with self._lock:
-            entry = self._cache.get(token)
+            entry = self._cache.get(key)
         if entry is None:
             return False, None
         org_id, ts = entry
         if time.monotonic() - ts < self._ttl:
             return True, org_id
         with self._lock:
-            self._cache.pop(token, None)
+            self._cache.pop(key, None)
         return False, None
 
     def set(self, token: str, org_id: Optional[str]) -> None:
+        key = self._cache_key(token)
         now = time.monotonic()
         with self._lock:
-            self._cache[token] = (org_id, now)
+            self._cache[key] = (org_id, now)
             self._ops += 1
             if self._ops % _GC_INTERVAL == 0:
                 self._gc(now)

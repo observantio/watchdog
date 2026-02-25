@@ -31,10 +31,20 @@ export default function ApiKeyPage() {
   const [shareSearch, setShareSearch] = useState('')
   const [selectedShareUserIds, setSelectedShareUserIds] = useState([])
   const [selectedShareGroupIds, setSelectedShareGroupIds] = useState([])
+  const [revealedOtlpTokens, setRevealedOtlpTokens] = useState({})
 
   useEffect(() => {
     if (user) {
       setApiKeys(user.api_keys || [])
+      setRevealedOtlpTokens((prev) => {
+        const next = { ...prev }
+        ;(user.api_keys || []).forEach((key) => {
+          if (key?.id && key?.otlp_token) {
+            next[key.id] = key.otlp_token
+          }
+        })
+        return next
+      })
       const defaultKey = (user.api_keys || []).find((k) => k.is_default)
       const orgKey = defaultKey
         || (user.api_keys || []).find((k) => k.key === user.org_id)
@@ -95,7 +105,10 @@ export default function ApiKeyPage() {
     }
     setLoading(true)
     try {
-      await api.createApiKey({ name: newKeyName.trim(), key: newKeyValue.trim() || undefined })
+      const created = await api.createApiKey({ name: newKeyName.trim(), key: newKeyValue.trim() || undefined })
+      if (created?.id && created?.otlp_token) {
+        setRevealedOtlpTokens((prev) => ({ ...prev, [created.id]: created.otlp_token }))
+      }
       setNewKeyName('')
       setNewKeyValue('')
       await refreshUser()
@@ -123,6 +136,11 @@ export default function ApiKeyPage() {
   const handleDeleteKey = async (key) => {
     try {
       await api.deleteApiKey(key.id)
+      setRevealedOtlpTokens((prev) => {
+        const next = { ...prev }
+        delete next[key.id]
+        return next
+      })
       await refreshUser()
       toast.success('API key deleted successfully.')
     } catch (err) {
@@ -136,6 +154,10 @@ export default function ApiKeyPage() {
   }
 
   const openShareModal = async (key) => {
+    if (key?.is_default) {
+      toast.error('Default key cannot be shared')
+      return
+    }
     setKeyToShare(key)
     setSelectedShareUserIds((key?.shared_with || []).map((item) => item.user_id))
     setSelectedShareGroupIds([])
@@ -151,6 +173,10 @@ export default function ApiKeyPage() {
 
   const handleSaveShares = async () => {
     if (!keyToShare) return
+    if (keyToShare?.is_default) {
+      toast.error('Default key cannot be shared')
+      return
+    }
     setLoading(true)
     try {
       await api.replaceApiKeyShares(keyToShare.id, selectedShareUserIds, selectedShareGroupIds)
@@ -200,17 +226,20 @@ export default function ApiKeyPage() {
     return found?.key || user?.org_id || ''
   }, [apiKeys, orgId, user])
 
+  const ownedApiKeys = useMemo(() => apiKeys.filter((k) => !k.is_shared), [apiKeys])
+
   // YAML modal state
   const [showYamlModal, setShowYamlModal] = useState(false)
   const [yamlModalKeyId, setYamlModalKeyId] = useState('')
   const [gatewayHost, setGatewayHost] = useState(OTLP_GATEWAY_HOST)
 
   const [yamlShowToken, setYamlShowToken] = useState(false)
+  const [regeneratingToken, setRegeneratingToken] = useState(false)
 
   const yamlModalToken = useMemo(() => {
     const found = apiKeys.find((k) => k.id === yamlModalKeyId)
-    return found?.otlp_token || ''
-  }, [apiKeys, yamlModalKeyId])
+    return revealedOtlpTokens[yamlModalKeyId] || found?.otlp_token || ''
+  }, [apiKeys, yamlModalKeyId, revealedOtlpTokens])
 
   useEffect(() => {
     setYamlShowToken(false)
@@ -228,8 +257,29 @@ export default function ApiKeyPage() {
   }), [yamlModalToken, derivedLoki, derivedTempo, derivedMimir])
 
   const enabledCount = apiKeys.filter((k) => k.is_enabled).length
-  const activeKeyCandidate = apiKeys.find((k) => k.is_enabled) || apiKeys.find((k) => k.is_default) || apiKeys[0] || null
+  const activeOwnedKeyCandidate = ownedApiKeys.find((k) => k.is_enabled) || ownedApiKeys.find((k) => k.is_default) || ownedApiKeys[0] || null
   const isYamlKeyShared = Boolean(apiKeys.find((k) => k.id === yamlModalKeyId)?.is_shared)
+  const canUseYaml = !isYamlKeyShared && Boolean(yamlModalToken)
+
+  const handleRegenerateYamlToken = async () => {
+    if (!yamlModalKeyId || isYamlKeyShared) return
+    setRegeneratingToken(true)
+    try {
+      const updated = await api.regenerateApiKeyOtlpToken(yamlModalKeyId)
+      const newToken = updated?.otlp_token || ''
+      if (!newToken) {
+        throw new Error('No OTLP token returned')
+      }
+      setRevealedOtlpTokens((prev) => ({ ...prev, [yamlModalKeyId]: newToken }))
+      setYamlShowToken(true)
+      await refreshUser()
+      toast.success('OTLP token regenerated. Update running OTEL agents with this new token.')
+    } catch (err) {
+      toast.error(err.body?.detail || err.message || 'Failed to regenerate OTLP token')
+    } finally {
+      setRegeneratingToken(false)
+    }
+  }
 
   const filteredShareUsers = useMemo(() => {
     const q = shareSearch.trim().toLowerCase()
@@ -274,12 +324,12 @@ export default function ApiKeyPage() {
                   variant="secondary"
                   className="py-1 px-3"
                   onClick={() => {
-                    if (!activeKeyCandidate || activeKeyCandidate.is_shared) return
-                    setYamlModalKeyId(activeKeyCandidate.id)
+                    if (!activeOwnedKeyCandidate) return
+                    setYamlModalKeyId(activeOwnedKeyCandidate.id)
                     setShowYamlModal(true)
                   }}
-                  disabled={!!activeKeyCandidate?.is_shared}
-                  aria-disabled={!!activeKeyCandidate?.is_shared}
+                  disabled={!activeOwnedKeyCandidate}
+                  aria-disabled={!activeOwnedKeyCandidate}
                 >
                   Generate Agent YAML
                 </Button>
@@ -289,7 +339,7 @@ export default function ApiKeyPage() {
         </div>
 
         <Card title={`API Keys (${apiKeys.length})`} subtitle={`Enabled: ${enabledCount}`} className="p-4 rounded-lg border border-sre-border shadow-sm bg-sre-surface">
-          <p className="text-xs text-sre-text-muted mt-2">These API keys are local to your tenant and may be shared with other teams in your organization, since they scope to your tenant. <strong>However, never share the OTLP token included in the generated OTEL Agent YAML — keep it secret.</strong></p>
+          <p className="text-xs text-sre-text-muted mt-2">These API keys are local to your tenant and may be shared with other teams in your organization, since they scope to your tenant. Default keys cannot be shared. <strong>However, never share the OTLP token included in the generated OTEL Agent YAML — keep it secret.</strong></p>
           {apiKeys.length === 0 ? (
             <div className="p-4 text-sm text-sre-text-muted">No API keys found.</div>
           ) : (
@@ -305,7 +355,17 @@ export default function ApiKeyPage() {
                 </thead>
                 <tbody >
                   {apiKeys.map((key) => (
-                    <tr key={key.id} className="align-top hover:bg-sre-background">
+                    <tr
+                      key={key.id}
+                      className="align-top hover:bg-sre-background cursor-pointer"
+                      onClick={(e) => {
+                        const interactiveTarget = e.target.closest('button, input, a, label')
+                        if (interactiveTarget) return
+                        if (key.is_enabled) return
+                        if (key.is_shared && !key.can_use) return
+                        handleActivateKey(key)
+                      }}
+                    >
                       <td className="py-3 pl-0 pr-4">
                         <div className="font-medium text-sre-text">{key.name}</div>
                         {key.is_default && <div className="text-xs text-sre-text-muted">Default</div>}
@@ -333,6 +393,7 @@ export default function ApiKeyPage() {
                             name="active-api-key"
                             className="h-4 w-4"
                             checked={key.is_enabled}
+                            disabled={key.is_shared && !key.can_use}
                             onChange={() => handleActivateKey(key)}
                           />
                           <div className="text-sm">
@@ -342,7 +403,7 @@ export default function ApiKeyPage() {
                       </td>
                       <td className="py-2 px-4">
                         <div className="flex gap-2">
-                          {!key.is_shared && (
+                          {!key.is_shared && !key.is_default && (
                             <Button size="sm" variant="primary" onClick={() => openShareModal(key)} aria-label={`Share ${key.name}`}>Share</Button>
                           )}
                           {!key.is_default && (
@@ -446,7 +507,7 @@ export default function ApiKeyPage() {
                   <HelpTooltip text="Select the product or team this agent represents." />
                 </div>
                 <Select value={yamlModalKeyId} onChange={(e) => setYamlModalKeyId(e.target.value)} className="w-full">
-                  {apiKeys.map((k) => (
+                  {ownedApiKeys.map((k) => (
                     <option key={k.id} value={k.id}>{k.name} {k.is_default ? '(Default)' : ''}</option>
                   ))}
                 </Select>
@@ -477,15 +538,18 @@ export default function ApiKeyPage() {
                       ? 'OTLP token not available for shared keys'
                       : (yamlModalToken
                         ? (yamlShowToken ? yamlModalToken : `${yamlModalToken.slice(0, 6)}...${yamlModalToken.slice(-4)}`)
-                        : 'No token available')}
+                        : 'No token available. Regenerate to reveal a new token.')}
                   </div>
                   <div className="flex items-center gap-2">
                     {!isYamlKeyShared && (
                       <>
-                        <Button size="sm" variant="ghost" onClick={() => setYamlShowToken(!yamlShowToken)} aria-label={yamlShowToken ? 'Hide token' : 'Show token'}>
+                        <Button size="sm" variant="ghost" onClick={() => setYamlShowToken(!yamlShowToken)} aria-label={yamlShowToken ? 'Hide token' : 'Show token'} disabled={!yamlModalToken}>
                           {yamlShowToken ? 'Hide' : 'Show'}
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => handleCopy(yamlModalToken || '', 'OTLP token copied to clipboard')} aria-label="Copy OTLP token">Copy</Button>
+                        <Button size="sm" variant="secondary" onClick={() => handleCopy(yamlModalToken || '', 'OTLP token copied to clipboard')} aria-label="Copy OTLP token" disabled={!yamlModalToken}>Copy</Button>
+                        <Button size="sm" variant="secondary" onClick={handleRegenerateYamlToken} loading={regeneratingToken} aria-label="Regenerate OTLP token">
+                          Regenerate
+                        </Button>
                       </>
                     )}
                     {isYamlKeyShared && (
@@ -499,10 +563,10 @@ export default function ApiKeyPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button variant="secondary" onClick={() => handleCopy(yamlModalContent, 'OTEL YAML copied to clipboard')} aria-label="Copy YAML" disabled={isYamlKeyShared}>
+              <Button variant="secondary" onClick={() => handleCopy(yamlModalContent, 'OTEL YAML copied to clipboard')} aria-label="Copy YAML" disabled={!canUseYaml}>
                 <span className="material-icons mr-2">content_copy</span>Copy YAML
               </Button>
-              <Button variant="secondary" onClick={() => handleDownloadYaml(yamlModalContent)} aria-label="Download YAML" disabled={isYamlKeyShared}>
+              <Button variant="secondary" onClick={() => handleDownloadYaml(yamlModalContent)} aria-label="Download YAML" disabled={!canUseYaml}>
                 <span className="material-icons mr-2">download</span>Download YAML
               </Button>
               <div className="text-xs text-sre-text-muted ml-auto">sudo otelcol-contrib --config otel.yaml</div>

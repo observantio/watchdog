@@ -48,29 +48,33 @@ def ensure_default_api_key(service, db, user: User):
     if existing:
         if existing.name == "Default" and is_system_user:
             desired_token = service._resolve_default_otlp_token()
+            desired_hash = service._hash_otlp_token(desired_token)
             now = datetime.now(timezone.utc)
-            if existing.key != (user.org_id or config.DEFAULT_ORG_ID):
-                existing.key = user.org_id or config.DEFAULT_ORG_ID
-                existing.updated_at = now
             if not existing.is_enabled:
                 existing.is_enabled = True
                 existing.updated_at = now
-            if not existing.otlp_token or (
-                config.DEFAULT_OTLP_TOKEN and existing.otlp_token != config.DEFAULT_OTLP_TOKEN
+            if (
+                not getattr(existing, "otlp_token_hash", None)
+                or (config.DEFAULT_OTLP_TOKEN and existing.otlp_token_hash != desired_hash)
             ):
-                existing.otlp_token = desired_token
+                existing.otlp_token_hash = desired_hash
+                existing.otlp_token = None
                 existing.updated_at = now
-        elif not existing.otlp_token:
-            existing.otlp_token = service._generate_otlp_token()
+        elif not getattr(existing, "otlp_token_hash", None):
+            source = existing.otlp_token or service._generate_otlp_token()
+            existing.otlp_token_hash = service._hash_otlp_token(source)
+            existing.otlp_token = None
             existing.updated_at = datetime.now(timezone.utc)
         return
 
+    raw_token = service._resolve_default_otlp_token() if is_system_user else service._generate_otlp_token()
     db.add(UserApiKey(
         tenant_id=user.tenant_id,
         user_id=user.id,
         name="Default",
         key=user.org_id or config.DEFAULT_ORG_ID,
-        otlp_token=service._resolve_default_otlp_token() if is_system_user else service._generate_otlp_token(),
+        otlp_token=None,
+        otlp_token_hash=service._hash_otlp_token(raw_token),
         is_default=True,
         is_enabled=True,
     ))
@@ -80,6 +84,7 @@ def ensure_default_setup(service):
     try:
         with get_db_session() as db:
             _ensure_user_security_columns(service, db)
+            _ensure_api_key_constraints(service, db)
             _backfill_password_changed_at(service, db)
             default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
             ensure_permissions(service, db)
@@ -170,4 +175,38 @@ def _backfill_password_changed_at(service, db) -> None:
             """
         )
     )
+    db.flush()
+
+
+def _ensure_api_key_constraints(service, db) -> None:
+    insp = inspect(db.bind)
+    try:
+        cols = {c.get("name") for c in insp.get_columns("user_api_keys")}
+    except NoSuchTableError:
+        return
+
+    dialect = str(getattr(db.bind.dialect, "name", "")).lower()
+    if "otlp_token_hash" not in cols:
+        db.execute(text("ALTER TABLE user_api_keys ADD COLUMN otlp_token_hash VARCHAR(64)"))
+
+    statements = []
+    if dialect == "postgresql":
+        statements = [
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_otlp_token_hash ON user_api_keys (otlp_token_hash)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_user_default_true ON user_api_keys (user_id) WHERE is_default = true",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_user_enabled_true ON user_api_keys (user_id) WHERE is_enabled = true",
+        ]
+    elif dialect == "sqlite":
+        statements = [
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_otlp_token_hash ON user_api_keys (otlp_token_hash)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_user_default_true ON user_api_keys (user_id) WHERE is_default = 1",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_user_enabled_true ON user_api_keys (user_id) WHERE is_enabled = 1",
+        ]
+
+    for stmt in statements:
+        try:
+            db.execute(text(stmt))
+        except Exception as exc:
+            service.logger.error("Failed to enforce API key constraint (%s): %s", stmt, exc)
+            raise
     db.flush()
