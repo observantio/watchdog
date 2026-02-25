@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Folder(BaseModel):
@@ -19,5 +19,4 @@ class Folder(BaseModel):
     uid: Optional[str] = Field(None, description="Unique identifier string for the folder")
     title: str = Field(..., description="Title of the folder")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)

@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/ui/PageHeader'
 import { Card, Input, Button, Select, Spinner, Badge } from '../components/ui'
@@ -137,7 +129,7 @@ export default function AuditCompliancePage() {
 
   useEffect(() => {
     loadUsers()
-  }, [])
+  }, [loadUsers])
 
   const userLabelById = useMemo(() => {
     const map = {}
@@ -201,9 +193,10 @@ export default function AuditCompliancePage() {
     }
   }, [loading, filters, items.length, applyPage, toast])
 
+  const initialFiltersRef = useRef(filters)
   useEffect(() => {
-    loadAudit(filters)
-  }, [])
+    loadAudit(initialFiltersRef.current)
+  }, [loadAudit])
 
   const onLimitChange = async (v) => {
     const nextFilters = { ...filters, limit: Number(v), offset: 0 }

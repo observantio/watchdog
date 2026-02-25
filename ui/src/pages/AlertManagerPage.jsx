@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useState, useEffect, useMemo } from 'react'
 import { createSilence, deleteSilence, createAlertRule, updateAlertRule, deleteAlertRule, testAlertRule, importAlertRules} from '../api'
 import { Card, Button, Select, Alert, Spinner, Modal } from '../components/ui'
@@ -26,7 +18,7 @@ import {
 
 export default function AlertManagerPage() {
   const { user, hasPermission } = useAuth()
-  const apiKeys = user?.api_keys || []
+  const apiKeys = useMemo(() => user?.api_keys || [], [user?.api_keys])
   const [activeTab, setActiveTab] = useLocalStorage('alertmanager-active-tab', 'alerts')
   const [showRuleEditor, setShowRuleEditor] = useState(false)
   const [showSilenceForm, setShowSilenceForm] = useState(false)

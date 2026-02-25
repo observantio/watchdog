@@ -12,30 +12,39 @@ from datetime import datetime, timezone
 import secrets
 import string
 
+import bcrypt
 from fastapi import HTTPException, status
-from passlib.context import CryptContext
 
 from config import config
 from database import get_db_session
 from db_models import User
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
 def hash_password(service, password: str) -> str:
+    def _hash() -> str:
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
     sem = getattr(service, "_password_op_semaphore", None)
     if sem:
         with sem:
-            return _pwd_ctx.hash(password)
-    return _pwd_ctx.hash(password)
+            return _hash()
+    return _hash()
 
 
 def verify_password(service, plain_password: str, hashed_password: str) -> bool:
+    def _verify() -> bool:
+        try:
+            return bcrypt.checkpw(
+                plain_password.encode("utf-8"),
+                hashed_password.encode("utf-8"),
+            )
+        except (TypeError, ValueError):
+            return False
+
     sem = getattr(service, "_password_op_semaphore", None)
     if sem:
         with sem:
-            return _pwd_ctx.verify(plain_password, hashed_password)
-    return _pwd_ctx.verify(plain_password, hashed_password)
+            return _verify()
+    return _verify()
 
 
 def _generate_temp_password(length: int) -> str:

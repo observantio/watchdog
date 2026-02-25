@@ -51,7 +51,7 @@ def parse_span(
     end_time = int(span_data.get("endTimeUnixNano", 0)) // 1000
     parent_span_id = span_data.get("parentSpanId") or None
 
-    # Use parse_obj with alias keys so mypy accepts the construction via runtime aliases
+    # Use model_validate with alias keys so mypy accepts the construction via runtime aliases
     span_obj = {
         "spanID": span_data.get("spanId", ""),
         "traceID": trace_id,
@@ -65,7 +65,7 @@ def parse_span(
         "processID": process_id,
         "warnings": None,
     }
-    return Span.parse_obj(span_obj)
+    return Span.model_validate(span_obj)
 
 
 def parse_tempo_trace(trace_id: str, data: Dict[str, Any]) -> Trace:
@@ -89,9 +89,9 @@ def parse_tempo_trace(trace_id: str, data: Dict[str, Any]) -> Trace:
             spans.extend(
                 [parse_span(s, trace_id, process_id, service_name, resource_attrs) for s in scope.get("spans", [])]
             )
-    # Build Trace using runtime alias names via parse_obj to satisfy mypy
+    # Build Trace using runtime alias names via model_validate to satisfy mypy
     trace_obj = {"traceID": trace_id, "spans": [s.model_dump(by_alias=True) if hasattr(s, 'model_dump') else s for s in spans], "processes": processes}
-    return Trace.parse_obj(trace_obj)
+    return Trace.model_validate(trace_obj)
 
 
 def build_summary_trace(trace_data: Dict[str, Any]) -> Optional[Trace]:
@@ -121,4 +121,4 @@ def build_summary_trace(trace_data: Dict[str, Any]) -> Optional[Trace]:
         "warnings": ["Trace summary only"],
     }
 
-    return Trace.parse_obj({"traceID": trace_id, "spans": [summary_span_obj], "processes": {}, "warnings": ["Trace summary only"]})
+    return Trace.model_validate({"traceID": trace_id, "spans": [summary_span_obj], "processes": {}, "warnings": ["Trace summary only"]})

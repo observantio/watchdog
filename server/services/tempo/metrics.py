@@ -27,7 +27,6 @@ async def query_metrics_range(
     end_us: Optional[int],
     step_s: int = 300,
     tenant_id: str = config.DEFAULT_ORG_ID,
-    tempo_url: str = config.TEMPO_URL,
     mimir_url: str = config.MIMIR_URL,
     get_headers: Callable[[str], Dict[str, str]] = lambda tid: {"X-Scope-OrgID": tid},
     observe: Callable[[str, float], None] = lambda *a, **k: None,
@@ -44,32 +43,19 @@ async def query_metrics_range(
 
     headers = get_headers(tenant_id)
 
-    async def _fetch(url: str, req_params: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], bool]:
-        try:
-            resp = await client.get(url, params=req_params, headers=headers)
-            if 400 <= getattr(resp, "status_code", 0) < 500:
-                observe("tempo_metrics_query_errors_total")
-                logger.debug("Metrics endpoint %s returned %s, disabling", url, getattr(resp, "status_code", None))
-                return None, True
-            if hasattr(resp, "raise_for_status"):
-                resp.raise_for_status()
-            observe("tempo_metrics_queries_total")
-            return resp.json(), False
-        except httpx.HTTPError as e:
-            observe("tempo_metrics_query_errors_total")
-            logger.debug("Metrics query failed for %s: %s", url, e)
-            return None, False
-
-    result, saw_4xx = await _fetch(f"{tempo_url.rstrip('/')}/api/metrics/query_range", params)
-    if result is not None:
-        return result, True
-
-    if saw_4xx:
-        metrics_enabled = False
-
-    mimir_params = {**params, "start": params.get("start"), "end": params.get("end")}
-    result, _ = await _fetch(f"{mimir_url.rstrip('/')}/api/v1/query_range", mimir_params)
-    return (result if result is not None else _empty), metrics_enabled
+    try:
+        resp = await client.get(
+            f"{mimir_url.rstrip('/')}/api/v1/query_range",
+            params=params,
+            headers=headers,
+        )
+        resp.raise_for_status()
+        observe("tempo_metrics_queries_total")
+        return resp.json(), True
+    except httpx.HTTPError as e:
+        observe("tempo_metrics_query_errors_total")
+        logger.debug("Mimir metrics query failed: %s", e)
+        return _empty, metrics_enabled
 
 
 def extract_metric_values(metrics_resp: Dict[str, Any]) -> List[List[Any]]:

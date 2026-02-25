@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 
 export function getUserLabel(userItem) {
@@ -236,9 +228,32 @@ export default function IncidentBoardPage() {
     refresh()
   }, [incidentVisibilityTab, selectedGroup, showHiddenResolved, refresh])
 
+  const loadGroups = useCallback(async () => {
+    try {
+      const groupsData = await getGroups()
+      const allGroups = Array.isArray(groupsData) ? groupsData : []
+      const userGroupIds = new Set([
+        ...((user?.group_ids || user?.groupIds || []).map((id) => String(id))),
+        ...((Array.isArray(user?.groups) ? user.groups : []).map((group) => String(group?.id || ''))),
+      ].filter(Boolean))
+
+      const memberGroups = userGroupIds.size > 0
+        ? allGroups.filter((group) => userGroupIds.has(String(group?.id || '')))
+        : allGroups
+
+      setGroups(memberGroups)
+
+      if (selectedGroup && !memberGroups.some((group) => String(group?.id || '') === String(selectedGroup))) {
+        setSelectedGroup('')
+      }
+    } catch (e) {
+      console.error('Failed to load groups:', e)
+    }
+  }, [selectedGroup, setSelectedGroup, user?.group_ids, user?.groupIds, user?.groups])
+
   useEffect(() => {
     loadGroups()
-  }, [])
+  }, [loadGroups])
 
   useEffect(() => {
     loadJiraIntegrations()
@@ -267,7 +282,7 @@ export default function IncidentBoardPage() {
     }
   }
 
-  async function loadJiraComments(incidentId) {
+  const loadJiraComments = useCallback(async (incidentId) => {
     if (!incidentId) return
     setJiraCommentsLoading(true)
     try {
@@ -278,30 +293,7 @@ export default function IncidentBoardPage() {
     } finally {
       setJiraCommentsLoading(false)
     }
-  }
-
-  async function loadGroups() {
-    try {
-      const groupsData = await getGroups()
-      const allGroups = Array.isArray(groupsData) ? groupsData : []
-      const userGroupIds = new Set([
-        ...((user?.group_ids || user?.groupIds || []).map((id) => String(id))),
-        ...((Array.isArray(user?.groups) ? user.groups : []).map((group) => String(group?.id || ''))),
-      ].filter(Boolean))
-
-      const memberGroups = userGroupIds.size > 0
-        ? allGroups.filter((group) => userGroupIds.has(String(group?.id || '')))
-        : allGroups
-
-      setGroups(memberGroups)
-
-      if (selectedGroup && !memberGroups.some((group) => String(group?.id || '') === String(selectedGroup))) {
-        setSelectedGroup('')
-      }
-    } catch (e) {
-      console.error('Failed to load groups:', e)
-    }
-  }
+  }, [])
 
   const incidentsByState = useMemo(() => {
     return {

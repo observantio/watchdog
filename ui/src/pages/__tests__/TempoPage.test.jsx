@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import React from 'react'
 import { render, fireEvent, waitFor } from '@testing-library/react'
 import TempoPage from '../TempoPage'
@@ -30,6 +22,7 @@ describe('TempoPage — fetch limit and pagination', () => {
   it('allows a separate search limit (max traces) and sends it to the API', async () => {
     api.fetchTempoServices.mockResolvedValue([])
     api.searchTraces.mockResolvedValue({ data: [] })
+    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 0 })
 
     const { getByText } = render(<TempoPage />)
 
@@ -52,6 +45,7 @@ describe('TempoPage — fetch limit and pagination', () => {
     // create 45 fake traces
     const fakeTraces = Array.from({ length: 45 }, (_, i) => ({ traceID: `t${i}` }))
     api.searchTraces.mockResolvedValue({ data: fakeTraces })
+    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 45 })
 
     const { getByText } = render(<TempoPage />)
     const searchBtn = getByText(/Search Traces/i)
@@ -75,6 +69,7 @@ describe('TempoPage — fetch limit and pagination', () => {
 
     api.fetchTempoServices.mockResolvedValue([])
     api.searchTraces.mockResolvedValue({ data: [] })
+    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 0 })
 
     render(<TempoPage />)
 
@@ -91,6 +86,7 @@ describe('TempoPage — fetch limit and pagination', () => {
 
     api.fetchTempoServices.mockResolvedValue([])
     api.searchTraces.mockResolvedValue({ data: [] })
+    api.fetchTraceMetrics.mockResolvedValue({ total_traces: 0 })
     const err = new Error('not found')
     err.status = 404
     api.getTrace.mockRejectedValue(err)

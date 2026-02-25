@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import PropTypes from 'prop-types'
 import ReactFlow, {
@@ -176,7 +168,7 @@ export default function ServiceGraphAsync({ traces }) {
     }))
     setEdges(layouted.edges)
     prevKeyRef.current = key
-  }, [graphData, layouted])
+  }, [graphData, layouted, nodes, setNodes, setEdges])
 
   // Apply active/hover purely as data mutation — never touches position
   useEffect(() => {

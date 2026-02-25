@@ -9,7 +9,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GroupBase(BaseModel):
@@ -39,8 +39,7 @@ class PermissionInfo(BaseModel):
     resource_type: str
     action: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Group(GroupBase):
@@ -50,5 +49,4 @@ class Group(GroupBase):
     updated_at: datetime
     permissions: List[PermissionInfo] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

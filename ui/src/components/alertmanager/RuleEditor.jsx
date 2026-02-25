@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useState, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { Button, Input, Select } from '../ui'
@@ -48,14 +40,20 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
   }, [rule])
 
   useEffect(() => {
-    if (labelPairs.length === 0 && Object.keys(formData.labels || {}).length === 0) return
+    if (labelPairs.length === 0) return
     const nextLabels = {}
     labelPairs.forEach(({ key, value }) => {
       const trimmed = key.trim()
       if (trimmed) nextLabels[trimmed] = value
     })
-    setFormData((prev) => ({ ...prev, labels: nextLabels }))
-  }, [labelPairs])
+    setFormData((prev) => {
+      const prevLabels = prev.labels || {}
+      const same =
+        Object.keys(prevLabels).length === Object.keys(nextLabels).length &&
+        Object.keys(nextLabels).every((k) => prevLabels[k] === nextLabels[k])
+      return same ? prev : { ...prev, labels: nextLabels }
+    })
+  }, [labelPairs, formData.labels])
 
   // Detect which template matches current form data
   useEffect(() => {

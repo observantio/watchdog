@@ -58,7 +58,7 @@ def _api_key_to_schema(
         "created_at": getattr(api_key, "created_at", None),
         "updated_at": getattr(api_key, "updated_at", None),
     }
-    return ApiKey.parse_obj(payload)
+    return ApiKey.model_validate(payload)
 
 
 def list_api_keys(service, user_id: str) -> List[ApiKey]:

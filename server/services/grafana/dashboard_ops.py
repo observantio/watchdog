@@ -206,7 +206,7 @@ async def search_dashboards(
             "visibility": db_dash.visibility if db_dash else 'private',
             "sharedGroupIds": [str(g.id) for g in db_dash.shared_groups] if db_dash else [],
         }
-        return [DashboardSearchResult.parse_obj(payload)]
+        return [DashboardSearchResult.model_validate(payload)]
 
     all_dashboards = await service.grafana_service.search_dashboards(
         query=query, tag=tag, starred=starred

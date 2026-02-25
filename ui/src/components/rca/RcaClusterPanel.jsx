@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import Section from './Section'
@@ -35,7 +27,7 @@ function buildClusterPoints(clusters) {
 }
 
 export default function RcaClusterPanel({ report, compact = false }) {
-  const clusters = report?.anomaly_clusters || []
+  const clusters = useMemo(() => report?.anomaly_clusters || [], [report?.anomaly_clusters])
   const points = useMemo(() => buildClusterPoints(clusters), [clusters])
   const [selectedPointId, setSelectedPointId] = useState(points[0]?.id || null)
 

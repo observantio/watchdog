@@ -152,7 +152,10 @@ class GatewayAuthService:
             org = self._fetch_org_from_api(token)
         except DatabaseUnavailable:
             raise
-        except Exception:
+        except Exception as exc:
+            # Module reloads in tests can produce another DatabaseUnavailable class identity.
+            if type(exc).__name__ == "DatabaseUnavailable":
+                raise exc
             logger.warning("Auth API fetch unexpected error", exc_info=True)
             raise DatabaseUnavailable
 

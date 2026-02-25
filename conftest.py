@@ -71,4 +71,6 @@ def pytest_pycollect_makemodule(module_path, path=None, parent=None):
 def pytest_runtest_setup(item):
     root = _detect_project(Path(str(item.path)))
     if root is not None:
-        _set_import_root(root, purge_modules=root != _ACTIVE_ROOT)
+        # Avoid purging during runtime; tests may hold module references
+        # collected under this root, and purging here causes duplicate modules.
+        _set_import_root(root, purge_modules=False)

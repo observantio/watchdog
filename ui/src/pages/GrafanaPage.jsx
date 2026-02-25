@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import  { useState, useEffect, useCallback } from 'react'
 import { useLocalStorage } from '../hooks'
 import {
@@ -47,7 +39,7 @@ export default function GrafanaPage() {
 
   const toast = useToast()
 
-  function handleApiError(e) {
+  const handleApiError = useCallback((e) => {
     if (!e) return
 
     if (e && typeof e.status === 'number') {
@@ -58,7 +50,7 @@ export default function GrafanaPage() {
     const lower = msg.toLowerCase()
     if (lower.includes('not found') && (lower.includes('access denied') || lower.includes('update failed'))) return
     toast.error(msg)
-  }
+  }, [toast])
 
   const [showDashboardEditor, setShowDashboardEditor] = useState(false)
   const [editingDashboard, setEditingDashboard] = useState(null)
@@ -130,17 +122,12 @@ export default function GrafanaPage() {
 
   const defaultKey = (user?.api_keys || []).find((k) => k.is_default) || (user?.api_keys || [])[0]
 
-  useEffect(() => {
-    loadData()
-    loadGroups()
-  }, [activeTab])
-
-  async function loadGroups() {
+  const loadGroups = useCallback(async () => {
     try {
       const groupsData = await getGroups().catch(() => [])
       setGroups(groupsData)
     } catch { /* silent */ }
-  }
+  }, [])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -179,7 +166,12 @@ export default function GrafanaPage() {
     } finally {
       setLoading(false)
     }
-  }, [activeTab, query, filters])
+  }, [activeTab, query, filters, handleApiError])
+
+  useEffect(() => {
+    loadData()
+    loadGroups()
+  }, [loadData, loadGroups])
 
   async function onSearch(e) {
     e.preventDefault()

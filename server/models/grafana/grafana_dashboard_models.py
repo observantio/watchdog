@@ -9,7 +9,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DashboardMeta(BaseModel):
@@ -20,8 +20,7 @@ class DashboardMeta(BaseModel):
     url: Optional[str] = Field(None, description="URL of the dashboard")
     version: Optional[int] = Field(None, description="Version number of the dashboard")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Dashboard(BaseModel):
@@ -40,8 +39,7 @@ class Dashboard(BaseModel):
     time_picker: Optional[Dict[str, Any]] = Field(None, alias="timePicker", description="Time picker configuration")
     editable: bool = Field(True, description="Whether the dashboard is editable")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class DashboardCreate(BaseModel):
@@ -51,8 +49,7 @@ class DashboardCreate(BaseModel):
     overwrite: bool = Field(False, description="Whether to overwrite existing dashboard")
     message: Optional[str] = Field(None, description="Commit message for the dashboard creation")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class DashboardUpdate(BaseModel):
@@ -62,8 +59,7 @@ class DashboardUpdate(BaseModel):
     overwrite: bool = Field(True, description="Whether to overwrite existing dashboard")
     message: Optional[str] = Field(None, description="Commit message for the dashboard update")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class DashboardSearchResult(BaseModel):
@@ -89,5 +85,4 @@ class DashboardSearchResult(BaseModel):
     shared_group_ids: List[str] = Field(default_factory=list, alias="shared_group_ids")
     sharedGroupIds: List[str] = Field(default_factory=list, alias="sharedGroupIds")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)

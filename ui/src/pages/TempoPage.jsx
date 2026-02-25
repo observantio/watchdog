@@ -1,18 +1,10 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useAutoRefresh } from '../hooks'
 import PageHeader from '../components/ui/PageHeader'
 import AutoRefreshControl from '../components/ui/AutoRefreshControl'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { fetchTempoServices, searchTraces, getTrace } from '../api'
+import { fetchTempoServices, searchTraces, getTrace, fetchTraceMetrics } from '../api'
 import { Card, Button, Select, Input, Alert, Badge, Spinner } from '../components/ui'
 import ServiceGraph from '../components/tempo/ServiceGraph'
 const TraceResults = lazy(() => import('../components/tempo/TraceResults'))
@@ -63,6 +55,7 @@ export default function TempoPage() {
   // maximum number of traces to request from the backend (search limit)
   const [searchLimit, setSearchLimit] =
     useState(saved.searchLimit || DEFAULT_QUERY_LIMITS.traces || TRACE_PAGE_SIZE)
+  const [mimirTotalTraces, setMimirTotalTraces] = useState(null)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
 
@@ -309,7 +302,7 @@ export default function TempoPage() {
     try {
       const end = Date.now() * 1000
       const start = end - (timeRange * 60 * 1000000)
-      const res = await searchTraces({
+      const searchParams = {
         service,
         operation,
         minDuration: `${Math.floor(Math.max(0, durationRange[0]) / 1000000)}ms`,
@@ -317,10 +310,15 @@ export default function TempoPage() {
         start: Math.floor(start),
         end: Math.floor(end),
         limit: searchLimit,
-        fetchFull: false  
-      })
+        fetchFull: false
+      }
+      const [res, metrics] = await Promise.all([
+        searchTraces(searchParams),
+        fetchTraceMetrics({ service, start: Math.floor(start), end: Math.floor(end) }),
+      ])
 
       setTraces(res)
+      setMimirTotalTraces(typeof metrics?.total_traces === 'number' ? metrics.total_traces : null)
       setTracePage(1)
 
       if (!services.length && res?.data?.length) {
@@ -328,6 +326,7 @@ export default function TempoPage() {
         if (discovered.length) setServices(discovered)
       }
     } catch (e) {
+      setMimirTotalTraces(null)
       setError(e.message)
     } finally {
       setLoading(false)
@@ -345,8 +344,13 @@ export default function TempoPage() {
   }, [traces, statusFilter])
 
   const traceStats = useMemo(() => {
-    return computeTraceStats(filteredTraces)
-  }, [filteredTraces])
+    const stats = computeTraceStats(filteredTraces)
+    if (!stats) return null
+    return {
+      ...stats,
+      total: typeof mimirTotalTraces === 'number' ? mimirTotalTraces : stats.total,
+    }
+  }, [filteredTraces, mimirTotalTraces])
 
   const pagedTraces = useMemo(() => {
     const start = (tracePage - 1) * pageSize
@@ -415,7 +419,7 @@ export default function TempoPage() {
       {traceStats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           {[
-            { label: 'Total Traces', value: traceStats.total, color: 'text-sre-text' },
+            { label: 'Total Traces (Mimir)', value: traceStats.total, color: 'text-sre-text' },
             { label: 'Avg Duration', value: formatDuration(traceStats.avgDuration), color: 'text-sre-text' },
             { label: 'Max Duration', value: formatDuration(traceStats.maxDuration), color: 'text-sre-text' },
             { label: 'Error Rate', value: `${traceStats.errorRate.toFixed(1)}%`, color: traceStats.errorRate > 5 ? 'text-red-500' : 'text-green-500' },

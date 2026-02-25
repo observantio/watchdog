@@ -15,7 +15,6 @@ import threading
 from typing import Any, Dict, List, Optional, Union
 
 from cryptography.fernet import Fernet
-from passlib.context import CryptContext 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -100,7 +99,6 @@ from services.database_auth import (
 )
 
 logger = logging.getLogger(__name__)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 _MFA_SETUP_RESPONSE = "mfa_setup_required"
 _MFA_REQUIRED_RESPONSE = "mfa_required"

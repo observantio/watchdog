@@ -32,8 +32,6 @@ _SERVICE_NAME_KEY = "service.name"
 _SERVICE_ALIAS_KEY = "service"
 _SERVICE_KEYS = {_SERVICE_NAME_KEY, _SERVICE_ALIAS_KEY}
 _SEARCH_LIMIT_CAP = 1000
-_COUNT_SPLIT_MIN_WINDOW_US = 30 * 1_000_000
-_COUNT_SPLIT_MAX_DEPTH = 6
 _VOLUME_FALLBACK_MAX_BUCKETS = 180
 
 
@@ -47,10 +45,6 @@ class TempoService:
         self._volume_cache = TTLCache()
         self._volume_inflight: Dict[str, asyncio.Future] = {}
         self._volume_inflight_lock = asyncio.Lock()
-        self._volume_bucket_concurrency = max(1, int(getattr(config, "TEMPO_VOLUME_BUCKET_CONCURRENCY", 8)))
-        # Bound expensive fallback search fan-out to protect upstream Tempo/Mimir connections.
-        self._count_query_concurrency = max(1, int(getattr(config, "TEMPO_COUNT_QUERY_CONCURRENCY", 4)))
-        self._count_query_semaphore = asyncio.Semaphore(self._count_query_concurrency)
         self._metrics_enabled = True
         self._metrics: Dict[str, float] = {
             "tempo_search_total": 0,
@@ -102,7 +96,6 @@ class TempoService:
             end_us=end_us,
             step_s=step_s,
             tenant_id=tenant_id,
-            tempo_url=self.tempo_url,
             mimir_url=config.MIMIR_URL,
             get_headers=self._get_headers,
             observe=self._observe,
@@ -111,9 +104,6 @@ class TempoService:
         self._metrics_enabled = metrics_enabled
         return result
 
-
-    def _build_promql_selector(self, service: Optional[str]) -> List[str]:
-        return tempo_promql.build_promql_selector(service)
 
     def _build_count_promql(self, service: Optional[str], range_s: int) -> str:
         return tempo_promql.build_count_promql(service, range_s)
@@ -158,72 +148,6 @@ class TempoService:
         finally:
             async with self._volume_inflight_lock:
                 self._volume_inflight.pop(cache_key, None)
-
-    async def _count_traces_window(
-        self,
-        query: TraceQuery,
-        start_us: int,
-        end_us: int,
-        tenant_id: str,
-        *,
-        depth: int = 0,
-    ) -> int:
-        if end_us <= start_us:
-            return 0
-
-        window_query = query.model_copy(update={
-            "start": start_us,
-            "end": end_us,
-            "limit": _SEARCH_LIMIT_CAP,
-        })
-        async with self._count_query_semaphore:
-            response = await self.search_traces(window_query, tenant_id=tenant_id, fetch_full_traces=False)
-        count = int(response.total or 0)
-
-        should_split = (
-            count >= _SEARCH_LIMIT_CAP
-            and depth < _COUNT_SPLIT_MAX_DEPTH
-            and (end_us - start_us) > _COUNT_SPLIT_MIN_WINDOW_US
-        )
-        if not should_split:
-            return count
-
-        midpoint_us = start_us + ((end_us - start_us) // 2)
-        if midpoint_us <= start_us or midpoint_us >= end_us:
-            return count
-        right_start_us = midpoint_us + 1
-        if right_start_us >= end_us:
-            return count
-
-        # Keep recursion sequential so we do not create bursty nested fan-out.
-        left_count = await self._count_traces_window(query, start_us, midpoint_us, tenant_id, depth=depth + 1)
-        right_count = await self._count_traces_window(query, right_start_us, end_us, tenant_id, depth=depth + 1)
-        return left_count + right_count
-
-    async def _count_traces_bucketed(
-        self,
-        query: TraceQuery,
-        bucket_ranges: List[List[int]],
-        tenant_id: str,
-    ) -> List[int]:
-        counts: List[int] = [0] * len(bucket_ranges)
-        semaphore = asyncio.Semaphore(self._volume_bucket_concurrency)
-
-        async def _count_bucket(index: int, start_us: int, end_us: int) -> None:
-            async with semaphore:
-                counts[index] = await self._count_traces_window(
-                    query,
-                    start_us,
-                    end_us,
-                    tenant_id,
-                    depth=0,
-                )
-
-        await asyncio.gather(*[
-            _count_bucket(idx, bucket[0], bucket[1])
-            for idx, bucket in enumerate(bucket_ranges)
-        ])
-        return counts
 
     def _parse_span(
         self,
@@ -412,38 +336,23 @@ class TempoService:
         end: Optional[int] = None,
         tenant_id: str = config.DEFAULT_ORG_ID,
     ) -> Dict[str, Any]:
-        query = TraceQuery.model_validate({
-            "service": service,
-            "start": start,
-            "end": end,
-            "limit": min(config.MAX_QUERY_LIMIT, _SEARCH_LIMIT_CAP),
-        })
-        response = await self.search_traces(query, tenant_id=tenant_id, fetch_full_traces=False)
-        traces = response.data
-        total_traces = response.total
-        if start and end and response.total >= min(config.MAX_QUERY_LIMIT, _SEARCH_LIMIT_CAP):
-            try:
-                total_traces = await self.count_traces(query, tenant_id=tenant_id)
-            except Exception:
-                logger.debug("Accurate trace count failed during metrics aggregation", exc_info=True)
-
-        durations = [
-            s.duration
-            for t in traces
-            for s in t.spans
-            if s.duration is not None and not s.parent_span_id
-        ]
-        error_count = sum(
-            1 for t in traces for s in t.spans if getattr(s, "error", False)
+        query = TraceQuery.model_validate(
+            {
+                "service": service,
+                "start": start,
+                "end": end,
+                "limit": min(config.MAX_QUERY_LIMIT, _SEARCH_LIMIT_CAP),
+            }
         )
+        total_traces = await self.count_traces(query, tenant_id=tenant_id)
 
         return {
             "total_traces": total_traces,
-            "total_spans": sum(len(t.spans) for t in traces),
-            "error_count": error_count,
-            "avg_duration_us": int(sum(durations) / len(durations)) if durations else None,
-            "max_duration_us": max(durations) if durations else None,
-            "min_duration_us": min(durations) if durations else None,
+            "total_spans": None,
+            "error_count": None,
+            "avg_duration_us": None,
+            "max_duration_us": None,
+            "min_duration_us": None,
             "service": service,
         }
 
@@ -482,92 +391,43 @@ class TempoService:
             return result
 
         async def _build() -> Dict[str, Any]:
-            if config.TEMPO_USE_METRICS_FOR_COUNT:
-                try:
-                    for sel in self._build_promql_selector(service):
-                        resp = await self._query_metrics_range(
-                            f"sum(count_over_time({sel}[{step}s]))",
-                            start, end, step, tenant_id=tenant_id,
-                        )
-                        raw_values = self._extract_metric_values(resp)
-                        if raw_values:
-                            ts_map = {int(ts): int(float(v)) for ts, v in raw_values}
-                            normalized = [[ts, str(ts_map.get(ts, 0))] for ts in expected_ts]
-                            result = {"data": {"result": [{"metric": {}, "values": normalized}]}}
-                            return await _cache_and_return(result)
-                except Exception:
-                    logger.debug("Metrics-based volume query failed, falling back", exc_info=True)
-
             try:
-                # Last-resort fallback for environments where count APIs are unavailable.
-                metrics = await self.get_trace_metrics(service=service, start=start, end=end, tenant_id=tenant_id)
-                total = int(metrics.get("total_traces") or 0)
-                if total > 0:
-                    base, rem = divmod(total, num_buckets)
-                    values = [
-                        [expected_ts[i], str(base + (1 if i < rem else 0))]
-                        for i in range(num_buckets)
-                    ]
-                    result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                    return await _cache_and_return(result)
+                resp = await self._query_metrics_range(
+                    self._build_count_promql(service, step),
+                    start,
+                    end,
+                    step,
+                    tenant_id=tenant_id,
+                )
+                raw_values = self._extract_metric_values(resp)
+                ts_map = {int(ts): int(float(v)) for ts, v in raw_values}
+                normalized = [[ts, str(ts_map.get(ts, 0))] for ts in expected_ts]
+                result = {"data": {"result": [{"metric": {}, "values": normalized}]}}
+                return await _cache_and_return(result)
             except Exception:
-                logger.debug("Failed to estimate trace volume from total traces", exc_info=True)
-
-            try:
-                bucket_ranges: List[List[int]] = []
-                for ts in expected_ts:
-                    bucket_start_us = ts * 1_000_000
-                    bucket_end_us = min(end, bucket_start_us + (step * 1_000_000))
-                    bucket_ranges.append([bucket_start_us, bucket_end_us])
-
-                base_query = TraceQuery.model_validate({
-                    "service": service,
-                    "limit": _SEARCH_LIMIT_CAP,
-                })
-                bucket_counts = await self._count_traces_bucketed(base_query, bucket_ranges, tenant_id)
-                if any(c > 0 for c in bucket_counts):
-                    values = [[expected_ts[idx], str(bucket_counts[idx])] for idx in range(num_buckets)]
-                    result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                    return await _cache_and_return(result)
-            except Exception:
-                logger.debug("Failed to build trace volume from bucket counts", exc_info=True)
+                logger.debug("Failed to query trace volume from Mimir", exc_info=True)
 
             return await _cache_and_return(_empty_result())
 
         return await self._get_or_build_volume(cache_key, _build)
 
     async def count_traces(self, query: TraceQuery, tenant_id: str = config.DEFAULT_ORG_ID) -> int:
-        if config.TEMPO_USE_METRICS_FOR_COUNT and query.start and query.end:
-            try:
-                duration_s = max(1, (query.end - query.start) // 1_000_000)
-                for sel in self._build_promql_selector(query.service):
-                    resp = await self._query_metrics_range(
-                        f"sum(count_over_time({sel}[{duration_s}s]))",
-                        query.start, query.end, duration_s, tenant_id=tenant_id,
-                    )
-                    result = (resp.get("data") or {}).get("result") if isinstance(resp, dict) else None
-                    if result:
-                        vals = result[0].get("values", [])
-                        if vals:
-                            return int(float(vals[-1][1]))
-            except Exception:
-                logger.debug("Metrics-based count failed, falling back", exc_info=True)
-
-        try:
-            if query.start and query.end:
-                total = await self._count_traces_window(
-                    query.model_copy(update={"limit": _SEARCH_LIMIT_CAP}),
-                    query.start,
-                    query.end,
-                    tenant_id,
-                    depth=0,
-                )
-                self._observe("tempo_count_traces_calls_total")
-                return total
-        except Exception:
-            logger.debug("Windowed count fallback failed, using capped search", exc_info=True)
-
-        capped = query.model_copy(update={"limit": min(query.limit, _SEARCH_LIMIT_CAP)})
-        response = await self.search_traces(capped, tenant_id=tenant_id, fetch_full_traces=False)
         self._observe("tempo_count_traces_calls_total")
-        return response.total
+        if not query.start or not query.end:
+            return 0
+        duration_s = max(1, (query.end - query.start) // 1_000_000)
+        try:
+            resp = await self._query_metrics_range(
+                self._build_count_promql(query.service, duration_s),
+                query.start,
+                query.end,
+                duration_s,
+                tenant_id=tenant_id,
+            )
+            values = self._extract_metric_values(resp)
+            if not values:
+                return 0
+            return int(float(values[-1][1]))
+        except Exception:
+            logger.debug("Mimir trace count query failed", exc_info=True)
+            return 0

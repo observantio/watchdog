@@ -32,26 +32,27 @@ def test_query_metrics_range_disabled_and_4xx_behavior():
     assert isinstance(result, dict) and result.get("status") == "error"
     assert enabled is False
 
-    # simulate client responses: primary returns 400, mimir returns payload
+    # simulate a successful Mimir response
     class DummyClient:
         async def get(self, url, params=None, headers=None):
-            if "mimir" in url:
-                class R:
-                    status_code = 200
-                    def json(self):
-                        return {"data": {"result": [[1, "2"]]}}
-                    def raise_for_status(self):
-                        return None
-                return R()
-            else:
-                class R2:
-                    status_code = 400
-                    def json(self):
-                        return {}
-                return R2()
+            class R:
+                status_code = 200
+                def json(self):
+                    return {"data": {"result": [[1, "2"]]}}
+                def raise_for_status(self):
+                    return None
+            return R()
 
     client = DummyClient()
-    result2, enabled2 = asyncio.run(tempo_metrics.query_metrics_range(client=client, promql="q", start_us=1, end_us=2, tempo_url="http://t", mimir_url="http://mimir", metrics_enabled=True))
+    result2, enabled2 = asyncio.run(
+        tempo_metrics.query_metrics_range(
+            client=client,
+            promql="q",
+            start_us=1,
+            end_us=2,
+            mimir_url="http://mimir",
+            metrics_enabled=True,
+        )
+    )
     assert isinstance(result2, dict)
-    # primary was 4xx so metrics_enabled should be set to False for future
-    assert enabled2 is False
+    assert enabled2 is True

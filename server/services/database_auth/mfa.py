@@ -11,15 +11,12 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import secrets
 from typing import Any, Dict, List, Optional
 
+import bcrypt
 import pyotp
 from cryptography.fernet import Fernet, InvalidToken
-from passlib.context import CryptContext
 
 from database import get_db_session
 from db_models import User
-
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def _get_fernet(service) -> Optional[Fernet]:
     if not service or not getattr(service, "config", None):
@@ -60,14 +57,17 @@ def _generate_recovery_codes(service, count: int = 10) -> List[str]:
 
 
 def _hash_recovery_codes(service, codes: List[str]) -> List[str]:
-    return [_pwd_ctx.hash(c) for c in codes]
+    return [
+        bcrypt.hashpw(code.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        for code in codes
+    ]
 
 
 def _consume_recovery_code(service, db_user: User, code: str) -> bool:
     hashes: List[str] = list(getattr(db_user, "mfa_recovery_hashes", None) or [])
     for i, h in enumerate(hashes):
         try:
-            if _pwd_ctx.verify(code, h):
+            if bcrypt.checkpw(code.encode("utf-8"), h.encode("utf-8")):
                 hashes.pop(i)
                 db_user.mfa_recovery_hashes = hashes
                 return True

@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from enum import Enum
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 import re
 
 from config import config
@@ -48,7 +48,7 @@ class UserBase(BaseModel):
     group_ids: List[str] = Field(default_factory=list)
     is_active: bool = True
 
-    @validator('username', pre=True, always=True)
+    @field_validator('username', mode='before')
     def normalize_username(cls, v):
         return _normalize_username(v, full_check=True)
 
@@ -87,8 +87,7 @@ class User(UserBase):
     mfa_enabled: bool = False
     must_setup_mfa: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserInDB(User):
@@ -120,7 +119,7 @@ class LoginRequest(BaseModel):
     password: str
     mfa_code: Optional[str] = None
 
-    @validator('username', pre=True, always=True)
+    @field_validator('username', mode='before')
     def normalize_login_username(cls, v):
         return _normalize_username(v, full_check=False)
 
@@ -131,7 +130,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8)
     full_name: Optional[str] = None
 
-    @validator('username', pre=True, always=True)
+    @field_validator('username', mode='before')
     def normalize_register_username(cls, v):
         return _normalize_username(v, full_check=True)
 

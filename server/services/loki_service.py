@@ -175,7 +175,7 @@ class LokiService:
                 "streams": len(result),
                 "chunks": 0,
             }
-            return LogStatsResponse.parse_obj(payload)
+            return LogStatsResponse.model_validate(payload)
         except Exception as e:
             logger.error("Error calculating stats: %s", e)
             return None

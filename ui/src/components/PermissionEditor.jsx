@@ -1,12 +1,4 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import PropTypes from 'prop-types'
 import { Button, Card, Spinner, Modal } from './ui' 
 import { useToast } from '../contexts/ToastContext'
@@ -73,11 +65,11 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     [permissionsList]
   )
 
-  const getRoleDefaults = (roleName) => {
+  const getRoleDefaults = useCallback((roleName) => {
     if (roleDefaults?.[roleName]?.length) return roleDefaults[roleName]
     if (roleName === 'admin') return allPermissionNames
     return []
-  }
+  }, [roleDefaults, allPermissionNames])
 
   useEffect(() => {
     const loadPermissions = async () => {
@@ -132,7 +124,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     })
     const allPerms = new Set([...rolePerms, ...groupPerms, ...selectedPermissions])
     setComputedPermissions(allPerms)
-  }, [role, selectedGroups, selectedPermissions, groups, roleDefaults, permissionsList])
+  }, [role, selectedGroups, selectedPermissions, groups, roleDefaults, permissionsList, getRoleDefaults])
 
   const handleRoleChange = (newRole) => {
     setRole(newRole)

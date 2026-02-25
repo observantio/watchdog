@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAutoRefresh } from '../hooks'
 import PageHeader from '../components/ui/PageHeader'
@@ -45,13 +37,15 @@ export default function LokiPage() {
       return {}
     }
   }
-  const saved = loadSaved()
+  const saved = useMemo(() => loadSaved(), [])
+  const savedSelectedFilters = useMemo(() => saved.selectedFilters || [], [saved.selectedFilters])
+  const savedSelectedLabel = saved.selectedLabel || ''
 
   const [labels, setLabels] = useState([])
   const [labelValuesCache, setLabelValuesCache] = useState({})
   const [loadingValues, setLoadingValues] = useState({})
-  const [selectedFilters, setSelectedFilters] = useState(saved.selectedFilters || [])
-  const [selectedLabel, setSelectedLabel] = useState(saved.selectedLabel || '')
+  const [selectedFilters, setSelectedFilters] = useState(savedSelectedFilters)
+  const [selectedLabel, setSelectedLabel] = useState(savedSelectedLabel)
   const [selectedValue, setSelectedValue] = useState(saved.selectedValue || '')
   const [pattern, setPattern] = useState(saved.pattern || '')
   const [rangeMinutes, setRangeMinutes] = useState(saved.rangeMinutes || 60)
@@ -174,13 +168,13 @@ export default function LokiPage() {
           })
         }
       }
-      if (saved.selectedLabel && labelsArray && !labelsArray.includes(saved.selectedLabel)) {
+      if (savedSelectedLabel && labelsArray && !labelsArray.includes(savedSelectedLabel)) {
         setSelectedLabel('')
         setSelectedValue('')
         try {
           const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
           let changed = false
-          if (s.selectedLabel === saved.selectedLabel) {
+          if (s.selectedLabel === savedSelectedLabel) {
             delete s.selectedLabel
             changed = true
           }
@@ -196,9 +190,9 @@ export default function LokiPage() {
         }
       }
 
-      if (Array.isArray(saved.selectedFilters) && saved.selectedFilters.length) {
-        const validFilters = saved.selectedFilters.filter((filter) => labelsArray.includes(filter.label))
-        if (validFilters.length !== saved.selectedFilters.length) {
+      if (Array.isArray(savedSelectedFilters) && savedSelectedFilters.length) {
+        const validFilters = savedSelectedFilters.filter((filter) => labelsArray.includes(filter.label))
+        if (validFilters.length !== savedSelectedFilters.length) {
           setSelectedFilters(validFilters)
           try {
             const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
@@ -212,7 +206,7 @@ export default function LokiPage() {
     } catch {
       setLabels([])
     }
-  }, [])
+  }, [savedSelectedFilters, savedSelectedLabel])
 
   useEffect(() => { loadInitialData() }, [loadInitialData])
 

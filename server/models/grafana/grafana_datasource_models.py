@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 
 from typing import Dict, Optional, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
 
@@ -60,8 +60,7 @@ class Datasource(BaseModel):
     visibility: Optional[str] = Field(None, description="Visibility for the datasource (private|group|tenant|public)")
     shared_group_ids: List[str] = Field(default_factory=list, alias="shared_group_ids", description="IDs of groups shared with this datasource")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class DatasourceCreate(BaseModel):
@@ -75,8 +74,7 @@ class DatasourceCreate(BaseModel):
     json_data: Optional[Dict[str, Any]] = Field(None, alias="jsonData", description=DS_JSON_DATA_DESC)
     secure_json_data: Optional[Dict[str, Any]] = Field(None, alias="secureJsonData", description="Secure JSON configuration")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class DatasourceUpdate(BaseModel):
@@ -89,5 +87,4 @@ class DatasourceUpdate(BaseModel):
     json_data: Optional[Dict[str, Any]] = Field(None, alias="jsonData", description=DS_JSON_DATA_DESC)
     secure_json_data: Optional[Dict[str, Any]] = Field(None, alias="secureJsonData", description="Secure JSON configuration")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)

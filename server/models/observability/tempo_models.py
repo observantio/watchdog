@@ -9,7 +9,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
 class SpanAttribute(BaseModel):
@@ -31,8 +31,7 @@ class Span(BaseModel):
     process_id: Optional[str] = Field(None, alias="processID", description="Identifier of the process that created this span")
     warnings: Optional[List[str]] = Field(None, description="Warnings related to this span")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class Trace(BaseModel):
     """Full trace with all spans."""
@@ -41,8 +40,7 @@ class Trace(BaseModel):
     processes: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Process information for spans in this trace")
     warnings: Optional[List[str]] = Field(None, description="Warnings related to this trace")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class TraceQuery(BaseModel):
     """Query parameters for trace search."""
@@ -55,8 +53,7 @@ class TraceQuery(BaseModel):
     max_duration: Optional[str] = Field(None, alias="maxDuration", description="Maximum duration filter (e.g., '1s')")
     limit: int = Field(100, ge=1, le=1000, description="Maximum number of traces to return")
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class TraceResponse(BaseModel):
     """Response containing multiple traces."""

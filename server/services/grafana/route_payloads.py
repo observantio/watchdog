@@ -35,10 +35,10 @@ def parse_dashboard_create_payload(payload: Dict) -> DashboardCreate:
         raise ValueError("Invalid dashboard payload")
     # Ensure inner `dashboard` is a `Dashboard` instance so constructors are type-safe for mypy
     if payload.get("dashboard"):
-        dashboard_obj = Dashboard.parse_obj(payload["dashboard"])
+        dashboard_obj = Dashboard.model_validate(payload["dashboard"])
         return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)), message=payload.get("message"))
 
-    dashboard_obj = Dashboard.parse_obj(payload)
+    dashboard_obj = Dashboard.model_validate(payload)
     return DashboardCreate(dashboard=dashboard_obj, folderId=int(payload.get("folderId") or 0), overwrite=bool(payload.get("overwrite", False)), message=payload.get("message"))
 
 
@@ -46,8 +46,8 @@ def parse_dashboard_update_payload(payload: Dict) -> DashboardUpdate:
     if not isinstance(payload, dict):
         raise ValueError("Invalid dashboard payload")
     if payload.get("dashboard"):
-        dashboard_obj = Dashboard.parse_obj(payload["dashboard"])
+        dashboard_obj = Dashboard.model_validate(payload["dashboard"])
         return DashboardUpdate(dashboard=dashboard_obj, folderId=payload.get("folderId"), overwrite=payload.get("overwrite", True), message=payload.get("message"))
 
-    dashboard_obj = Dashboard.parse_obj(payload)
+    dashboard_obj = Dashboard.model_validate(payload)
     return DashboardUpdate(dashboard=dashboard_obj, folderId=payload.get("folderId"), overwrite=payload.get("overwrite", True), message=payload.get("message"))

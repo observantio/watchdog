@@ -1,11 +1,3 @@
-`
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-`
-
 import { useState, useEffect, useCallback } from 'react'
 import {
   searchDashboards,getDatasources, getFolders, getGroups,
@@ -35,7 +27,7 @@ export function useGrafanaState() {
 
   const toast = useToast()
 
-  function handleApiError(e) {
+  const handleApiError = useCallback((e) => {
     if (!e) return
 
     if (e && typeof e.status === 'number') {
@@ -46,7 +38,7 @@ export function useGrafanaState() {
     const lower = msg.toLowerCase()
     if (lower.includes('not found') && (lower.includes('access denied') || lower.includes('update failed'))) return
     toast.error(msg)
-  }
+  }, [toast])
 
   useEffect(() => {
     loadGroups()
@@ -96,7 +88,7 @@ export function useGrafanaState() {
     } finally {
       setLoading(false)
     }
-  }, [activeTab, query, filters])
+  }, [activeTab, query, filters, handleApiError])
 
   useEffect(() => {
     loadData()

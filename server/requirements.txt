@@ -31,7 +31,6 @@ psycopg2-binary==2.9.9
 # Authentication
 bcrypt==3.2.0
 PyJWT[crypto]==2.10.1
-passlib[bcrypt]==1.7.4
 email-validator==2.1.0
 aiosmtplib==1.1.6
 tenacity==8.2.2
