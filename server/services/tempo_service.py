@@ -1,5 +1,6 @@
 """
-Service for managing trace Tempo integration, providing functions to query and retrieve trace data from Tempo based on various parameters such as trace ID, service name, and time range. This module includes logic to construct appropriate queries for Tempo, to handle responses from Tempo, and to implement retry mechanisms for failed requests. The service also includes functionality to normalize and process trace data for use within the application.
+Service for managing trace Tempo integration, providing functions to query and retrieve trace data from Tempo based on various parameters such as trace ID, service name, and time range.
+This module includes logic to construct appropriate queries for Tempo, to handle responses from Tempo, and to implement retry mechanisms for failed requests. The service also includes functionality to normalize and process trace data for use within the application.
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +35,6 @@ _SEARCH_LIMIT_CAP = 1000
 _COUNT_SPLIT_MIN_WINDOW_US = 30 * 1_000_000
 _COUNT_SPLIT_MAX_DEPTH = 6
 _VOLUME_FALLBACK_MAX_BUCKETS = 180
-_VOLUME_FALLBACK_CONCURRENCY = 8
 
 
 class TempoService:
@@ -45,6 +45,12 @@ class TempoService:
         self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
         self._services_cache = TTLCache()
         self._volume_cache = TTLCache()
+        self._volume_inflight: Dict[str, asyncio.Future] = {}
+        self._volume_inflight_lock = asyncio.Lock()
+        self._volume_bucket_concurrency = max(1, int(getattr(config, "TEMPO_VOLUME_BUCKET_CONCURRENCY", 8)))
+        # Bound expensive fallback search fan-out to protect upstream Tempo/Mimir connections.
+        self._count_query_concurrency = max(1, int(getattr(config, "TEMPO_COUNT_QUERY_CONCURRENCY", 4)))
+        self._count_query_semaphore = asyncio.Semaphore(self._count_query_concurrency)
         self._metrics_enabled = True
         self._metrics: Dict[str, float] = {
             "tempo_search_total": 0,
@@ -115,6 +121,44 @@ class TempoService:
     def _extract_metric_values(self, metrics_resp: Dict[str, Any]) -> List[List[Any]]:
         return tempo_metrics.extract_metric_values(metrics_resp)
 
+    async def _get_or_build_volume(
+        self,
+        cache_key: str,
+        builder,
+    ) -> Dict[str, Any]:
+        cached = await self._volume_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        owner = False
+        async with self._volume_inflight_lock:
+            cached = await self._volume_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            future = self._volume_inflight.get(cache_key)
+            if future is None:
+                future = asyncio.get_running_loop().create_future()
+                self._volume_inflight[cache_key] = future
+                owner = True
+
+        if not owner:
+            return await future
+
+        try:
+            result = await builder()
+            if not future.done():
+                future.set_result(result)
+            return result
+        except Exception as exc:
+            if not future.done():
+                future.set_exception(exc)
+                # Mark retrieved for the owner path when there are no waiters.
+                _ = future.exception()
+            raise
+        finally:
+            async with self._volume_inflight_lock:
+                self._volume_inflight.pop(cache_key, None)
+
     async def _count_traces_window(
         self,
         query: TraceQuery,
@@ -132,7 +176,8 @@ class TempoService:
             "end": end_us,
             "limit": _SEARCH_LIMIT_CAP,
         })
-        response = await self.search_traces(window_query, tenant_id=tenant_id, fetch_full_traces=False)
+        async with self._count_query_semaphore:
+            response = await self.search_traces(window_query, tenant_id=tenant_id, fetch_full_traces=False)
         count = int(response.total or 0)
 
         should_split = (
@@ -150,10 +195,9 @@ class TempoService:
         if right_start_us >= end_us:
             return count
 
-        left_count, right_count = await asyncio.gather(
-            self._count_traces_window(query, start_us, midpoint_us, tenant_id, depth=depth + 1),
-            self._count_traces_window(query, right_start_us, end_us, tenant_id, depth=depth + 1),
-        )
+        # Keep recursion sequential so we do not create bursty nested fan-out.
+        left_count = await self._count_traces_window(query, start_us, midpoint_us, tenant_id, depth=depth + 1)
+        right_count = await self._count_traces_window(query, right_start_us, end_us, tenant_id, depth=depth + 1)
         return left_count + right_count
 
     async def _count_traces_bucketed(
@@ -163,7 +207,7 @@ class TempoService:
         tenant_id: str,
     ) -> List[int]:
         counts: List[int] = [0] * len(bucket_ranges)
-        semaphore = asyncio.Semaphore(_VOLUME_FALLBACK_CONCURRENCY)
+        semaphore = asyncio.Semaphore(self._volume_bucket_concurrency)
 
         async def _count_bucket(index: int, start_us: int, end_us: int) -> None:
             async with semaphore:
@@ -415,11 +459,15 @@ class TempoService:
         end = end or now_us
         start = start or (end - 3_600 * 1_000_000)
         step = max(1, step)
+        step_us = step * 1_000_000
+
+        # Align to step boundaries to improve cache hit rate for polled dashboards.
+        start = (start // step_us) * step_us
+        end = (end // step_us) * step_us
+        if end <= start:
+            end = start + step_us
 
         cache_key = f"{tenant_id}:{service or '__all__'}:{start}:{end}:{step}"
-        cached = await self._volume_cache.get(cache_key)
-        if cached is not None:
-            return cached
 
         start_s = start // 1_000_000
         total_s = max(0, (end - start) // 1_000_000)
@@ -433,57 +481,60 @@ class TempoService:
             await self._volume_cache.set(cache_key, result, self._cache_ttl_seconds)
             return result
 
-        if config.TEMPO_USE_METRICS_FOR_COUNT:
+        async def _build() -> Dict[str, Any]:
+            if config.TEMPO_USE_METRICS_FOR_COUNT:
+                try:
+                    for sel in self._build_promql_selector(service):
+                        resp = await self._query_metrics_range(
+                            f"sum(count_over_time({sel}[{step}s]))",
+                            start, end, step, tenant_id=tenant_id,
+                        )
+                        raw_values = self._extract_metric_values(resp)
+                        if raw_values:
+                            ts_map = {int(ts): int(float(v)) for ts, v in raw_values}
+                            normalized = [[ts, str(ts_map.get(ts, 0))] for ts in expected_ts]
+                            result = {"data": {"result": [{"metric": {}, "values": normalized}]}}
+                            return await _cache_and_return(result)
+                except Exception:
+                    logger.debug("Metrics-based volume query failed, falling back", exc_info=True)
+
             try:
-                for sel in self._build_promql_selector(service):
-                    resp = await self._query_metrics_range(
-                        f"sum(count_over_time({sel}[{step}s]))",
-                        start, end, step, tenant_id=tenant_id,
-                    )
-                    raw_values = self._extract_metric_values(resp)
-                    if raw_values:
-                        ts_map = {int(ts): int(float(v)) for ts, v in raw_values}
-                        normalized = [[ts, str(ts_map.get(ts, 0))] for ts in expected_ts]
-                        result = {"data": {"result": [{"metric": {}, "values": normalized}]}}
-                        return await _cache_and_return(result)
+                # Last-resort fallback for environments where count APIs are unavailable.
+                metrics = await self.get_trace_metrics(service=service, start=start, end=end, tenant_id=tenant_id)
+                total = int(metrics.get("total_traces") or 0)
+                if total > 0:
+                    base, rem = divmod(total, num_buckets)
+                    values = [
+                        [expected_ts[i], str(base + (1 if i < rem else 0))]
+                        for i in range(num_buckets)
+                    ]
+                    result = {"data": {"result": [{"metric": {}, "values": values}]}}
+                    return await _cache_and_return(result)
             except Exception:
-                logger.debug("Metrics-based volume query failed, falling back", exc_info=True)
+                logger.debug("Failed to estimate trace volume from total traces", exc_info=True)
 
-        try:
-            # Last-resort fallback for environments where count APIs are unavailable.
-            metrics = await self.get_trace_metrics(service=service, start=start, end=end, tenant_id=tenant_id)
-            total = int(metrics.get("total_traces") or 0)
-            if total > 0:
-                base, rem = divmod(total, num_buckets)
-                values = [
-                    [expected_ts[i], str(base + (1 if i < rem else 0))]
-                    for i in range(num_buckets)
-                ]
-                result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                return await _cache_and_return(result)
-        except Exception:
-            logger.debug("Failed to estimate trace volume from total traces", exc_info=True)
+            try:
+                bucket_ranges: List[List[int]] = []
+                for ts in expected_ts:
+                    bucket_start_us = ts * 1_000_000
+                    bucket_end_us = min(end, bucket_start_us + (step * 1_000_000))
+                    bucket_ranges.append([bucket_start_us, bucket_end_us])
 
-        try:
-            bucket_ranges: List[List[int]] = []
-            for ts in expected_ts:
-                bucket_start_us = ts * 1_000_000
-                bucket_end_us = min(end, bucket_start_us + (step * 1_000_000))
-                bucket_ranges.append([bucket_start_us, bucket_end_us])
+                base_query = TraceQuery.model_validate({
+                    "service": service,
+                    "limit": _SEARCH_LIMIT_CAP,
+                })
+                bucket_counts = await self._count_traces_bucketed(base_query, bucket_ranges, tenant_id)
+                if any(c > 0 for c in bucket_counts):
+                    values = [[expected_ts[idx], str(bucket_counts[idx])] for idx in range(num_buckets)]
+                    result = {"data": {"result": [{"metric": {}, "values": values}]}}
+                    return await _cache_and_return(result)
+            except Exception:
+                logger.debug("Failed to build trace volume from bucket counts", exc_info=True)
 
-            base_query = TraceQuery.model_validate({
-                "service": service,
-                "limit": _SEARCH_LIMIT_CAP,
-            })
-            bucket_counts = await self._count_traces_bucketed(base_query, bucket_ranges, tenant_id)
-            if any(c > 0 for c in bucket_counts):
-                values = [[expected_ts[idx], str(bucket_counts[idx])] for idx in range(num_buckets)]
-                result = {"data": {"result": [{"metric": {}, "values": values}]}}
-                return await _cache_and_return(result)
-        except Exception:
-            logger.debug("Failed to build trace volume from bucket counts", exc_info=True)
+            return await _cache_and_return(_empty_result())
 
-        return await _cache_and_return(_empty_result())
+        return await self._get_or_build_volume(cache_key, _build)
 
     async def count_traces(self, query: TraceQuery, tenant_id: str = config.DEFAULT_ORG_ID) -> int:
         if config.TEMPO_USE_METRICS_FOR_COUNT and query.start and query.end:

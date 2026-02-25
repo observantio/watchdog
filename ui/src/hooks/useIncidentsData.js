@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useCallback, useEffect, useState } from 'react'
 import { getIncidents, getUsers } from '../api'
 
@@ -8,7 +16,6 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
   const [error, setError] = useState(null)
 
   const loadData = useCallback(async () => {
-    // DEBUG: verify API functions are available during tests
     if (process.env.NODE_ENV === 'test') {
       try { console.debug('useIncidentsData: getIncidents is', typeof getIncidents, 'getUsers is', typeof getUsers) } catch (e) { void e }
     }
@@ -17,7 +24,6 @@ export function useIncidentsData({ visibilityTab = 'public', selectedGroup = '',
     setError(null)
     try {
       if (showHiddenResolved) {
-        // wrap calls to allow debugging when a mocked API returns an unexpected value
         const openPromise = getIncidents ? getIncidents(undefined, visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined) : undefined
         const resolvedPromise = getIncidents ? getIncidents('resolved', visibilityTab, visibilityTab === 'group' ? selectedGroup : undefined) : undefined
         const usersPromise = canReadUsers ? (getUsers ? getUsers() : undefined) : Promise.resolve([])

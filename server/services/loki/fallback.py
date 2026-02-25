@@ -67,8 +67,19 @@ async def run_fallback_queries(
                 client, endpoint, params={**base_params, "query": candidate}, headers=headers
             )
 
-    for task in asyncio.as_completed([_query(c) for c in candidates]):
-        _, payload = await task
-        if isinstance(payload, dict) and payload.get("data", {}).get("result"):
-            return payload
-    return None
+    tasks = [asyncio.create_task(_query(candidate)) for candidate in candidates]
+    try:
+        for task in asyncio.as_completed(tasks):
+            _, payload = await task
+            if isinstance(payload, dict) and payload.get("data", {}).get("result"):
+                for pending in tasks:
+                    if pending is not task and not pending.done():
+                        pending.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                return payload
+        return None
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

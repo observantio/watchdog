@@ -70,8 +70,6 @@ export default function AuditCompliancePage() {
   const [exporting, setExporting] = useState(false)
   const [selected, setSelected] = useState(null)
   const [hasMore, setHasMore] = useState(false)
-
-  // prevent race conditions from overlapping requests (simple request-id guard)
   const auditReqIdRef = useRef(0)
 
   const [filters, setFilters] = useState({
@@ -110,8 +108,6 @@ export default function AuditCompliancePage() {
       }
 
       const data = await getAuditLogs(params)
-
-      // if a newer request was started, ignore this response
       if (reqId !== auditReqIdRef.current) {
         return { items: [], hasMore: false }
       }
@@ -127,7 +123,6 @@ export default function AuditCompliancePage() {
 
       return { items: pageItems, hasMore: nextHasMore }
     } catch (err) {
-      // ignore stale errors (if newer request exists)
       if (reqId !== auditReqIdRef.current) return null
       toast.error(err?.body?.detail || err?.message || 'Failed to load audit logs')
       if (commit) {
@@ -136,7 +131,6 @@ export default function AuditCompliancePage() {
       }
       return null
     } finally {
-      // only clear loading for the most-recent request
       if (reqId === auditReqIdRef.current) setLoading(false)
     }
   }, [toast])
@@ -228,7 +222,6 @@ export default function AuditCompliancePage() {
     return ok
   }, [toast])
 
-  // precompute memoized table rows so hooks order is stable across renders
   const memoizedRows = useMemo(() => items.map((row) => {
     const details = row.details || {}
     let detailsText

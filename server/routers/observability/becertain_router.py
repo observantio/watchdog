@@ -1,4 +1,11 @@
-"""BeCertain proxy router and RCA analysis job endpoints."""
+"""
+BeCertain proxy router and RCA analysis job endpoints.
+
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0"""
 
 from __future__ import annotations
 
@@ -6,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Body, Depends, Query, Request, status
 
+from config import config
 from middleware.dependencies import require_permission_with_scope, resolve_tenant_id
 from models.access.auth_models import Permission, TokenData
 from models.observability.becertain_models import (
@@ -30,6 +38,10 @@ def _inject_tenant(payload: Optional[Dict[str, Any]], tenant_id: str) -> Dict[st
     return data
 
 
+def _correlation_id(request: Request) -> Optional[str]:
+    return request.headers.get("x-correlation-id") or request.headers.get("X-Correlation-ID")
+
+
 @router.post("/analyze/jobs", response_model=AnalyzeJobCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analyze_job(
     request: Request,
@@ -44,6 +56,7 @@ async def create_analyze_job(
         tenant_id=tenant_id,
         payload=_inject_tenant(payload.model_dump(), tenant_id),
         audit_action="becertain.analyze_job.create",
+        correlation_id=_correlation_id(request),
     )
     return AnalyzeJobCreateResponse(**upstream)
 
@@ -69,6 +82,7 @@ async def list_analyze_jobs(
         tenant_id=tenant_id,
         params=params,
         audit_action="becertain.analyze_job.list",
+        correlation_id=_correlation_id(request),
     )
     return AnalyzeJobListResponse(**upstream)
 
@@ -86,6 +100,7 @@ async def get_analyze_job(
         current_user=current_user,
         tenant_id=tenant_id,
         audit_action="becertain.analyze_job.get",
+        correlation_id=_correlation_id(request),
     )
     return AnalyzeJobSummary(**upstream)
 
@@ -103,6 +118,7 @@ async def get_analyze_job_result(
         current_user=current_user,
         tenant_id=tenant_id,
         audit_action="becertain.analyze_job.result",
+        correlation_id=_correlation_id(request),
     )
     return AnalyzeJobResultResponse(**upstream)
 
@@ -120,6 +136,7 @@ async def get_report_by_id(
         current_user=current_user,
         tenant_id=tenant_id,
         audit_action="becertain.report.get",
+        correlation_id=_correlation_id(request),
     )
     return AnalyzeReportResponse(**upstream)
 
@@ -137,6 +154,7 @@ async def delete_report_by_id(
         current_user=current_user,
         tenant_id=tenant_id,
         audit_action="becertain.report.delete",
+        correlation_id=_correlation_id(request),
     )
     return AnalyzeReportDeleteResponse(**upstream)
 
@@ -162,6 +180,7 @@ async def _proxy_post(
         tenant_id=tenant_id,
         payload=_inject_tenant(payload_data, tenant_id),
         audit_action=audit_action,
+        correlation_id=_correlation_id(request),
     )
 
 
@@ -268,6 +287,8 @@ async def ml_weights(
         tenant_id=tenant_id,
         params={"tenant_id": tenant_id},
         audit_action="becertain.proxy.ml.weights",
+        correlation_id=_correlation_id(request),
+        cache_ttl_seconds=getattr(config, "BECERTAIN_PROXY_CACHE_TTL_SECONDS", 15),
     )
 
 
@@ -284,4 +305,6 @@ async def events_deployments(
         tenant_id=tenant_id,
         params={"tenant_id": tenant_id},
         audit_action="becertain.proxy.events.deployments",
+        correlation_id=_correlation_id(request),
+        cache_ttl_seconds=getattr(config, "BECERTAIN_PROXY_CACHE_TTL_SECONDS", 15),
     )

@@ -34,7 +34,6 @@ async def search_traces(
     fetch_full: bool = Query(False, alias="fetchFull", description="If false (recommended), returns only trace summaries; fetch full trace data on-demand via /traces/{trace_id}"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
 ) -> TraceResponse:
-    """Search for traces matching the given criteria. For efficient list views, use fetchFull=false to get summaries only; fetch full details via /traces/{trace_id} when user clicks into a trace."""
     query = TraceQuery(
         service=service,
         operation=operation,
@@ -54,7 +53,6 @@ async def get_trace(
     request: Request,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
 ) -> Trace:
-    """Returns the complete trace with all spans and their details."""
     tenant_id = resolve_tenant_id(request, current_user)
     trace = await tempo_service.get_trace(trace_id, tenant_id=tenant_id)
     if not trace:
@@ -67,7 +65,6 @@ async def get_services(
     request: Request,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
 ) -> List[str]:
-    """Return list of services that have traces."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await tempo_service.get_services(tenant_id=tenant_id)
 
@@ -78,7 +75,6 @@ async def get_operations(
     request: Request,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
 ) -> List[str]:
-    """Get all unique operation names for the given service."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await tempo_service.get_operations(service, tenant_id=tenant_id)
 
@@ -91,7 +87,6 @@ async def get_trace_metrics(
     end: Optional[int] = Query(None, description="End time in microseconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
 ) -> dict:
-    """Returns aggregated metrics like trace count, span count, durations, and error rates."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await tempo_service.get_trace_metrics(service, start, end, tenant_id=tenant_id)
 
@@ -105,6 +100,5 @@ async def get_trace_volume(
     step: int = Query(300, ge=1, description="Resolution step in seconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_TRACES, "tempo"))
 ) -> dict:
-    """Return trace counts over time for the given time range and step. Response shape is compatible with Loki volume."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await tempo_service.get_trace_volume(service=service, start=start, end=end, step=step, tenant_id=tenant_id)

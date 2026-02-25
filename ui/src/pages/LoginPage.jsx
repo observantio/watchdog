@@ -163,11 +163,9 @@ export default function LoginPage() {
     setSetupLoading(true)
     try {
       const res = await api.verifyMFA(setupCode)
-      // Show recovery codes and give the user time to copy/download them
       setSetupRecoveryCodes(res?.recovery_codes || [])
       setVerifiedSetupCode(setupCode)
       setSetupStep(2)
-      // keep setupToken until the user explicitly finishes/login so they can copy codes
     } catch (err) {
       setError(err?.body?.detail || err?.message || 'Failed to verify MFA code')
     } finally {

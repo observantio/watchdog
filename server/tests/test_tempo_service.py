@@ -63,10 +63,6 @@ def test_get_trace_volume_uses_metrics_query_range():
 
 
 def test_get_trace_volume_normalizes_sparse_metric_series_to_full_buckets():
-    """If the metrics backend returns a sparse series, ensure the service fills missing
-    buckets with zeros so the UI receives a complete time series of the requested
-    resolution (start/end/step).
-    """
     service = TempoService(tempo_url="http://tempo.test")
 
     async def fake_query_metrics(promql, start_us=None, end_us=None, step_s=300, tenant_id="default"):

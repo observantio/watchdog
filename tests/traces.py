@@ -7,6 +7,7 @@ ENDPOINT = sys.argv[1] if len(sys.argv) > 1 else "localhost:4318"
 COUNT    = int(sys.argv[2]) if len(sys.argv) > 2 else 500
 PARALLEL = int(sys.argv[3]) if len(sys.argv) > 3 else 12
 LOOPS    = int(sys.argv[4]) if len(sys.argv) > 4 else 2 
+DELAY    = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0
 
 FRONTENDS = ["web-frontend","mobile-ios","mobile-android","admin-portal","partner-portal","merchant-dashboard"]
 GATEWAYS  = ["api-gateway","graphql-gateway","grpc-gateway","websocket-gateway"]
@@ -200,6 +201,8 @@ def run_loop(loop_num):
         t = threading.Thread(target=worker, args=(i,), daemon=True)
         t.start()
         threads.append(t)
+        if DELAY > 0:
+            time.sleep(DELAY)
 
     for t in threads:
         t.join()
@@ -208,7 +211,7 @@ def run_loop(loop_num):
 
 print(f"{'='*48}")
 print(f"OTLP Trace Generator → http://{ENDPOINT}/v1/traces")
-print(f"count={COUNT}  parallel={PARALLEL}  loops={'∞' if LOOPS == 0 else LOOPS}")
+print(f"count={COUNT}  parallel={PARALLEL}  loops={'∞' if LOOPS == 0 else LOOPS}  delay={DELAY}s")
 print(f"{'='*48}")
 
 loop = 1

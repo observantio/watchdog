@@ -281,14 +281,6 @@ async def get_dashboard(service, db: Session, uid: str, user_id: str, tenant_id:
 
 
 def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
-    """Return True if the dashboard JSON contains datasource references.
-
-    Checks for:
-    - templating datasource variable (type=='datasource' with current.value)
-    - panel-level `datasource` / `datasourceUid` or object `datasource.uid`
-    - target-level `datasource` / `datasourceUid`
-    - heuristic: targets with `expr`/`query` count as requiring a datasource
-    """
     if not dashboard_obj:
         return False
 

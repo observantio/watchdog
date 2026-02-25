@@ -173,7 +173,6 @@ export default function TempoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // If backend doesn't return services, derive them from loaded traces
   useEffect(() => {
     if (!services.length && traces?.data?.length) {
       const discovered = discoverServices(traces.data)
@@ -181,11 +180,6 @@ export default function TempoPage() {
     }
   }, [traces, services.length])
 
-  // when a trace id is clicked or restored from storage we load its details.
-  // the "silent" flag is used during rehydration to avoid showing an error
-  // message when the stored id no longer exists. regardless of who initiated
-  // the lookup we also clean up localStorage if a 404 occurs so the stale value
-  // doesn't keep us retrying on every mount.
   const handleTraceClick = useCallback(async (traceId, { silent = false } = {}) => {
     try {
       const trace = await getTrace(traceId)
@@ -274,7 +268,6 @@ export default function TempoPage() {
     }
   }
 
-  // Show a single trace directly on the dependency map (used by the map icon on each result)
   const showTraceOnMap = useCallback(async (traceId) => {
     if (!traceId) return
 
@@ -316,9 +309,6 @@ export default function TempoPage() {
     try {
       const end = Date.now() * 1000
       const start = end - (timeRange * 60 * 1000000)
-
-      // Fetch trace summaries only (fetchFull=false) for efficient list view
-      // Full trace details are fetched on-demand via getTrace when user clicks
       const res = await searchTraces({
         service,
         operation,
@@ -327,7 +317,7 @@ export default function TempoPage() {
         start: Math.floor(start),
         end: Math.floor(end),
         limit: searchLimit,
-        fetchFull: false  // Get summaries only for efficiency
+        fetchFull: false  
       })
 
       setTraces(res)
@@ -347,8 +337,6 @@ export default function TempoPage() {
   const filteredTraces = useMemo(() => {
     if (!traces?.data) return []
     return traces.data.filter(trace => {
-      // Summary traces (from initial search) won't have spans
-      // Only filter by error status if spans are available
       if (!trace.spans || trace.spans.length === 0) return true
       if (statusFilter === 'error') return trace.spans.some(hasSpanError)
       if (statusFilter === 'ok') return !trace.spans.some(hasSpanError)
@@ -367,7 +355,6 @@ export default function TempoPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredTraces.length / pageSize))
 
-  // Clamp current page when filters or page size change
   useEffect(() => {
     if (tracePage > totalPages) {
       setTracePage(totalPages)

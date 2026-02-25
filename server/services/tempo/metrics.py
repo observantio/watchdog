@@ -33,13 +33,6 @@ async def query_metrics_range(
     observe: Callable[[str, float], None] = lambda *a, **k: None,
     metrics_enabled: bool = True,
 ) -> Tuple[Dict[str, Any], bool]:
-    """Query metrics endpoint(s). Returns (result, metrics_enabled).
-
-    Behavior mirrors the previous `TempoService._query_metrics_range`:
-    - if metrics_enabled is False, returns an _empty response immediately
-    - tries tempo `/api/metrics/query_range` first, then falls back to Mimir
-    - updates metrics_enabled to False when a 4xx is received from primary endpoint
-    """
     if not metrics_enabled:
         return _empty, False
 
@@ -52,7 +45,6 @@ async def query_metrics_range(
     headers = get_headers(tenant_id)
 
     async def _fetch(url: str, req_params: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], bool]:
-        """Return (payload_or_none, saw_4xx_flag)."""
         try:
             resp = await client.get(url, params=req_params, headers=headers)
             if 400 <= getattr(resp, "status_code", 0) < 500:

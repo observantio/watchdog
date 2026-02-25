@@ -128,8 +128,10 @@ class Config:
         # Query optimizations
         self.LOKI_FALLBACK_CONCURRENCY: int = int(os.getenv("LOKI_FALLBACK_CONCURRENCY", "4"))
         self.LOKI_MAX_FALLBACK_QUERIES: int = int(os.getenv("LOKI_MAX_FALLBACK_QUERIES", "4"))
+        self.LOKI_VOLUME_CACHE_TTL_SECONDS: int = int(os.getenv("LOKI_VOLUME_CACHE_TTL_SECONDS", "30"))
         self.TEMPO_TRACE_FETCH_CONCURRENCY: int = int(os.getenv("TEMPO_TRACE_FETCH_CONCURRENCY", "8"))
         self.TEMPO_VOLUME_BUCKET_CONCURRENCY: int = int(os.getenv("TEMPO_VOLUME_BUCKET_CONCURRENCY", "8"))
+        self.TEMPO_COUNT_QUERY_CONCURRENCY: int = int(os.getenv("TEMPO_COUNT_QUERY_CONCURRENCY", "4"))
         # When true, use Tempo/Mimir metrics API for trace count/volume queries where possible.
         # Operators can opt out by setting TEMPO_USE_METRICS_FOR_COUNT=false
         self.TEMPO_USE_METRICS_FOR_COUNT: bool = _to_bool(os.getenv("TEMPO_USE_METRICS_FOR_COUNT"), default=True)
@@ -184,6 +186,7 @@ class Config:
         self.BECERTAIN_CONTEXT_AUDIENCE: str = os.getenv("BECERTAIN_CONTEXT_AUDIENCE", "becertain")
         self.BECERTAIN_CONTEXT_ALGORITHM: str = os.getenv("BECERTAIN_CONTEXT_ALGORITHM", "HS256")
         self.BECERTAIN_CONTEXT_TTL_SECONDS: int = int(os.getenv("BECERTAIN_CONTEXT_TTL_SECONDS", "120"))
+        self.BECERTAIN_PROXY_CACHE_TTL_SECONDS: int = int(os.getenv("BECERTAIN_PROXY_CACHE_TTL_SECONDS", "15"))
         self.BECERTAIN_TLS_ENABLED: bool = _to_bool(os.getenv("BECERTAIN_TLS_ENABLED"), default=False)
         self.BECERTAIN_CA_CERT_PATH: Optional[str] = os.getenv("BECERTAIN_CA_CERT_PATH")
         self.BECERTAIN_ANALYZE_MAX_CONCURRENCY: int = int(os.getenv("BECERTAIN_ANALYZE_MAX_CONCURRENCY", "2"))
@@ -307,12 +310,6 @@ class Config:
         self.validate()
 
     def _load_vault_secrets(self) -> None:
-        """Load configured secrets from Vault (when VAULT_ENABLED=true).
-
-        This is intentionally opt-in. When Vault is enabled we attempt to
-        resolve a small set of critical secrets and override the corresponding
-        `self.` attributes **before** validation runs.
-        """
         if not self.VAULT_ENABLED:
             return
         from services.secrets.provider import EnvSecretProvider, SecretProvider
@@ -368,7 +365,6 @@ class Config:
                 logger.info("Loaded secret %s from Vault", sk)
 
     def get_secret(self, key: str) -> Optional[str]:
-        """Runtime secret lookup (Vault-aware)."""
         val = getattr(self, key, None)
         if val:
             return val
@@ -468,6 +464,20 @@ class Config:
             raise ValueError("DEFAULT_QUERY_LIMIT must be greater than 0")
         if self.DEFAULT_QUERY_LIMIT > self.MAX_QUERY_LIMIT:
             raise ValueError("DEFAULT_QUERY_LIMIT cannot exceed MAX_QUERY_LIMIT")
+        if self.LOKI_FALLBACK_CONCURRENCY <= 0:
+            raise ValueError("LOKI_FALLBACK_CONCURRENCY must be greater than 0")
+        if self.LOKI_MAX_FALLBACK_QUERIES < 0:
+            raise ValueError("LOKI_MAX_FALLBACK_QUERIES must be greater than or equal to 0")
+        if self.LOKI_VOLUME_CACHE_TTL_SECONDS < 0:
+            raise ValueError("LOKI_VOLUME_CACHE_TTL_SECONDS must be greater than or equal to 0")
+        if self.TEMPO_TRACE_FETCH_CONCURRENCY <= 0:
+            raise ValueError("TEMPO_TRACE_FETCH_CONCURRENCY must be greater than 0")
+        if self.TEMPO_VOLUME_BUCKET_CONCURRENCY <= 0:
+            raise ValueError("TEMPO_VOLUME_BUCKET_CONCURRENCY must be greater than 0")
+        if self.TEMPO_COUNT_QUERY_CONCURRENCY <= 0:
+            raise ValueError("TEMPO_COUNT_QUERY_CONCURRENCY must be greater than 0")
+        if self.BECERTAIN_PROXY_CACHE_TTL_SECONDS < 0:
+            raise ValueError("BECERTAIN_PROXY_CACHE_TTL_SECONDS must be greater than or equal to 0")
         if self.BECERTAIN_ANALYZE_MAX_CONCURRENCY <= 0:
             raise ValueError("BECERTAIN_ANALYZE_MAX_CONCURRENCY must be greater than 0")
         if self.BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER <= 0:
@@ -487,13 +497,13 @@ class Constants:
     APP_DESCRIPTION: str = (
         "Unified API for managing Tempo, Loki, AlertManager, Grafana, and BeCertain"
     )
-    
+
     # HTTP status messages
     STATUS_HEALTHY: str = "Healthy"
     STATUS_SUCCESS: str = "Success"
     STATUS_ERROR: str = "Error"
-    
-    
+
+
     # Service names
     SERVICE_TEMPO: str = "Tempo"
     SERVICE_LOKI: str = "Loki"

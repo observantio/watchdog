@@ -36,7 +36,6 @@ from db_models import AuditLog
 from middleware.limits import RequestSizeLimitMiddleware, ConcurrencyLimitMiddleware
 from middleware.rate_limit import client_ip
 
-# audit middleware and global exception handlers live in their own modules
 from middleware.audit import security_headers_middleware
 from middleware.error_handlers import (
     validation_exception_handler,
@@ -63,7 +62,6 @@ if os.getenv("SKIP_STARTUP_DB_INIT", "").lower() not in {"1", "true", "yes"}:
     auth_service._lazy_init()
     auth_service.backfill_otlp_tokens()
     logger.info("✓ Auth service initialized")
-
 
 
 async def lifespan(app: FastAPI):
@@ -103,7 +101,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# register shared middleware & exception handlers
 app.middleware("http")(security_headers_middleware)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
@@ -131,7 +128,6 @@ logger.info(
 )
 
 
-
 app.include_router(internal_router.router)
 app.include_router(auth_router.router)
 app.include_router(agents_router.router)
@@ -145,7 +141,6 @@ app.include_router(becertain_router.router)
 
 @app.get("/", tags=["info"])
 async def root() -> dict:
-    """Root endpoint with API information and available endpoints."""
     return {
         "service": constants.APP_NAME,
         "version": constants.APP_VERSION,
@@ -162,7 +157,6 @@ async def root() -> dict:
 
 @app.get("/health", tags=["health"])
 async def health() -> dict:
-    """Health check endpoint for monitoring and load balancers."""
     return {
         "status": constants.STATUS_HEALTHY,
         "service": constants.APP_NAME,
@@ -210,7 +204,7 @@ async def ready(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     logger.info(f"Starting {constants.APP_NAME} v{constants.APP_VERSION}")
 
     uvicorn.run(

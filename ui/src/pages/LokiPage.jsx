@@ -174,8 +174,6 @@ export default function LokiPage() {
           })
         }
       }
-      // if the user had a saved filter on a label which no longer exists, clear it so we
-      // don’t keep running queries against a missing key on every mount.
       if (saved.selectedLabel && labelsArray && !labelsArray.includes(saved.selectedLabel)) {
         setSelectedLabel('')
         setSelectedValue('')
@@ -313,9 +311,6 @@ export default function LokiPage() {
     setVolume(buildFallbackVolume(res, totalLogs))
   }
 
-  /**
-   * Core query executor — used by all query paths (form submit, quick filters, auto-refresh)
-   */
   async function executeQuery(overrideFilters, overridePattern) {
     setError(null)
     setLoading(true)

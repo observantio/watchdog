@@ -28,8 +28,4 @@ system_service = SystemService()
 async def get_system_metrics(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "system"))
 ) -> Dict[str, Any]:
-    """
-    Get system metrics including CPU, memory, disk, network utilization and stress status.
-    Requires READ_AGENTS permission.
-    """
     return system_service.get_all_metrics()

@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useEffect, useMemo, useState } from 'react'
 import { useLocalStorage } from '../hooks'
 import PageHeader from '../components/ui/PageHeader'
@@ -37,7 +45,6 @@ const TABS = [
 
 export default function RCAPage() {
   const { user } = useAuth()
-  // persist selections in localStorage via a reusable hook
   const [activeTab, setActiveTab] = useLocalStorage(TAB_STORAGE_KEY, 'summary')
   const [reportLookupInput, setReportLookupInput] = useLocalStorage(REPORT_STORAGE_KEY, '')
   const [reportLookupId, setReportLookupId] = useState(reportLookupInput || null)
@@ -45,9 +52,6 @@ export default function RCAPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [viewModalOpen, setViewModalOpen] = useState(false)
 
-  // the job stored in localStorage is used to remember the last report the user
-  // was looking at. we also marshal lookup ids separately above. restoring the
-  // value happens in effects below after the job list has been fetched.
   const {
     jobs,
     loadingJobs,
@@ -83,7 +87,8 @@ export default function RCAPage() {
   } = useRcaReport(
     selectedJobId,
     selectedJob,
-    reportLookupId
+    reportLookupId,
+    { enableInsights: viewModalOpen, activeInsightTab: activeTab }
   )
 
   // nothing required: useLocalStorage takes care of persistence

@@ -56,7 +56,6 @@ class TTLCache:
                 self._redis_client = None
 
     async def _ensure_redis(self) -> bool:
-        """Verify Redis connection on-demand and log success once."""
         if not self._redis_client:
             return False
         if self._redis_connected:
@@ -133,10 +132,6 @@ class TTLCache:
             self._data[key] = (value, time.monotonic() + max(0, int(ttl_seconds)))
 
     async def get_or_set(self, key: str, factory: Callable[[], Awaitable[Any]], ttl_seconds: int) -> Optional[Any]:
-        """If the key exists and is fresh return it; otherwise run `factory()` once (serialised) and cache result.
-
-        Note: if factory() returns None the value will NOT be cached and None is returned.
-        """
         async with self._lock:
             # Try Redis first
             if await self._ensure_redis():

@@ -1,7 +1,16 @@
-"""Proxy client for forwarding BeCertain API calls through BeObservant."""
+"""
+Proxy client for forwarding BeCertain API calls through BeObservant.
+
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -17,6 +26,7 @@ from config import config
 from database import get_db_session
 from db_models import AuditLog
 from models.access.auth_models import TokenData
+from services.common.ttl_cache import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +35,37 @@ class BeCertainProxyService:
     def __init__(self) -> None:
         self.base_url = config.BECERTAIN_URL.rstrip("/")
         self.timeout = float(config.BECERTAIN_TIMEOUT_SECONDS)
+        self._cache_ttl_seconds = max(0, int(getattr(config, "BECERTAIN_PROXY_CACHE_TTL_SECONDS", 15)))
+        self._read_cache = TTLCache()
+        self._read_inflight: Dict[str, asyncio.Future] = {}
+        self._read_inflight_lock = asyncio.Lock()
         verify: str | bool = True
         if not bool(config.BECERTAIN_TLS_ENABLED):
             verify = False
         elif config.BECERTAIN_CA_CERT_PATH:
             verify = config.BECERTAIN_CA_CERT_PATH
         self._client = httpx.AsyncClient(timeout=self.timeout, verify=verify)
+
+    @staticmethod
+    def _cache_key(
+        *,
+        method: str,
+        upstream_path: str,
+        tenant_id: str,
+        params: Optional[Dict[str, Any]],
+        payload: Optional[Dict[str, Any]],
+    ) -> str:
+        return json.dumps(
+            {
+                "m": method.upper(),
+                "p": upstream_path,
+                "t": tenant_id,
+                "q": params or {},
+                "b": payload or {},
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
     def _sign_context_token(self, *, current_user: TokenData, tenant_id: str) -> str:
         key = config.get_secret("BECERTAIN_CONTEXT_SIGNING_KEY")
@@ -103,10 +138,39 @@ class BeCertainProxyService:
         params: Optional[Dict[str, Any]] = None,
         audit_action: str = "becertain.proxy",
         correlation_id: Optional[str] = None,
+        cache_ttl_seconds: Optional[int] = None,
     ) -> Any:
         service_token = config.get_secret("BECERTAIN_SERVICE_TOKEN")
         if not service_token:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="BeCertain service token not configured")
+
+        method_upper = method.upper()
+        effective_cache_ttl = self._cache_ttl_seconds if cache_ttl_seconds is None else max(0, int(cache_ttl_seconds))
+        cache_key = None
+        inflight_future: Optional[asyncio.Future] = None
+        owner = False
+        if method_upper == "GET" and effective_cache_ttl > 0:
+            cache_key = self._cache_key(
+                method=method_upper,
+                upstream_path=upstream_path,
+                tenant_id=tenant_id,
+                params=params,
+                payload=payload,
+            )
+            cached = await self._read_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            async with self._read_inflight_lock:
+                cached = await self._read_cache.get(cache_key)
+                if cached is not None:
+                    return cached
+                inflight_future = self._read_inflight.get(cache_key)
+                if inflight_future is None:
+                    inflight_future = asyncio.get_running_loop().create_future()
+                    self._read_inflight[cache_key] = inflight_future
+                    owner = True
+            if not owner:
+                return await inflight_future
 
         context_token = self._sign_context_token(current_user=current_user, tenant_id=tenant_id)
         corr = correlation_id or str(uuid.uuid4())
@@ -128,21 +192,29 @@ class BeCertainProxyService:
                 json=payload if payload is not None else None,
             )
         except httpx.TimeoutException as exc:
+            err = HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="BeCertain request timed out")
+            if owner and inflight_future is not None and not inflight_future.done():
+                inflight_future.set_exception(err)
+                _ = inflight_future.exception()
             self.write_audit(
                 current_user=current_user,
                 action=f"{audit_action}.timeout",
                 resource_id=upstream_path,
                 details={"correlation_id": corr, "timeout": self.timeout, "method": method.upper()},
             )
-            raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="BeCertain request timed out") from exc
+            raise err from exc
         except Exception as exc:
+            err = HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to contact BeCertain")
+            if owner and inflight_future is not None and not inflight_future.done():
+                inflight_future.set_exception(err)
+                _ = inflight_future.exception()
             self.write_audit(
                 current_user=current_user,
                 action=f"{audit_action}.error",
                 resource_id=upstream_path,
                 details={"correlation_id": corr, "error": type(exc).__name__, "method": method.upper()},
             )
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to contact BeCertain") from exc
+            raise err from exc
 
         elapsed_ms = int((time.time() - started) * 1000)
         self.write_audit(
@@ -159,12 +231,29 @@ class BeCertainProxyService:
 
         if response.status_code >= 400:
             detail = self._extract_error_detail(response)
-            raise HTTPException(status_code=response.status_code, detail=detail)
+            err = HTTPException(status_code=response.status_code, detail=detail)
+            if owner and inflight_future is not None and not inflight_future.done():
+                inflight_future.set_exception(err)
+                _ = inflight_future.exception()
+            raise err
 
         try:
-            return response.json()
+            result = response.json()
+            if cache_key:
+                await self._read_cache.set(cache_key, result, effective_cache_ttl)
+            if owner and inflight_future is not None and not inflight_future.done():
+                inflight_future.set_result(result)
+            return result
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="BeCertain returned invalid JSON") from exc
+            err = HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="BeCertain returned invalid JSON")
+            if owner and inflight_future is not None and not inflight_future.done():
+                inflight_future.set_exception(err)
+                _ = inflight_future.exception()
+            raise err from exc
+        finally:
+            if owner and cache_key:
+                async with self._read_inflight_lock:
+                    self._read_inflight.pop(cache_key, None)
 
 
 becertain_proxy_service = BeCertainProxyService()

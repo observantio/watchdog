@@ -24,14 +24,6 @@ _USERNAME_RE = re.compile(r'^[a-z0-9._-]{3,50}$')
 
 
 def _normalize_username(v: str, *, full_check: bool = True) -> str:
-    """Shared username normalization used by multiple models.
-
-    Args:
-        v: Raw username value.
-        full_check: When ``True``, enforce the strict regex pattern
-            (required for registration/creation).  When ``False``,
-            only strip/lowercase and reject spaces (sufficient for login).
-    """
     if v is None:
         raise ValueError("username is required")
     if not isinstance(v, str):

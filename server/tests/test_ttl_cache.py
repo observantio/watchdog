@@ -38,7 +38,6 @@ def test_get_or_set_serialises_factory_calls():
 
 
 def test_ttl_cache_uses_redis_and_logs_on_success(caplog, monkeypatch):
-    """When async redis is available and reachable, TTLCache should use it and log the connection."""
     class _FakeRedis:
         def __init__(self):
             self.store = {}
@@ -83,7 +82,6 @@ def test_ttl_cache_uses_redis_and_logs_on_success(caplog, monkeypatch):
 
 
 def test_ttl_cache_falls_back_to_memory_when_redis_unavailable(monkeypatch):
-    """If redis package or async client isn't present TTLCache should silently use in-memory cache."""
     # ensure redis import will not expose asyncio client
     monkeypatch.setenv("TTL_CACHE_REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(asyncio=None))

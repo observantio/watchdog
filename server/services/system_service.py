@@ -21,7 +21,6 @@ class SystemService:
     """Service to collect system metrics using psutil for the BeObservant process."""
 
     def __init__(self):
-        """Initialize with current process."""
         self.process = psutil.Process(os.getpid())
         try:
             self.process.cpu_percent(interval=None)
@@ -33,7 +32,6 @@ class SystemService:
         return payload
 
     def get_cpu_metrics(self) -> Dict[str, Any]:
-        """Get CPU utilization metrics for the BeObservant process."""
         try:
             cpu_percent = self.process.cpu_percent(interval=None)
             if cpu_percent == 0:
@@ -43,7 +41,7 @@ class SystemService:
 
             normalized = cpu_percent / cpu_count if cpu_count else cpu_percent
             normalized = min(normalized, 100)
-            
+
             return {
                 "utilization": round(normalized, 2),
                 "raw_utilization": round(cpu_percent, 2),
@@ -62,13 +60,12 @@ class SystemService:
             })
 
     def get_memory_metrics(self) -> Dict[str, Any]:
-        """Get memory utilization metrics for the BeObservant process."""
         try:
             mem_info = self.process.memory_info()
             mem_percent = self.process.memory_percent()
             rss_mb = mem_info.rss / (1024 ** 2)
             vms_mb = mem_info.vms / (1024 ** 2)
-            
+
             return {
                 "rss_mb": round(rss_mb, 2),
                 "vms_mb": round(vms_mb, 2),
@@ -83,10 +80,9 @@ class SystemService:
             })
 
     def get_disk_metrics(self) -> Dict[str, Any]:
-        """Get I/O metrics for the BeObservant process."""
         try:
             io_counters = self.process.io_counters()
-            
+
             return {
                 "read_mb": round(io_counters.read_bytes / (1024 ** 2), 2),
                 "write_mb": round(io_counters.write_bytes / (1024 ** 2), 2),
@@ -103,14 +99,13 @@ class SystemService:
             })
 
     def get_network_metrics(self) -> Dict[str, Any]:
-        """Get network connection metrics for the BeObservant process."""
         try:
             connections = self.process.connections(kind='inet')
             status_counts: dict[str, int] = {}
             for conn in connections:
                 status = conn.status
                 status_counts[status] = status_counts.get(status, 0) + 1
-            
+
             return {
                 "total_connections": len(connections),
                 "established": status_counts.get('ESTABLISHED', 0),
@@ -129,31 +124,30 @@ class SystemService:
             })
 
     def determine_stress_status(self, cpu_percent: float, memory_percent: float, connections: int) -> Dict[str, Any]:
-        """Determine if the BeObservant process is under stress."""
         HIGH_CPU_THRESHOLD = 50 
         HIGH_MEMORY_THRESHOLD = 80  
         HIGH_CONNECTIONS_THRESHOLD = 100
-        
+
         MODERATE_CPU_THRESHOLD = 25
         MODERATE_MEMORY_THRESHOLD = 50
         MODERATE_CONNECTIONS_THRESHOLD = 50
-        
+
         issues = []
         if cpu_percent >= HIGH_CPU_THRESHOLD:
             issues.append(f"High CPU usage ({cpu_percent}%)")
         elif cpu_percent >= MODERATE_CPU_THRESHOLD:
             issues.append(f"Moderate CPU usage ({cpu_percent}%)")
-            
+
         if memory_percent >= HIGH_MEMORY_THRESHOLD:
             issues.append(f"High memory usage ({memory_percent}%)")
         elif memory_percent >= MODERATE_MEMORY_THRESHOLD:
             issues.append(f"Moderate memory usage ({memory_percent}%)")
-        
+
         if connections >= HIGH_CONNECTIONS_THRESHOLD:
             issues.append(f"High connection count ({connections})")
         elif connections >= MODERATE_CONNECTIONS_THRESHOLD:
             issues.append(f"Moderate connection count ({connections})")
-        
+
         if any("High" in issue for issue in issues):
             status = "stressed"
             message = "Process is under high stress"
@@ -163,7 +157,7 @@ class SystemService:
         else:
             status = "healthy"
             message = "Process is operating normally"
-        
+
         return {
             "status": status,
             "message": message,
@@ -171,7 +165,6 @@ class SystemService:
         }
 
     def get_all_metrics(self) -> Dict[str, Any]:
-        """Get all process metrics in one call."""
         cpu = self.get_cpu_metrics()
         memory = self.get_memory_metrics()
         io = self.get_disk_metrics()
@@ -181,7 +174,7 @@ class SystemService:
             memory["utilization"],
             network["total_connections"]
         )
-        
+
         return {
             "cpu": cpu,
             "memory": memory,

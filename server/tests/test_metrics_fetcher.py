@@ -93,7 +93,6 @@ def test_fetch_metrics_fallback_from_scrape():
 
 
 def test_mimir_connector_scrape(monkeypatch):
-    """Verify that the connector requests the /metrics path with tenant header."""
     import httpx
     from connectors.mimir import MimirConnector
 

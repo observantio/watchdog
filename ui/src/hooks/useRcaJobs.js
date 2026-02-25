@@ -1,3 +1,11 @@
+`
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+`
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRcaAnalyzeJob, deleteRcaReport, listRcaJobs } from '../api'
 import { useToast } from '../contexts/ToastContext'
@@ -38,10 +46,27 @@ export function useRcaJobs() {
 
   useEffect(() => {
     if (!hasActiveJobs(jobs)) return undefined
-    const timer = setInterval(() => {
+    const poll = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
       refreshJobs()
+    }
+    const timer = setInterval(() => {
+      poll()
     }, JOB_POLL_MS)
-    return () => clearInterval(timer)
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        poll()
+      }
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange)
+    }
+    return () => {
+      clearInterval(timer)
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+      }
+    }
   }, [jobs, refreshJobs])
 
   const createJob = useCallback(async (payload) => {

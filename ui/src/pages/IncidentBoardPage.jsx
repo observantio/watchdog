@@ -8,7 +8,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 
-// utility used throughout the incidents UI to show a sensible name for a user
 export function getUserLabel(userItem) {
   if (!userItem) return 'Unknown user'
   const name = userItem.full_name || userItem.username || userItem.id || ''
@@ -16,13 +15,11 @@ export function getUserLabel(userItem) {
   return `${name}${email}`
 }
 
-import {
-  getIncidents, updateIncident, getUsers, getGroups, createIncidentJira,
+import { updateIncident, getGroups, createIncidentJira,
   listJiraProjectsByIntegration, listJiraIssueTypes, listIncidentJiraComments, createIncidentJiraComment, syncIncidentJiraComments,
   listJiraIntegrations, getAlertsByFilter,
 } from '../api'
 import { Card, Button, Select, Badge, Spinner, Modal, Input, Alert } from '../components/ui'
-import PageHeader from '../components/ui/PageHeader'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import HelpTooltip from '../components/HelpTooltip'
@@ -35,7 +32,6 @@ export function clearDroppedState(prev, droppedId) {
   return next
 }
 
-/* --- Presentational / memoized components (keeps main render lean & avoids re-creation) --- */
 const IncidentCard = memo(function IncidentCard({
   incident,
   canUpdateIncidents,
@@ -236,10 +232,7 @@ export default function IncidentBoardPage() {
     canReadUsers,
   })
 
-  // permissions (single declaration retained)
-
   useEffect(() => {
-    // refresh hook-driven data when page-level filters change
     refresh()
   }, [incidentVisibilityTab, selectedGroup, showHiddenResolved, refresh])
 
@@ -309,8 +302,6 @@ export default function IncidentBoardPage() {
       console.error('Failed to load groups:', e)
     }
   }
-
-  // Data loading is handled by the `useIncidentsData` hook. Use `refresh()` when a reload is required.
 
   const incidentsByState = useMemo(() => {
     return {

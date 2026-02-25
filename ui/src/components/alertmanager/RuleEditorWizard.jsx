@@ -31,7 +31,7 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
             const isCompleted = index < currentStep
 
             return (
-                <div className="flex flex-col items-center">
+                <div key={step.key || step.label || index} className="flex flex-col items-center">
                   <div
                     className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
                       isCompleted

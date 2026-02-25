@@ -157,7 +157,10 @@ export function useAutoRefresh(callback, interval = 30000, enabled = false) {
   useEffect(() => {
     if (!enabled) return
 
-    const tick = () => savedCallback.current()
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      savedCallback.current()
+    }
     const id = setInterval(tick, interval)
 
     return () => clearInterval(id)

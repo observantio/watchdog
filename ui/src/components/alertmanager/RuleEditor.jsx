@@ -175,9 +175,9 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
     const { errors } = validateRuleForm(formData, labelPairs)
     switch (currentStep) {
       case 0: // Basic
-        return !errors.name && formData.name.trim()
+        return Boolean(!errors.name && formData.name.trim())
       case 1: // Condition
-        return !errors.expr && !errors.duration && formData.expr.trim()
+        return Boolean(!errors.expr && !errors.duration && formData.expr.trim())
       case 2: // Details
         return true // Optional fields
       case 3: // Advanced

@@ -50,6 +50,7 @@ class LokiService:
         self.timeout = config.DEFAULT_TIMEOUT
         self._client = create_async_client(self.timeout)
         self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
+        self._volume_cache_ttl_seconds = max(1, int(getattr(config, "LOKI_VOLUME_CACHE_TTL_SECONDS", self._cache_ttl_seconds)))
         self._metrics: Dict[str, float] = {
             "loki_query_total": 0,
             "loki_query_errors_total": 0,
@@ -57,6 +58,9 @@ class LokiService:
             "loki_query_duration_sum_seconds": 0.0,
         }
         self._labels_cache = TTLCache()
+        self._volume_cache = TTLCache()
+        self._volume_inflight: Dict[str, asyncio.Future] = {}
+        self._volume_inflight_lock = asyncio.Lock()
         self._http_client = LokiHttpClient(self._metrics)
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -103,6 +107,60 @@ class LokiService:
                 params[key] = val
         return params
 
+    def _normalize_range_for_step(
+        self,
+        start_ns: Optional[int],
+        end_ns: Optional[int],
+        step_s: int,
+    ) -> tuple[int, int]:
+        now_ns = int(time.time() * 1_000_000_000)
+        end = int(end_ns or now_ns)
+        start = int(start_ns or (end - 3_600 * 1_000_000_000))
+        step_ns = max(1, int(step_s)) * 1_000_000_000
+        start = (start // step_ns) * step_ns
+        end = (end // step_ns) * step_ns
+        if end <= start:
+            end = start + step_ns
+        return start, end
+
+    async def _get_or_build_volume(
+        self,
+        cache_key: str,
+        builder,
+    ) -> Dict[str, Any]:
+        cached = await self._volume_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        owner = False
+        async with self._volume_inflight_lock:
+            cached = await self._volume_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            future = self._volume_inflight.get(cache_key)
+            if future is None:
+                future = asyncio.get_running_loop().create_future()
+                self._volume_inflight[cache_key] = future
+                owner = True
+
+        if not owner:
+            return await future
+
+        try:
+            result = await builder()
+            await self._volume_cache.set(cache_key, result, self._volume_cache_ttl_seconds)
+            if not future.done():
+                future.set_result(result)
+            return result
+        except Exception as exc:
+            if not future.done():
+                future.set_exception(exc)
+                # Mark retrieved for the owner path when there are no waiters.
+                _ = future.exception()
+            raise
+        finally:
+            async with self._volume_inflight_lock:
+                self._volume_inflight.pop(cache_key, None)
 
     def _calculate_stats(self, data: Dict[str, Any]) -> Optional[LogStatsResponse]:
         try:
@@ -206,13 +264,34 @@ class LokiService:
         try:
             data = await self._timed_get_json(endpoint, params=params, headers=headers)
             if query_str and not data.get("data", {}).get("result"):
-                for candidate in build_service_fallback_queries(query_str):
-                    payload = await self._safe_get_json(
-                        endpoint, params={**params, "query": candidate}, headers=headers
-                    )
-                    if isinstance(payload, dict) and payload.get("data", {}).get("result"):
-                        data = payload
-                        break
+                candidates = build_service_fallback_queries(query_str)[: max(0, config.LOKI_MAX_FALLBACK_QUERIES)]
+                semaphore = asyncio.Semaphore(max(1, config.LOKI_FALLBACK_CONCURRENCY))
+
+                async def _query(candidate: str) -> Optional[Dict[str, Any]]:
+                    async with semaphore:
+                        return await self._safe_get_json(
+                            endpoint,
+                            params={**params, "query": candidate},
+                            headers=headers,
+                            quiet=True,
+                        )
+
+                tasks = [asyncio.create_task(_query(candidate)) for candidate in candidates]
+                try:
+                    for task in asyncio.as_completed(tasks):
+                        payload = await task
+                        if isinstance(payload, dict) and payload.get("data", {}).get("result"):
+                            data = payload
+                            for pending in tasks:
+                                if pending is not task and not pending.done():
+                                    pending.cancel()
+                            await asyncio.gather(*tasks, return_exceptions=True)
+                            break
+                finally:
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
             data_payload = data.get("data", {})
             self._normalize_stream_labels(data_payload)
             return LogResponse(status=data.get("status", "success"), data=data_payload)
@@ -359,31 +438,53 @@ class LokiService:
         step: int = 300,
         tenant_id: str = config.DEFAULT_ORG_ID,
     ) -> Dict[str, Any]:
-        base_candidates = [query_str, *build_service_fallback_queries(query_str)]
-        if "service_name" in query_str or "service.name" in query_str:
-            base_candidates += [
-                query_str.replace("service.name", "service_name"),
-                query_str.replace("service_name", "service"),
-                '{service=~".+"}',
-            ]
-        candidates = list(dict.fromkeys(base_candidates))[: max(1, config.LOKI_MAX_FALLBACK_QUERIES + 2)]
+        step = max(1, int(step))
+        start_ns, end_ns = self._normalize_range_for_step(start, end, step)
+        query_for_key = str(query_str or "").strip()
+        cache_key = f"{tenant_id}:{query_for_key}:{start_ns}:{end_ns}:{step}"
 
-        semaphore = asyncio.Semaphore(max(1, config.LOKI_FALLBACK_CONCURRENCY))
-        last_result: Dict[str, Any] = {"status": "success", "data": {"result": []}, "query": query_str, "step": step}
+        async def _build() -> Dict[str, Any]:
+            base_candidates = [query_str, *build_service_fallback_queries(query_str)]
+            if "service_name" in query_str or "service.name" in query_str:
+                base_candidates += [
+                    query_str.replace("service.name", "service_name"),
+                    query_str.replace("service_name", "service"),
+                    '{service=~".+"}',
+                ]
+            candidates = list(dict.fromkeys(base_candidates))[: max(1, config.LOKI_MAX_FALLBACK_QUERIES + 2)]
 
-        async def _aggregate(candidate: str) -> Dict[str, Any]:
-            async with semaphore:
-                return await self.aggregate_logs(
-                    f"sum(count_over_time({candidate}[{step}s]))", start, end, step, tenant_id=tenant_id
-                )
+            semaphore = asyncio.Semaphore(max(1, config.LOKI_FALLBACK_CONCURRENCY))
+            last_result: Dict[str, Any] = {"status": "success", "data": {"result": []}, "query": query_str, "step": step}
 
-        for task in asyncio.as_completed([_aggregate(c) for c in candidates]):
-            result = await task
-            last_result = result
-            if isinstance(result.get("data"), dict) and result["data"].get("result"):
-                return result
+            async def _aggregate(candidate: str) -> Dict[str, Any]:
+                async with semaphore:
+                    return await self.aggregate_logs(
+                        f"sum(count_over_time({candidate}[{step}s]))",
+                        start_ns,
+                        end_ns,
+                        step,
+                        tenant_id=tenant_id,
+                    )
 
-        return last_result
+            tasks = [asyncio.create_task(_aggregate(candidate)) for candidate in candidates]
+            try:
+                for task in asyncio.as_completed(tasks):
+                    result = await task
+                    last_result = result
+                    if isinstance(result.get("data"), dict) and result["data"].get("result"):
+                        for pending in tasks:
+                            if pending is not task and not pending.done():
+                                pending.cancel()
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                        return result
+                return last_result
+            finally:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        return await self._get_or_build_volume(cache_key, _build)
 
     @with_retry()
     @with_timeout()

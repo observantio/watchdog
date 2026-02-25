@@ -35,7 +35,6 @@ async def query_logs(
     step: Optional[int] = Query(None, description="Query resolution step in seconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ) -> LogResponse:
-    """Query logs using LogQL. Supports full LogQL syntax including label matchers, line filters, and parsers."""
     log_query = LogQuery(
         query=query,
         limit=limit,
@@ -56,7 +55,6 @@ async def query_logs_instant(
     limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Maximum log lines to return"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Query logs at a specific point in time. Returns logs matching the query at the specified timestamp (or now if not provided)."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.query_logs_instant(query, time, tenant_id=tenant_id)
 
@@ -68,7 +66,6 @@ async def get_labels(
     end: Optional[int] = Query(None, description=END_TIME_DESC),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Get all available log labels. Returns a list of label names that can be used in queries."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.get_labels(start, end, tenant_id=tenant_id)
 
@@ -82,7 +79,6 @@ async def get_label_values(
     query: Optional[str] = Query(None, description="Optional LogQL query filter"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Get all values for a specific label. Returns all unique values for the given label within the time range."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.get_label_values(label, start, end, query, tenant_id=tenant_id)
 
@@ -93,7 +89,6 @@ async def search_logs(
     payload: LogSearchRequest = Body(..., description="Log search request"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Search logs by text pattern with optional label filters."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.search_logs_by_pattern(
         pattern=payload.pattern,
@@ -111,7 +106,6 @@ async def filter_logs(
     payload: LogFilterRequest = Body(..., description="Log filtering request"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Filter logs by labels and optional text filters. Example labels: {"app": "nginx", "level": "error"}"""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.filter_logs(
         labels=payload.labels or {},
@@ -132,7 +126,6 @@ async def aggregate_logs(
     step: int = Query(60, ge=1, description="Query resolution step in seconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Aggregate logs using LogQL aggregation functions. Supports rate(), count_over_time(), bytes_over_time(), etc."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.aggregate_logs(query, start, end, step, tenant_id=tenant_id)
 
@@ -146,6 +139,5 @@ async def get_log_volume(
     step: int = Query(300, ge=1, description="Time step in seconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
 ):
-    """Get log volume over time. Returns the number of log entries over time for the given query."""
     tenant_id = resolve_tenant_id(request, current_user)
     return await loki_service.get_log_volume(query, start, end, step, tenant_id=tenant_id)

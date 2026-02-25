@@ -13,6 +13,10 @@ import { useAuth } from '../contexts/AuthContext'
 
 export function useDashboardData() {
   const { hasPermission } = useAuth()
+  const canReadAlerts = hasPermission('read:alerts')
+  const canReadDashboards = hasPermission('read:dashboards')
+  const canReadTraces = hasPermission('read:traces')
+  const canReadLogs = hasPermission('read:logs')
 
   // Health state
   const [health, setHealth] = useState(null)
@@ -66,52 +70,78 @@ export function useDashboardData() {
   }
 
   useEffect(() => {
+    let active = true
+    const nowMs = Date.now()
+    const endUs = nowMs * 1000
+    const startUs = endUs - (60 * 60 * 1000000)
+    const endNs = nowMs * 1000000
+    const startNs = endNs - (60 * 60 * 1000000000)
+
     // Fetch health
-    (async () => {
+    ;(async () => {
       try {
         const res = await fetchHealth()
-        setHealth(res)
+        if (active) setHealth(res)
       } catch {
-        setHealth(null)
+        if (active) setHealth(null)
       } finally {
-        setLoadingHealth(false)
+        if (active) setLoadingHealth(false)
       }
     })()
 
     // Fetch alerts
     ;(async () => {
+      if (!canReadAlerts) {
+        if (active) setLoadingAlerts(false)
+        return
+      }
       try {
-        setLoadingAlerts(true)
         const data = await getAlerts()
-        setAlertCount(Array.isArray(data) ? data.length : 0)
+        if (active) setAlertCount(Array.isArray(data) ? data.length : 0)
       } catch {
-        setAlertCount(0)
+        if (active) setAlertCount(0)
       } finally {
-        setLoadingAlerts(false)
+        if (active) setLoadingAlerts(false)
       }
     })()
 
     // Fetch traces
     ;(async () => {
+      if (!canReadTraces) {
+        if (active) {
+          setTraceCount(null)
+          setTraceErrorCount(null)
+          setLoadingTraces(false)
+        }
+        return
+      }
       try {
-        const endUs = Date.now() * 1000 // ms -> µs
-        const startUs = endUs - (60 * 60 * 1000000) // last 1 hour in µs
         const metrics = await fetchTraceMetrics({ start: Math.floor(startUs), end: Math.floor(endUs) })
-        setTraceCount(typeof metrics?.total_traces === 'number' ? metrics.total_traces : 0)
-        setTraceErrorCount(typeof metrics?.error_count === 'number' ? metrics.error_count : null)
+        if (active) {
+          setTraceCount(typeof metrics?.total_traces === 'number' ? metrics.total_traces : 0)
+          setTraceErrorCount(typeof metrics?.error_count === 'number' ? metrics.error_count : null)
+        }
       } catch {
-        setTraceCount(0)
-        setTraceErrorCount(null)
+        if (active) {
+          setTraceCount(0)
+          setTraceErrorCount(null)
+        }
       } finally {
-        setLoadingTraces(false)
+        if (active) setLoadingTraces(false)
       }
     })()
 
     // Fetch logs
     ;(async () => {
+      if (!canReadLogs) {
+        if (active) {
+          setLogVolume(null)
+          setLogVolumeSeries([])
+          setLoadingLogs(false)
+        }
+        return
+      }
       try {
-        const endNs = Date.now() * 1000000 // ms -> ns
-        const startNs = endNs - (60 * 60 * 1000000000) // last 1 hour in ns
         const vol = await getLogVolume('{service_name=~".+"}', { start: Math.floor(startNs), end: Math.floor(endNs), step: 60 })
         let total = 0
         try {
@@ -120,108 +150,115 @@ export function useDashboardData() {
           // If computing the total fails, default to 0 so the metric displays "0"
           total = 0
         }
-        setLogVolume(total)
-        // store series for LogVolume sparkline
-        try {
-          const series = getVolumeValues(vol)
-          setLogVolumeSeries(series)
-        } catch (e) {
-          setLogVolumeSeries([])
+        if (active) {
+          setLogVolume(total)
+          // store series for LogVolume sparkline
+          try {
+            const series = getVolumeValues(vol)
+            setLogVolumeSeries(series)
+          } catch (e) {
+            setLogVolumeSeries([])
+          }
         }
       } catch (e) { void e
         // On error fetching logs, show 0 instead of leaving the metric as N/A
-        setLogVolume(0)
-        setLogVolumeSeries([])
+        if (active) {
+          setLogVolume(0)
+          setLogVolumeSeries([])
+        }
       } finally {
-        setLoadingLogs(false)
+        if (active) setLoadingLogs(false)
       }
     })()
 
     // Fetch tempo volume
     ;(async () => {
+      if (!canReadTraces) {
+        if (active) {
+          setTempoVolumeSeries([])
+          setLoadingTempoVolume(false)
+        }
+        return
+      }
       try {
-        setLoadingTempoVolume(true)
-        const endUs = Date.now() * 1000 // ms -> µs
-        const startUs = endUs - (60 * 60 * 1000000) // last 1 hour in µs
         const res = await getTraceVolume({ start: Math.floor(startUs), end: Math.floor(endUs), step: 60 })
         try {
           const series = getVolumeValues(res)
-          setTempoVolumeSeries(series)
+          if (active) setTempoVolumeSeries(series)
         } catch (e) {
-          setTempoVolumeSeries([])
+          if (active) setTempoVolumeSeries([])
         }
       } catch (e) {
-        setTempoVolumeSeries([])
+        if (active) setTempoVolumeSeries([])
       } finally {
-        setLoadingTempoVolume(false)
+        if (active) setLoadingTempoVolume(false)
       }
     })()
 
     // Fetch dashboards
     ;(async () => {
-      if (!hasPermission('read:dashboards')) {
-        setLoadingDashboards(false)
+      if (!canReadDashboards) {
+        if (active) setLoadingDashboards(false)
         return
       }
       try {
-        setLoadingDashboards(true)
         const data = await searchDashboards()
-        setDashboardCount(Array.isArray(data) ? data.length : 0)
+        if (active) setDashboardCount(Array.isArray(data) ? data.length : 0)
       } catch {
-        setDashboardCount(0)
+        if (active) setDashboardCount(0)
       } finally {
-        setLoadingDashboards(false)
+        if (active) setLoadingDashboards(false)
       }
     })()
 
     // Fetch silences
     ;(async () => {
-      if (!hasPermission('read:alerts')) {
-        setLoadingSilences(false)
+      if (!canReadAlerts) {
+        if (active) setLoadingSilences(false)
         return
       }
       try {
-        setLoadingSilences(true)
         const data = await getSilences()
-        setSilenceCount(Array.isArray(data) ? data.length : 0)
+        if (active) setSilenceCount(Array.isArray(data) ? data.length : 0)
       } catch {
-        setSilenceCount(0)
+        if (active) setSilenceCount(0)
       } finally {
-        setLoadingSilences(false)
+        if (active) setLoadingSilences(false)
       }
     })()
 
     // Fetch datasources
     ;(async () => {
-      if (!hasPermission('read:dashboards')) {
-        setLoadingDatasources(false)
+      if (!canReadDashboards) {
+        if (active) setLoadingDatasources(false)
         return
       }
       try {
-        setLoadingDatasources(true)
         const data = await getDatasources()
-        setDatasourceCount(Array.isArray(data) ? data.length : 0)
+        if (active) setDatasourceCount(Array.isArray(data) ? data.length : 0)
       } catch {
-        setDatasourceCount(0)
+        if (active) setDatasourceCount(0)
       } finally {
-        setLoadingDatasources(false)
+        if (active) setLoadingDatasources(false)
       }
     })()
 
     // Fetch system metrics
     ;(async () => {
       try {
-        setLoadingSystemMetrics(true)
         const data = await fetchSystemMetrics()
-        setSystemMetrics(data)
+        if (active) setSystemMetrics(data)
       } catch {
-        setSystemMetrics(null)
+        if (active) setSystemMetrics(null)
       } finally {
-        setLoadingSystemMetrics(false)
+        if (active) setLoadingSystemMetrics(false)
       }
     })()
 
-  }, [])
+    return () => {
+      active = false
+    }
+  }, [canReadAlerts, canReadDashboards, canReadLogs, canReadTraces])
 
   return {
     // Health
