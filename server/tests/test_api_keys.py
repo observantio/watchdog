@@ -154,6 +154,25 @@ def test_default_api_key_cannot_be_shared():
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_default_api_key_otlp_token_cannot_be_regenerated():
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    owner = svc.create_user(UserCreate(username='owner-default-regen', email='owner-default-regen@example.com', password='pw', full_name='Owner'), tenant_id)
+    default_key = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='default-key-regen', key='org-default-regen-1'))
+    assert default_key.is_default is True
+
+    with pytest.raises(HTTPException) as exc:
+        svc.regenerate_api_key_otlp_token(owner.id, default_key.id)
+    assert exc.value.status_code == 403
+    assert "cannot be regenerated" in str(exc.value.detail).lower()
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
 def test_shared_key_cannot_be_set_as_default():
     svc = DatabaseAuthService()
     svc._lazy_init()
@@ -222,6 +241,33 @@ def test_regenerate_otlp_token_returns_one_time_reveal():
     listed_entry = next((k for k in listed if k.id == created.id), None)
     assert listed_entry is not None
     assert listed_entry.otlp_token is None
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_inactive_key_otlp_tokens_remain_valid_for_ingest():
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    owner = svc.create_user(
+        UserCreate(username='owner-ingest', email='owner-ingest@example.com', password='pw', full_name='Owner'),
+        tenant_id,
+    )
+    first = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='first-key', key='org-ingest-1'))
+    second = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='second-key', key='org-ingest-2'))
+
+    assert first.otlp_token
+    assert second.otlp_token
+    assert svc.validate_otlp_token(first.otlp_token) == 'org-ingest-1'
+    assert svc.validate_otlp_token(second.otlp_token) == 'org-ingest-2'
+
+    rotated_first = svc.regenerate_api_key_otlp_token(owner.id, first.id)
+    assert rotated_first.otlp_token
+    assert svc.validate_otlp_token(first.otlp_token) is None
+    assert svc.validate_otlp_token(rotated_first.otlp_token) == 'org-ingest-1'
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")

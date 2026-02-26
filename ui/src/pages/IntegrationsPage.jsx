@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   getNotificationChannels,
   createNotificationChannel,
@@ -12,7 +11,6 @@ import {
   updateJiraIntegration,
   deleteJiraIntegration,
   getAuthMode,
-  getGroups,
 } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
@@ -27,7 +25,7 @@ const VISIBILITY_TABS = [
   { key: 'group', label: 'Shared By Groups', icon: 'groups' },
 ]
 
-function JiraIntegrationForm({ value, onChange, groups = [], canUseSso = false }) {
+function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
   const next = (patch) => onChange({ ...value, ...patch })
   return (
     <div className="space-y-6">
@@ -215,7 +213,6 @@ export default function IntegrationsPage() {
   const [activeTab, setActiveTab] = useState('private')
   const [channels, setChannels] = useState([])
   const [allowedChannelTypes, setAllowedChannelTypes] = useState([])
-  const [groups, setGroups] = useState([])
   const [jiraIntegrations, setJiraIntegrations] = useState([])
   const [canUseSso, setCanUseSso] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -250,10 +247,9 @@ export default function IntegrationsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [channelsData, allowedTypesData, groupsData, jiraData, authModeData] = await Promise.all([
+      const [channelsData, allowedTypesData, jiraData, authModeData] = await Promise.all([
         getNotificationChannels().catch(() => []),
         getAllowedChannelTypes().catch(() => ({ allowedTypes: [] })),
-        getGroups().catch(() => []),
         listJiraIntegrations().catch(() => ({ items: [] })),
         getAuthMode().catch(() => ({ oidc_enabled: false })),
       ])
@@ -266,7 +262,6 @@ export default function IntegrationsPage() {
           : []
       )
       setAllowedChannelTypes(Array.isArray(allowedTypesData?.allowedTypes) ? allowedTypesData.allowedTypes : [])
-      setGroups(Array.isArray(groupsData) ? groupsData : [])
       setJiraIntegrations(
         Array.isArray(jiraData?.items)
           ? jiraData.items.map((integration) => ({
@@ -303,8 +298,6 @@ export default function IntegrationsPage() {
     if (t.includes('sms') || t.includes('pager')) return 'from-orange-100 to-orange-50 text-orange-700 dark:from-orange-900/20 dark:text-orange-300'
     return 'from-gray-100 to-gray-50 text-gray-700 dark:from-gray-900/20 dark:text-gray-300'
   }
-
-  const navigate = useNavigate()
 
   const openCreateChannel = () => {
     setEditingChannel(null)
@@ -679,7 +672,6 @@ export default function IntegrationsPage() {
         <JiraIntegrationForm
           value={jiraForm}
           onChange={setJiraForm}
-          groups={groups}
           canUseSso={canUseSso}
         />
 

@@ -241,7 +241,6 @@ def validate_otlp_token(service, token: str) -> Optional[str]:
                 .join(Tenant, Tenant.id == User.tenant_id)
                 .filter(
                     UserApiKey.otlp_token_hash == token_hash,
-                    UserApiKey.is_enabled.is_(True),
                     User.is_active.is_(True),
                     Tenant.is_active.is_(True),
                 )

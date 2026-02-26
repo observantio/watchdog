@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import PropTypes from 'prop-types'
 import { useDashboardData, useAgentActivity, usePersistentOrder } from '../hooks'
 import { getMetricsConfig } from '../constants/dashboard.jsx'
 import { MetricsGrid, DashboardLayout } from './dashboard/index.js'
@@ -35,4 +34,3 @@ export default function Dashboard() {
     </div>
   )
 }
-

@@ -5,7 +5,7 @@ import {
   getDatasources, createDatasource, updateDatasource, deleteDatasource,
   getFolders, createFolder, deleteFolder, getGroups,
   toggleDashboardHidden, toggleDatasourceHidden,
-  getDashboardFilterMeta, getDatasourceFilterMeta, getDashboard, createGrafanaBootstrapSession
+  getDashboard, createGrafanaBootstrapSession
 } from '../api'
 import { Button, ConfirmDialog } from '../components/ui'
 import PageHeader from '../components/ui/PageHeader'
@@ -29,8 +29,6 @@ export default function GrafanaPage() {
   const [groups, setGroups] = useState([])
   const [query, setQuery] = useLocalStorage('grafana-query', '')
   const [loading, setLoading] = useState(true)
-  const [dashboardMeta, setDashboardMeta] = useState({})
-  const [datasourceMeta, setDatasourceMeta] = useState({})
 
   const [filters, setFilters] = useLocalStorage('grafana-filters', {
     teamId: '',
@@ -120,8 +118,6 @@ export default function GrafanaPage() {
     setGrafanaConfirmDialog({ isOpen: false, path: null })
   }
 
-  const defaultKey = (user?.api_keys || []).find((k) => k.is_default) || (user?.api_keys || [])[0]
-
   const loadGroups = useCallback(async () => {
     try {
       const groupsData = await getGroups().catch(() => [])
@@ -133,7 +129,7 @@ export default function GrafanaPage() {
     setLoading(true)
     try {
       if (activeTab === 'dashboards') {
-        const [dashboardsData, foldersData, datasourcesData, dashboardMetaData] = await Promise.all([
+        const [dashboardsData, foldersData, datasourcesData] = await Promise.all([
           searchDashboards({
             query: query || undefined,
             teamId: filters.teamId || undefined,
@@ -141,22 +137,18 @@ export default function GrafanaPage() {
           }).catch(() => []),
           getFolders().catch(() => []),
           getDatasources().catch(() => []),
-          getDashboardFilterMeta().catch(() => ({})),
         ])
         setDashboards(dashboardsData)
         setFolders(foldersData)
         setDatasources(datasourcesData)
-        setDashboardMeta(dashboardMetaData)
       } else if (activeTab === 'datasources') {
-        const [datasourcesData, datasourceMetaData] = await Promise.all([
+        const [datasourcesData] = await Promise.all([
           getDatasources({
             teamId: filters.teamId || undefined,
             showHidden: filters.showHidden,
           }).catch(() => []),
-          getDatasourceFilterMeta().catch(() => ({})),
         ])
         setDatasources(datasourcesData)
-        setDatasourceMeta(datasourceMetaData)
       } else if (activeTab === 'folders') {
         const foldersData = await getFolders().catch(() => [])
         setFolders(foldersData)
@@ -593,8 +585,6 @@ export default function GrafanaPage() {
         onSearch={onSearch}
         onClearFilters={clearFilters}
         hasActiveFilters={hasActiveFilters}
-        dashboardMeta={dashboardMeta}
-        datasourceMeta={datasourceMeta}
         openDashboardEditor={openDashboardEditor}
         onOpenGrafana={openInGrafana}
         onDeleteDashboard={handleDeleteDashboard}

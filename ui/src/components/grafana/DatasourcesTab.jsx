@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { Button, Badge, Input } from '../ui'
 
-function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, meta, groups }) {
+function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, groups }) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
@@ -70,7 +70,7 @@ function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveF
 
 export default function DatasourcesTab({
   datasources, groups, filters, setFilters,
-  onSearch, onClearFilters, hasActiveFilters, meta,
+  onSearch, onClearFilters, hasActiveFilters,
   openDatasourceEditor, onDeleteDatasource,
   onToggleHidden, getDatasourceIcon
 }) {
@@ -122,7 +122,6 @@ export default function DatasourcesTab({
         onSearch={onSearch}
         onClearFilters={onClearFilters}
         hasActiveFilters={hasActiveFilters}
-        meta={meta}
         groups={groups}
       />
 
@@ -236,7 +235,6 @@ DatasourcesTab.propTypes = {
   onSearch: PropTypes.func,
   onClearFilters: PropTypes.func,
   hasActiveFilters: PropTypes.bool,
-  meta: PropTypes.object,
   openDatasourceEditor: PropTypes.func.isRequired,
   onDeleteDatasource: PropTypes.func.isRequired,
   onToggleHidden: PropTypes.func,

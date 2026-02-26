@@ -32,7 +32,7 @@ export default function LokiPage() {
     try {
       if (typeof localStorage === 'undefined') return {}
       const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-      return s
+      return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {}
     } catch {
       return {}
     }
@@ -108,9 +108,6 @@ export default function LokiPage() {
     try {
       const toSave = {
         selectedFilters,
-        selectedLabel,
-        selectedValue,
-        pattern,
         rangeMinutes,
         searchLimit,
         pageSize,
@@ -118,7 +115,10 @@ export default function LokiPage() {
         expandedLogs,
         searchText,
         queryMode,
-        customLogQL,
+        ...(selectedLabel ? { selectedLabel } : {}),
+        ...(selectedValue ? { selectedValue } : {}),
+        ...(pattern ? { pattern } : {}),
+        ...(customLogQL ? { customLogQL } : {}),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
     } catch {
@@ -174,11 +174,11 @@ export default function LokiPage() {
         try {
           const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
           let changed = false
-          if (s.selectedLabel === savedSelectedLabel) {
+          if (s.selectedLabel === savedSelectedLabel || Object.prototype.hasOwnProperty.call(s, 'selectedLabel')) {
             delete s.selectedLabel
             changed = true
           }
-          if (s.selectedValue) {
+          if (Object.prototype.hasOwnProperty.call(s, 'selectedValue')) {
             delete s.selectedValue
             changed = true
           }
@@ -341,16 +341,17 @@ export default function LokiPage() {
       const endNs = Date.now() * 1e6
 
       const res = await queryLogs({ query: q, start: Math.round(startNs), end: Math.round(endNs), limit: searchLimit })
-      setQueryResult(res)
+      const safeResult = res || { data: { result: [] } }
+      setQueryResult(safeResult)
 
       try {
-        setTopTerms(computeTopTermsFromResult(res, 12))
+        setTopTerms(computeTopTermsFromResult(safeResult, 12))
       } catch {
         setTopTerms([])
       }
 
-      const totalLogs = res.data?.result?.reduce((acc, stream) => acc + (stream.values?.length || 0), 0) || 0
-      await fetchAndSetVolume(selectorForVolume, startNs, endNs, totalLogs, res)
+      const totalLogs = safeResult?.data?.result?.reduce((acc, stream) => acc + (stream.values?.length || 0), 0) || 0
+      await fetchAndSetVolume(selectorForVolume, startNs, endNs, totalLogs, safeResult)
     } catch (e) {
       setError(e.message || 'Failed to query logs')
     } finally {
@@ -466,7 +467,7 @@ export default function LokiPage() {
                   ))}
                 </div>
 
-                <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Filter displayed logs..." className="px-3 py-1 bg-sre-surface border border-sre-border rounded text-sm text-sre-text w-64" />
+                <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Filter displayed logs..." className="px-3 py-1 bg-sre-surface border border-sre-border rounded text-sm text-sre-text w-full md:w-72 max-w-md" />
                 <HelpTooltip text="Filter the displayed log results by searching within the log content. Supports multiple keywords separated by spaces." />
               </div>
 

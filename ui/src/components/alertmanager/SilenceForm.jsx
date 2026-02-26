@@ -1,8 +1,7 @@
-import  { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import { Button, Input, Select } from '../ui'
 import HelpTooltip from '../HelpTooltip'
-import { useAuth } from '../../contexts/AuthContext'
 import { getGroups } from '../../api'
 
 /**

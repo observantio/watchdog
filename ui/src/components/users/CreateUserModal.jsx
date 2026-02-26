@@ -160,8 +160,9 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
                   // live validation
                   if (errors.username) {
                     if (lower && USERNAME_REGEX.test(lower)) {
-                      const { username, ...rest } = errors
-                      setErrors(rest)
+                      const nextErrors = { ...errors }
+                      delete nextErrors.username
+                      setErrors(nextErrors)
                     }
                   }
                 }}
@@ -201,8 +202,9 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
                       const val = e.target.value
                       setFormData({ ...formData, password: val })
                       if (errors.password && val.length >= 8) {
-                        const { password, ...rest } = errors
-                        setErrors(rest)
+                        const nextErrors = { ...errors }
+                        delete nextErrors.password
+                        setErrors(nextErrors)
                       }
                     }}
                     required={requirePassword}

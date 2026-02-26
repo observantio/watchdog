@@ -3,7 +3,6 @@ import { API_BASE } from './utils/constants'
 let authToken = null
 let setupToken = null
 let userOrgIds = []
-let isPromotingOrgId = false
 
 export function setSetupToken(token) {
   setupToken = token
@@ -29,28 +28,6 @@ export function setUserOrgIds(orgIds) {
 
 export function getUserOrgIds() {
   return userOrgIds && userOrgIds.length > 0 ? userOrgIds : []
-}
-
-async function promoteOrgId(orgId) {
-  if (!authToken || !orgId || isPromotingOrgId) return
-  if (userOrgIds[0] === orgId) return
-  isPromotingOrgId = true
-  try {
-    await fetch(`${API_BASE}/api/auth/me`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
-      body: JSON.stringify({ org_id: orgId })
-    })
-    userOrgIds = [orgId, ...userOrgIds.filter((id) => id !== orgId)]
-  } catch (e) {
-    console.error('Failed to promote org ID', e)
-  } finally {
-    isPromotingOrgId = false
-  }
 }
 
 async function requestWithHeaders(path, opts = {}, headers = {}) {

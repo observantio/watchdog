@@ -333,6 +333,11 @@ def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
             raise ValueError("API key not found")
         if api_key.user_id != user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to rotate API key token")
+        if bool(getattr(api_key, "is_default", False)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Default key OTLP token cannot be regenerated",
+            )
 
         now = datetime.now(timezone.utc)
         raw_otlp_token = service._generate_otlp_token()

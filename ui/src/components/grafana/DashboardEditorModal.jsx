@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Button, Input, Modal, Select } from '../../components/ui'
 import HelpTooltip from '../../components/HelpTooltip'
 import VisibilitySelector from './VisibilitySelector'

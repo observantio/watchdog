@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getAlerts, getSilences, getAlertRules, getNotificationChannels,
 } from '../api'
@@ -11,8 +11,11 @@ export const useAlertManagerData = () => {
   const [channels, setChannels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const requestIdRef = useRef(0)
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
     setLoading(true)
     setError(null)
     try {
@@ -22,20 +25,27 @@ export const useAlertManagerData = () => {
         getAlertRules().catch(() => []),
         getNotificationChannels().catch(() => [])
       ])
+      if (requestId !== requestIdRef.current) return
       setAlerts(alertsData)
       setSilences((silencesData || []).filter(s => !(s?.status?.state && String(s.status.state).toLowerCase() === 'expired')))
       setRules(Array.isArray(rulesData) ? rulesData.map(normalizeRuleForUI) : [])
       setChannels(channelsData)
     } catch (e) {
+      if (requestId !== requestIdRef.current) return
       setError(e.message || String(e))
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) {
+        setLoading(false)
+      }
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadData()
-  }, [])
+    return () => {
+      requestIdRef.current += 1
+    }
+  }, [loadData])
 
   const stats = useMemo(() => ({
     totalAlerts: alerts.length,

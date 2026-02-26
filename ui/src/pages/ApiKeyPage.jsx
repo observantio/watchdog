@@ -225,7 +225,6 @@ export default function ApiKeyPage() {
     const found = apiKeys.find((k) => k.id === orgId)
     return found?.key || user?.org_id || ''
   }, [apiKeys, orgId, user])
-
   const ownedApiKeys = useMemo(() => apiKeys.filter((k) => !k.is_shared), [apiKeys])
 
   // YAML modal state
@@ -259,10 +258,11 @@ export default function ApiKeyPage() {
   const enabledCount = apiKeys.filter((k) => k.is_enabled).length
   const activeOwnedKeyCandidate = ownedApiKeys.find((k) => k.is_enabled) || ownedApiKeys.find((k) => k.is_default) || ownedApiKeys[0] || null
   const isYamlKeyShared = Boolean(apiKeys.find((k) => k.id === yamlModalKeyId)?.is_shared)
+  const isYamlKeyDefault = Boolean(apiKeys.find((k) => k.id === yamlModalKeyId)?.is_default)
   const canUseYaml = !isYamlKeyShared && Boolean(yamlModalToken)
 
   const handleRegenerateYamlToken = async () => {
-    if (!yamlModalKeyId || isYamlKeyShared) return
+    if (!yamlModalKeyId || isYamlKeyShared || isYamlKeyDefault) return
     setRegeneratingToken(true)
     try {
       const updated = await api.regenerateApiKeyOtlpToken(yamlModalKeyId)
@@ -547,7 +547,7 @@ export default function ApiKeyPage() {
                           {yamlShowToken ? 'Hide' : 'Show'}
                         </Button>
                         <Button size="sm" variant="secondary" onClick={() => handleCopy(yamlModalToken || '', 'OTLP token copied to clipboard')} aria-label="Copy OTLP token" disabled={!yamlModalToken}>Copy</Button>
-                        <Button size="sm" variant="secondary" onClick={handleRegenerateYamlToken} loading={regeneratingToken} aria-label="Regenerate OTLP token">
+                        <Button size="sm" variant="secondary" onClick={handleRegenerateYamlToken} loading={regeneratingToken} aria-label="Regenerate OTLP token" disabled={isYamlKeyDefault}>
                           Regenerate
                         </Button>
                       </>
@@ -558,7 +558,10 @@ export default function ApiKeyPage() {
                   </div>
                 </div>
 
-                <div className="text-xs text-sre-text-muted mt-2">Secure OTLP Gateway: the gateway validates the token and maps it to the tenant (X-Scope-OrgID). Do not expose raw org keys.</div>
+                <div className="text-xs text-sre-text-muted mt-2">
+                  Secure OTLP Gateway: the gateway validates the token and maps it to the tenant (X-Scope-OrgID). Do not expose raw org keys.
+                  {isYamlKeyDefault ? ' Default key OTLP token regeneration is disabled by policy.' : ''}
+                </div>
               </div>
             </div>
 

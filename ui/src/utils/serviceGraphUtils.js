@@ -116,7 +116,7 @@ export function buildServiceGraphData(traces) {
   }
 
   // Mark start/end services: a start has zero inbound, an end has zero outbound.
-  for (const [name, stats] of services.entries()) {
+  for (const [, stats] of services.entries()) {
     stats.isStart = stats.inbound === 0
     stats.isEnd = stats.outbound === 0
   }

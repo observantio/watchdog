@@ -28,7 +28,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [oidcLoading, setOidcLoading] = useState(false)
   const { login, startOIDCLogin, authMode, authModeLoading, isAuthenticated, loading: authLoading } = useAuth()
-  const totalSetupSteps = 3
   const navigate = useNavigate()
 
   // If user is already authenticated, redirect away from the login page

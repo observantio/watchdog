@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react'
+import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useAutoRefresh } from '../hooks'
 import PageHeader from '../components/ui/PageHeader'
 import AutoRefreshControl from '../components/ui/AutoRefreshControl'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { fetchTempoServices, searchTraces, getTrace } from '../api'
-import { Card, Button, Select, Input, Alert, Badge, Spinner } from '../components/ui'
+import { Card, Button, Select, Input, Alert, Spinner } from '../components/ui'
 import ServiceGraph from '../components/tempo/ServiceGraph'
 const TraceResults = lazy(() => import('../components/tempo/TraceResults'))
 const TraceTimeline = lazy(() => import('../components/tempo/TraceTimeline'))
@@ -662,7 +662,7 @@ export default function TempoPage() {
                     <button type="button" className="btn btn-sm bg-sre-primary text-white px-3 py-1 rounded text-xs" onClick={showSelectedOnMap} disabled={selectedTraceIds.size === 0}>Show selected on Map</button>
                   </div>
                 </div>
-                <TraceResults traces={pagedTraces} loading={loading} handleTraceClick={handleTraceClick} viewMode={viewMode} selectedIds={selectedTraceIds} onToggleSelect={toggleSelectTrace} onShowOnMap={showTraceOnMap} />
+                <TraceResults traces={pagedTraces} loading={loading} handleTraceClick={handleTraceClick} selectedIds={selectedTraceIds} onToggleSelect={toggleSelectTrace} onShowOnMap={showTraceOnMap} />
             {filteredTraces.length > pageSize && (
               <div className="mt-4 flex items-center justify-between text-xs text-sre-text-muted">
                 <span>Page {tracePage} of {totalPages}</span>

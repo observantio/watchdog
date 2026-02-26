@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Input, Textarea, Modal, ConfirmDialog, Badge, Alert, Checkbox } from '../components/ui';
+import { Card, Button, Input, Modal, ConfirmDialog, Alert } from '../components/ui';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions';
 import { useToast } from '../contexts/ToastContext';
@@ -9,7 +9,7 @@ import RuleEditorWizard from '../components/alertmanager/RuleEditorWizard'
 import GroupForm from '../components/groups/GroupForm'
 import GroupPermissions from '../components/groups/GroupPermissions'
 import GroupCard from '../components/groups/GroupCard'
-import { getCategoryDescription, groupPermissionsByResource, filterGroups, sortUsersByDisplayName } from '../utils/groupManagementUtils';
+import { groupPermissionsByResource, filterGroups, sortUsersByDisplayName } from '../utils/groupManagementUtils';
 import * as api from '../api';
 
 export default function GroupsPage() {
@@ -213,9 +213,6 @@ export default function GroupsPage() {
     });
   };
 
-  const getPermLabel = (perm) => perm.display_name || perm.name || perm.id || 'Permission';
-  const getPermDescription = (perm) => perm.description || perm.name || '';
-
   const filteredGroups = filterGroups(groups, searchQuery);
   const sortedUsers = sortUsersByDisplayName(users);
   const permissionsByResource = groupPermissionsByResource(permissions);
@@ -272,7 +269,7 @@ export default function GroupsPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sre-primary"></div>
         </div>
       ) : (
-        <div className="grid gap-6 grid-cols-2">
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
           {filteredGroups.map(group => {
             const usersCount = (users || []).filter(u => (u.group_ids || []).includes(group.id)).length
             const permsCount = (group.permissions || []).length || 0

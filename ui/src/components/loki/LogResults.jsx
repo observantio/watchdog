@@ -1,11 +1,35 @@
 import { Badge, Spinner } from '../../components/ui'
-import React, { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
 import { FixedSizeList as List } from 'react-window'
 import { formatNsToIso, formatRelativeTime, parseLogLine } from '../../utils/formatters'
 import { getLogLevel } from '../../utils/helpers'
 
 const MAX_STREAMS_RENDER = 30
+const STREAM_CONTAINER_MIN_HEIGHT = 448
+const STREAM_CONTAINER_MAX_HEIGHT = 800
+
+function hashString(value = '') {
+  let hash = 5381
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(i)
+  }
+  return Math.abs(hash).toString(36)
+}
+
+function normalizeStreamIdentity(stream) {
+  if (!stream || typeof stream !== 'object') return ''
+  const sorted = Object.entries(stream)
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    .map(([key, value]) => `${String(key)}=${String(value)}`)
+  return sorted.join('|')
+}
+
+function buildLogItemKey(streamKey, value, index) {
+  const ts = String(value?.[0] || '')
+  const line = typeof value?.[1] === 'string' ? value[1] : JSON.stringify(value?.[1] ?? '')
+  return `${streamKey}-${ts}-${hashString(line.slice(0, 140))}-${index}`
+}
 
 function normalizeStreamLabelValue(label, value) {
   if (typeof value !== 'string') return value
@@ -22,9 +46,51 @@ function normalizeStreamLabelValue(label, value) {
   return value
 }
 
-export default function LogResults({ queryResult, loading, filterDisplayedLogs, searchText, viewMode, expandedLogs, toggleLogExpand, copyToClipboard, handleTraceClick, handleStreamClick, streamsPerPage }) {
-  // Hooks must be called at the top level (before early returns)
+export default function LogResults({
+  queryResult,
+  loading,
+  filterDisplayedLogs,
+  searchText,
+  viewMode,
+  expandedLogs,
+  toggleLogExpand,
+  copyToClipboard,
+  streamsPerPage,
+}) {
   const [page, setPage] = useState(1)
+  const normalizedSearch = String(searchText || '').trim().toLowerCase()
+  const hasActiveFilter = normalizedSearch.length > 0
+
+  const filteredStreams = useMemo(() => {
+    return (queryResult?.data?.result || [])
+      .map((stream) => {
+        if (hasActiveFilter) {
+          const tokens = normalizedSearch.split(/\s+/).filter(Boolean)
+          const values = (stream?.values || []).filter((v) => {
+            const logText = typeof v[1] === 'string' ? v[1] : JSON.stringify(v[1])
+            const labelsText = stream.stream ? Object.values(stream.stream).join(' ') : ''
+            const hay = (logText + ' ' + labelsText).toLowerCase()
+            return tokens.every((token) => hay.includes(token))
+          })
+          return { stream, values }
+        }
+        const values = filterDisplayedLogs ? filterDisplayedLogs(stream) : (stream?.values || [])
+        return { stream, values }
+      })
+      .filter((entry) => entry.values && entry.values.length > 0)
+  }, [queryResult, hasActiveFilter, normalizedSearch, filterDisplayedLogs])
+
+  const perPage = (typeof streamsPerPage === 'number' && streamsPerPage > 0) ? streamsPerPage : MAX_STREAMS_RENDER
+  const totalStreams = filteredStreams.length
+  const totalPages = Math.max(1, Math.ceil(totalStreams / perPage))
+
+  useEffect(() => {
+    setPage(1)
+  }, [queryResult, normalizedSearch, perPage])
+
+  useEffect(() => {
+    setPage((current) => Math.min(Math.max(current, 1), totalPages))
+  }, [totalPages])
 
   if (loading) {
     return (
@@ -47,26 +113,6 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
     )
   }
 
-  const normalizedSearch = String(searchText || '').trim().toLowerCase()
-  const hasActiveFilter = normalizedSearch.length > 0
-
-  const filteredStreams = (queryResult?.data?.result || [])
-    .map((stream) => {
-      if (hasActiveFilter) {
-        const tokens = normalizedSearch.split(/\s+/).filter(Boolean)
-        const values = (stream?.values || []).filter((v) => {
-          const logText = typeof v[1] === 'string' ? v[1] : JSON.stringify(v[1])
-          const labelsText = stream.stream ? Object.values(stream.stream).join(' ') : ''
-          const hay = (logText + ' ' + labelsText).toLowerCase()
-          return tokens.every((t) => hay.includes(t))
-        })
-        return { stream, values }
-      }
-      const values = filterDisplayedLogs ? filterDisplayedLogs(stream) : (stream?.values || [])
-      return { stream, values }
-    })
-    .filter((entry) => entry.values && entry.values.length > 0)
-
   if (hasActiveFilter && filteredStreams.length === 0) {
     return (
       <div className="text-center py-16">
@@ -75,17 +121,12 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
       </div>
     )
   }
-
-  // pagination support (streamsPerPage prop overrides MAX_STREAMS_RENDER)
-  const perPage = (typeof streamsPerPage === 'number' && streamsPerPage > 0) ? streamsPerPage : MAX_STREAMS_RENDER
-  const totalStreams = filteredStreams.length
-  const totalPages = Math.max(1, Math.ceil(totalStreams / perPage))
   const startIndex = Math.min((page - 1) * perPage, Math.max(0, totalStreams - 1))
   const endIndex = Math.min(startIndex + perPage, totalStreams)
   const visibleStreams = filteredStreams.slice(startIndex, endIndex)
 
   return (
-    <div className="space-y-4 overflow-auto scrollbar-thin h-[70rem] pr-4">
+    <div className="space-y-4 overflow-auto scrollbar-thin max-h-[calc(100vh-18rem)] min-h-[28rem] pr-2 md:pr-4">
       {totalStreams > perPage && (
         <div className="flex items-center justify-between text-xs text-sre-text-muted">
           <div>Showing {totalStreams === 0 ? 0 : startIndex + 1}–{endIndex} of {totalStreams} streams</div>
@@ -113,9 +154,9 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
       )}
 
       {visibleStreams.map(({ stream, values: filteredValues }, streamIdx) => {
-        const streamKey = stream.stream
-          ? Object.entries(stream.stream).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => `${k}=${v}`).join('|')
-          : `stream-${streamIdx}`
+        const rawStreamKey = normalizeStreamIdentity(stream.stream)
+        const hashed = rawStreamKey ? `${hashString(rawStreamKey)}-${rawStreamKey.length}` : `fallback-${streamIdx}`
+        const streamKey = `stream-${hashed}-${startIndex + streamIdx}`
 
         return (
           <div key={streamKey} className="border border-sre-border rounded-lg overflow-hidden">
@@ -136,13 +177,21 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
 
             <div className="divide-y divide-sre-border">
               {(() => {
-                const displayValues = filteredValues.slice().reverse().slice(0, viewMode === 'compact' ? 200 : 100)
+                const displayValues = filteredValues
+                  .slice()
+                  .reverse()
+                  .slice(0, viewMode === 'compact' ? 200 : 100)
+                  .map((value, index) => ({
+                    value,
+                    key: buildLogItemKey(streamKey, value, index),
+                  }))
                 const rowHeight = viewMode === 'compact' ? 36 : viewMode === 'raw' ? 140 : 120
-                const listHeight = Math.min(displayValues.length, 20) * rowHeight || rowHeight
-                const Row = ({ index, style }) => {
-                  const v = displayValues[index]
+                const listHeight = Math.max(rowHeight, Math.min(displayValues.length * rowHeight, STREAM_CONTAINER_MAX_HEIGHT))
+                const Row = ({ index, style, data }) => {
+                  const row = data[index]
+                  const v = row.value
                   const formatted = parseLogLine(v[1])
-                  const logKey = `${streamIdx}-${v[0]}-${String(v[1]).substring(0, 50).replaceAll(/[^a-zA-Z0-9]/g, '')}`
+                  const logKey = row.key
                   const isExpanded = !!expandedLogs[logKey]
                   const badge = getLogLevel(v[1])
 
@@ -158,7 +207,7 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
                   // compact view
                   if (viewMode === 'compact') {
                     return (
-                      <div style={style} key={logKey} className="px-4 py-2 hover:bg-sre-surface/50 transition-colors text-xs font-mono">
+                      <div style={style} className="px-4 py-2 hover:bg-sre-surface/50 transition-colors text-xs font-mono">
                         <span className="text-sre-text-muted mr-3">{formatNsToIso(v[0]).substring(11,19)}</span>
                         <span className={`${badge.bgClass} px-2 py-0.5 rounded text-[10px] font-bold mr-2`}>{badge.text}</span>
                         <span className={getLogLevel(v[1]).color}>{String(v[1]).substring(0, 150)}{String(v[1]).length > 150 ? '...' : ''}</span>
@@ -169,7 +218,7 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
                   // raw view
                   if (viewMode === 'raw') {
                     return (
-                      <div style={style} key={logKey} className="px-4 py-2 hover:bg-sre-surface/50 transition-colors">
+                      <div style={style} className="px-4 py-2 hover:bg-sre-surface/50 transition-colors">
                         <pre className="text-xs font-mono text-sre-text whitespace-pre-wrap break-all">{JSON.stringify({timestamp: v[0], log: v[1]}, null, 2)}</pre>
                       </div>
                     )
@@ -177,7 +226,7 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
 
                   // default (expanded) view
                   return (
-                    <div style={style} key={logKey} className="px-4 py-3 hover:bg-sre-surface/50 transition-colors">
+                    <div style={style} className="px-4 py-3 hover:bg-sre-surface/50 transition-colors">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-3">
                           <span className={`${badge.bgClass} px-2 py-1 rounded text-[10px] font-bold border`}>{badge.text}</span>
@@ -187,11 +236,11 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => copyToClipboard(v[1])} className="p-1 hover:bg-sre-bg-alt rounded text-sre-text-muted hover:text-sre-text" title="Copy log">
+                          <button type="button" onClick={() => copyToClipboard(v[1])} className="p-1 hover:bg-sre-bg-alt rounded text-sre-text-muted hover:text-sre-text" title="Copy log">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                           </button>
                           {formatted.type === 'json' && (
-                            <button onClick={() => toggleLogExpand(logKey)} className="p-1 hover:bg-sre-bg-alt rounded text-sre-text-muted hover:text-sre-text">
+                            <button type="button" onClick={() => toggleLogExpand(logKey)} className="p-1 hover:bg-sre-bg-alt rounded text-sre-text-muted hover:text-sre-text">
                               <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
                             </button>
                           )}
@@ -207,14 +256,14 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
                             </div>
                           ))}
                           {!isExpanded && Object.keys(formatted.data).length > 5 && (
-                            <button onClick={() => toggleLogExpand(logKey)} className="text-xs text-sre-primary hover:underline mt-2">Show {Object.keys(formatted.data).length - 5} more fields...</button>
+                            <button type="button" onClick={() => toggleLogExpand(logKey)} className="text-xs text-sre-primary hover:underline mt-2">Show {Object.keys(formatted.data).length - 5} more fields...</button>
                           )}
                         </div>
                       ) : (
                         <div className={`mt-2 text-sm font-mono ${getLogLevel(formatted.data).color} break-all`}>
                           {displayText}
                           {!isExpanded && formatted.data.length > 300 && (
-                            <button onClick={() => toggleLogExpand(logKey)} className="text-xs text-sre-primary hover:underline ml-2">Show more</button>
+                            <button type="button" onClick={() => toggleLogExpand(logKey)} className="text-xs text-sre-primary hover:underline ml-2">Show more</button>
                           )}
                         </div>
                       )}
@@ -224,8 +273,15 @@ export default function LogResults({ queryResult, loading, filterDisplayedLogs, 
 
                 // render virtualized list
                 return (
-                  <div style={{ maxHeight: Math.min(displayValues.length * rowHeight, 800), overflow: 'hidden' }}>
-                    <List height={listHeight} itemCount={displayValues.length} itemSize={rowHeight} width="100%">
+                  <div style={{ minHeight: STREAM_CONTAINER_MIN_HEIGHT, maxHeight: STREAM_CONTAINER_MAX_HEIGHT, overflow: 'hidden' }}>
+                    <List
+                      height={listHeight}
+                      itemCount={displayValues.length}
+                      itemSize={rowHeight}
+                      itemData={displayValues}
+                      itemKey={(index, data) => data[index].key}
+                      width="100%"
+                    >
                       {Row}
                     </List>
                   </div>
@@ -248,7 +304,5 @@ LogResults.propTypes = {
   expandedLogs: PropTypes.object,
   toggleLogExpand: PropTypes.func.isRequired,
   copyToClipboard: PropTypes.func.isRequired,
-  handleTraceClick: PropTypes.func,
-  handleStreamClick: PropTypes.func,
   streamsPerPage: PropTypes.number,
 }

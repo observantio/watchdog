@@ -6,17 +6,23 @@ export function useAgentActivity() {
   const [loadingAgents, setLoadingAgents] = useState(true)
 
   useEffect(() => {
-    (async () => {
+    let active = true
+
+    ;(async () => {
       try {
-        setLoadingAgents(true)
+        if (active) setLoadingAgents(true)
         const res = await getActiveAgents()
-        setAgentActivity(Array.isArray(res) ? res : [])
+        if (active) setAgentActivity(Array.isArray(res) ? res : [])
       } catch (e) { void e
-        setAgentActivity([])
+        if (active) setAgentActivity([])
       } finally {
-        setLoadingAgents(false)
+        if (active) setLoadingAgents(false)
       }
     })()
+
+    return () => {
+      active = false
+    }
   }, [])
 
   return {

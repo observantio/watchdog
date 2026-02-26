@@ -69,18 +69,10 @@ function FilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFil
 
 export default function DashboardsTab({
   dashboards, groups, query, setQuery, filters, setFilters,
-  onSearch, onClearFilters, hasActiveFilters, meta,
+  onSearch, onClearFilters, hasActiveFilters,
   openDashboardEditor, onOpenGrafana, onDeleteDashboard,
   onToggleHidden
 }) {
-  // Create a URL slug from the dashboard title (fallback when slug is empty)
-  const slugify = (s = '') => String(s || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-
-
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -119,7 +111,6 @@ export default function DashboardsTab({
         onSearch={onSearch}
         onClearFilters={onClearFilters}
         hasActiveFilters={hasActiveFilters}
-        meta={meta}
         groups={groups}
       />
 
@@ -236,7 +227,6 @@ DashboardsTab.propTypes = {
   onSearch: PropTypes.func.isRequired,
   onClearFilters: PropTypes.func,
   hasActiveFilters: PropTypes.bool,
-  meta: PropTypes.object,
   openDashboardEditor: PropTypes.func.isRequired,
   onOpenGrafana: PropTypes.func.isRequired,
   onDeleteDashboard: PropTypes.func.isRequired,

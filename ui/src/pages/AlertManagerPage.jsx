@@ -12,12 +12,11 @@ import { useLocalStorage, useAlertManagerData } from '../hooks'
 import { EMPTY_CONFIRM_DIALOG, DEFAULT_ALERTMANAGER_METRIC_KEYS } from '../utils/alertmanagerChannelUtils'
 import {
   shouldIgnoreAlertManagerError,
-  normalizeRuleForUI,
   buildRulePayload,
 } from '../utils/alertmanagerRuleUtils'
 
 export default function AlertManagerPage() {
-  const { user, hasPermission } = useAuth()
+  const { user } = useAuth()
   const apiKeys = useMemo(() => user?.api_keys || [], [user?.api_keys])
   const [activeTab, setActiveTab] = useLocalStorage('alertmanager-active-tab', 'alerts')
   const [showRuleEditor, setShowRuleEditor] = useState(false)
@@ -443,14 +442,6 @@ export default function AlertManagerPage() {
                   {rules.length > 0 ? (
                     <div className="grid gap-4">
                       {rules.map((rule) => {
-                        let severityVariant;
-                        if (rule.severity === 'critical') {
-                          severityVariant = 'error';
-                        } else if (rule.severity === 'warning') {
-                          severityVariant = 'warning';
-                        } else {
-                          severityVariant = 'info';
-                        }
                         return (
                           <div
                             key={rule.id}

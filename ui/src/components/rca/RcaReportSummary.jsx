@@ -32,7 +32,7 @@ export default function RcaReportSummary({ report, compact = false }) {
           <div className="flex-1 min-w-[150px]"><MetricCard label="Suppressed" value={suppressionTotal} status={suppressionTotal > 0 ? 'warning' : 'success'} /></div>
         )}
         {quality?.gating_profile && (
-          <div className="flex-1 min-w-[150px]">
+          <div className="flex-1 min-w-[180px]">
             <MetricCard
               label="Gating Profile"
               value={<span className="block truncate text-base font-mono max-w-[10rem]" title={gatingProfile}>{gatingProfileShort}</span>}

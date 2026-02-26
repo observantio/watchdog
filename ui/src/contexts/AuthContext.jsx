@@ -55,11 +55,6 @@ function resolveActiveOrgId(userData) {
 }
 
 export function AuthProvider({ children }) {
-  // Token is intentionally kept in-memory only. Authentication is cookie-first
-  // (httpOnly, secure). Do NOT persist tokens to localStorage — this removes the
-  // attack surface of long-lived tokens in client storage while remaining
-  // backward-compatible for API-key flows that set an in-memory token.
-  const TOKEN_STORAGE_KEY = null
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
   const [authMode, setAuthMode] = useState({
@@ -114,11 +109,10 @@ export function AuthProvider({ children }) {
       const userData = await api.getCurrentUserNoRedirect()
       setUser(userData)
       api.setUserOrgIds(resolveActiveOrgId(userData))
-    } catch (error) {
+    } catch {
       // Do NOT call logout() here — if /me fails we simply treat the user
       // as unauthenticated and let the UI remain in-place (avoids flashing
       // the login screen on reload). Callers can use `logout()` explicitly.
-      console.debug('AuthProvider: initial user load failed (treating as unauthenticated):', error?.message || error)
       setUser(null)
     } finally {
       setLoading(false)

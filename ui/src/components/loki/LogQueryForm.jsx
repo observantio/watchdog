@@ -32,9 +32,6 @@ export default function LogQueryForm({
   loading = false,
   onRemoveFilter = undefined,
 }) {
-  // find the lowest option - used when validating props
-  const minOption = Math.min(...MAX_LOG_OPTIONS);
-
   return (
     <form onSubmit={runQuery} className="space-y-4">
       <div className="flex items-center gap-4 pb-3 border-b border-sre-border">
@@ -137,7 +134,7 @@ export default function LogQueryForm({
           >
             {MAX_LOG_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
-          <Button type="submit" size="sm" loading={!!loading}>Run Query</Button>
+          <Button type="submit" size="sm" disabled={loading}>{loading ? 'Running...' : 'Run Query'}</Button>
         </div>
       </div>
 

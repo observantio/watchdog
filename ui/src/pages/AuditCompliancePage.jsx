@@ -203,7 +203,7 @@ export default function AuditCompliancePage() {
     await applyPage(nextFilters)
   }
 
-  const canNext = !loading && items.length > 0
+  const canNext = !loading && hasMore
   const pageStart = items.length ? filters.offset + 1 : 0
   const pageEnd = items.length ? Math.min(filters.offset + items.length, filters.offset + filters.limit) : 0
   const pageLabel = `Showing ${pageStart} - ${pageEnd} (limit ${filters.limit})`
@@ -350,7 +350,7 @@ export default function AuditCompliancePage() {
         </div>
 
         <div className="mt-3 flex items-center justify-between text-xs text-sre-text-muted">
-          <div aria-live="polite">{pageLabel}</div>
+          <div aria-live="polite">{pageLabel}{hasMore ? '' : ' • End reached'}</div>
           <div className="flex gap-2 items-center">
 
 

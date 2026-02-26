@@ -2,10 +2,16 @@ import PropTypes from 'prop-types'
 import { Badge, Button, Card, Spinner } from '../ui'
 
 function statusVariant(status) {
-  if (status === 'completed') return 'success'
-  if (status === 'failed') return 'error'
-  if (status === 'running') return 'warning'
+  const normalized = String(status || '').toLowerCase()
+  if (normalized === 'completed') return 'success'
+  if (normalized === 'failed') return 'error'
+  if (normalized === 'running') return 'warning'
   return 'info'
+}
+
+function displayStatus(status) {
+  const normalized = String(status || '').toLowerCase()
+  return normalized || 'unknown'
 }
 
 export default function RcaJobQueuePanel({
@@ -13,7 +19,6 @@ export default function RcaJobQueuePanel({
   loading,
   selectedJobId,
   onSelectJob,
-  onRefresh,
   onReload,
   onDelete,
   onView,
@@ -33,6 +38,7 @@ export default function RcaJobQueuePanel({
         <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
           {jobs.map((job) => {
             const isSelected = selectedJobId === job.job_id
+            const statusText = displayStatus(job.status)
             return (
               <div
                 key={job.job_id}
@@ -82,10 +88,10 @@ export default function RcaJobQueuePanel({
                           <span className="material-icons text-base text-sre-error">delete</span>
                         </Button>
                       )}
-                      <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
+                      <Badge variant={statusVariant(statusText)}>{statusText}</Badge>
                     </div>
                   ) : (
-                    <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
+                    <Badge variant={statusVariant(statusText)}>{statusText}</Badge>
                   )}
                 </div>
                 {job.report_id && (
@@ -113,7 +119,7 @@ RcaJobQueuePanel.propTypes = {
   jobs: PropTypes.arrayOf(PropTypes.shape({
     job_id: PropTypes.string.isRequired,
     report_id: PropTypes.string,
-    status: PropTypes.string.isRequired,
+    status: PropTypes.string,
     created_at: PropTypes.string,
     summary_preview: PropTypes.string,
     error: PropTypes.string,
@@ -121,7 +127,6 @@ RcaJobQueuePanel.propTypes = {
   loading: PropTypes.bool,
   selectedJobId: PropTypes.string,
   onSelectJob: PropTypes.func.isRequired,
-  onRefresh: PropTypes.func.isRequired,
   onReload: PropTypes.func,
   onDelete: PropTypes.func,
   onView: PropTypes.func,

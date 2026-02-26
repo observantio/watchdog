@@ -90,7 +90,7 @@ TraceCard.propTypes = {
   onShowOnMap: PropTypes.func,
 }
 
-export default function TraceResults({ traces, loading, handleTraceClick, viewMode = 'list', selectedIds = new Set(), onToggleSelect = null, onShowOnMap = null }) {
+export default function TraceResults({ traces, loading, handleTraceClick, selectedIds = new Set(), onToggleSelect = null, onShowOnMap = null }) {
   if (loading) {
     return (
       <div className="py-12 flex flex-col items-center">
@@ -131,7 +131,6 @@ TraceResults.propTypes = {
   traces: PropTypes.arrayOf(PropTypes.object).isRequired,
   loading: PropTypes.bool,
   handleTraceClick: PropTypes.func.isRequired,
-  viewMode: PropTypes.string,
   selectedIds: PropTypes.object,
   onToggleSelect: PropTypes.func,
   onShowOnMap: PropTypes.func,

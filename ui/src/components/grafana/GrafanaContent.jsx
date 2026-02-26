@@ -8,7 +8,6 @@ export default function GrafanaContent({
   loading, activeTab, dashboards, datasources, folders, groups,
   query, setQuery, filters, setFilters,
   onSearch, onClearFilters, hasActiveFilters,
-  dashboardMeta, datasourceMeta,
   openDashboardEditor, onOpenGrafana, onDeleteDashboard,
   onToggleDashboardHidden,
   openDatasourceEditor, onDeleteDatasource,
@@ -35,7 +34,6 @@ export default function GrafanaContent({
         onSearch={onSearch}
         onClearFilters={onClearFilters}
         hasActiveFilters={hasActiveFilters}
-        meta={dashboardMeta}
         openDashboardEditor={openDashboardEditor}
         onOpenGrafana={onOpenGrafana}
         onDeleteDashboard={onDeleteDashboard}
@@ -54,7 +52,6 @@ export default function GrafanaContent({
         onSearch={onSearch}
         onClearFilters={onClearFilters}
         hasActiveFilters={hasActiveFilters}
-        meta={datasourceMeta}
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={onDeleteDatasource}
         onToggleHidden={onToggleDatasourceHidden}
@@ -86,8 +83,6 @@ GrafanaContent.propTypes = {
   onSearch: PropTypes.func,
   onClearFilters: PropTypes.func,
   hasActiveFilters: PropTypes.bool,
-  dashboardMeta: PropTypes.object,
-  datasourceMeta: PropTypes.object,
   openDashboardEditor: PropTypes.func.isRequired,
   onOpenGrafana: PropTypes.func.isRequired,
   onDeleteDashboard: PropTypes.func.isRequired,

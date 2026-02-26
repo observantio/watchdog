@@ -81,17 +81,30 @@ function AppContent() {
   const location = useLocation()
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchInfo()
-        .then(setInfo)
-        .catch(() => setInfo(null))
-      
-      // Check if user needs to change password
-      if (user?.needs_password_change) {
-        setShowPasswordChange(true)
+    let active = true
+
+    if (!isAuthenticated) {
+      setInfo(null)
+      setShowPasswordChange(false)
+      return () => {
+        active = false
       }
     }
-  }, [isAuthenticated, user])
+
+    fetchInfo()
+      .then((response) => {
+        if (active) setInfo(response)
+      })
+      .catch(() => {
+        if (active) setInfo(null)
+      })
+
+    setShowPasswordChange(Boolean(user?.needs_password_change))
+
+    return () => {
+      active = false
+    }
+  }, [isAuthenticated, user?.needs_password_change])
 
   const handlePasswordChangeClose = async () => {
     setShowPasswordChange(false)

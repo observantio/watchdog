@@ -217,16 +217,12 @@ export default function IncidentBoardPage() {
   const canReadUsers = hasPermission('read:users') || hasPermission('manage:users')
   const canUpdateIncidents = hasPermission('update:incidents')
 
-  const { incidents, incidentUsers, loading, error, refresh, setIncidents, setIncidentUsers, setError } = useIncidentsData({
+  const { incidents, incidentUsers, loading, error, refresh, setIncidents, setError } = useIncidentsData({
     visibilityTab: incidentVisibilityTab,
     selectedGroup,
     showHiddenResolved,
     canReadUsers,
   })
-
-  useEffect(() => {
-    refresh()
-  }, [incidentVisibilityTab, selectedGroup, showHiddenResolved, refresh])
 
   const loadGroups = useCallback(async () => {
     try {
@@ -595,7 +591,7 @@ export default function IncidentBoardPage() {
       const updated = await updateIncident(incidentId, { note: text })
 
       // update modal / incidents immediately with the server response
-      setIncidentModal((prev) => ({ isOpen: true, incident: updated }))
+      setIncidentModal(() => ({ isOpen: true, incident: updated }))
 
       // clear the draft note
       setIncidentDrafts((prev) => ({

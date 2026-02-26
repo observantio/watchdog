@@ -120,27 +120,6 @@ export default function RuleEditor({ rule, channels, apiKeys = [], onSave, onCan
     setSelectedGroups(newGroups)
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const { errors } = validateRuleForm(formData, labelPairs)
-    setValidationErrors(errors)
-    if (Object.keys(errors).length > 0) return
-    setSaveError(null)
-    setSaving(true)
-    Promise.resolve(onSave({
-      ...formData,
-      sharedGroupIds: Array.from(selectedGroups)
-    })).then((ok) => {
-      if (!ok) {
-        setSaveError('Failed to save rule. Check the error banner for details.')
-      }
-    }).catch(() => {
-      setSaveError('Failed to save rule. Check the error banner for details.')
-    }).finally(() => {
-      setSaving(false)
-    })
-  }
-
   const applyTemplate = (template) => {
     setFormData((prev) => ({
       ...prev,

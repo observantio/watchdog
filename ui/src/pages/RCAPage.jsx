@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocalStorage } from '../hooks'
 import PageHeader from '../components/ui/PageHeader'
-import { Alert, Button, Card, Spinner, Input } from '../components/ui'
+import { Alert, Button, Card, Spinner } from '../components/ui'
 import ConfirmModal from '../components/ConfirmModal'
 import { useRcaJobs } from '../hooks/useRcaJobs'
 import { useRcaReport } from '../hooks/useRcaReport'
@@ -82,14 +82,6 @@ export default function RCAPage() {
     reportLookupId,
     { enableInsights: viewModalOpen, activeInsightTab: activeTab }
   )
-
-  // nothing required: useLocalStorage takes care of persistence
-
-  const selectedStatusText = useMemo(() => {
-    const statusSource = reportMeta || selectedJob
-    if (!statusSource) return 'No job selected'
-    return `${String(statusSource.status || '').toUpperCase()}${statusSource.duration_ms ? ` • ${statusSource.duration_ms}ms` : ''}`
-  }, [reportMeta, selectedJob])
 
   const reportStats = useMemo(() => {
     if (!report) return null
@@ -352,7 +344,6 @@ export default function RCAPage() {
               setReportLookupId(null)
               setSelectedJobId(id)
             }}
-            onRefresh={refreshJobs}
             onReload={reloadReport}
             onDelete={() => setConfirmDeleteOpen(true)}
             onView={handleView}

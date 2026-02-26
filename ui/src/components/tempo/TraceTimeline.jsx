@@ -58,14 +58,14 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
       serviceName: getServiceName(s)
     }))
   }, [trace?.spans])
-  const { minTime, maxTime, totalDuration, depthMap } = useMemo(() => {
+  const { minTime, totalDuration, depthMap } = useMemo(() => {
     if (spansWithEndTime.length === 0) {
-      return { minTime: 0, maxTime: 0, totalDuration: 0, depthMap: new Map() }
+      return { minTime: 0, totalDuration: 0, depthMap: new Map() }
     }
     const min = Math.min(...spansWithEndTime.map(s => s.startTime))
     const max = Math.max(...spansWithEndTime.map(s => s.endTime))
     const depths = buildDepthMap(spansWithEndTime)
-    return { minTime: min, maxTime: max, totalDuration: max - min, depthMap: depths }
+    return { minTime: min, totalDuration: max - min, depthMap: depths }
   }, [spansWithEndTime])
 
   const traceHasError = useMemo(

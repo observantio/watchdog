@@ -15,8 +15,14 @@ export function useToast() {
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const recentErrorsRef = useRef(new Map());
+  const toastTimersRef = useRef(new Map());
 
   const removeToast = useCallback((id) => {
+    const timer = toastTimersRef.current.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      toastTimersRef.current.delete(id)
+    }
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
@@ -70,7 +76,8 @@ export function ToastProvider({ children }) {
     setToasts(prev => [...prev, toast]);
 
     if (duration > 0) {
-      setTimeout(() => removeToast(id), duration);
+      const timerId = setTimeout(() => removeToast(id), duration);
+      toastTimersRef.current.set(id, timerId)
     }
 
     return id;
@@ -109,8 +116,20 @@ export function ToastProvider({ children }) {
       }
     }
     globalThis.addEventListener('api-error', handler)
-    return () => globalThis.removeEventListener('api-error', handler)
+    return () => {
+      globalThis.removeEventListener('api-error', handler)
+    }
   }, [error])
+
+  useEffect(() => {
+    const timers = toastTimersRef.current
+    const recentErrors = recentErrorsRef.current
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer))
+      timers.clear()
+      recentErrors.clear()
+    }
+  }, [])
 
   const value = useMemo(() => ({
     showToast, removeToast, success, error, info, warning
@@ -121,7 +140,7 @@ export function ToastProvider({ children }) {
       {children}
       <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
         {toasts.map(toast => (
-          <Toast key={toast.id} {...toast} onClose={() => removeToast(toast.id)} />
+          <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => removeToast(toast.id)} />
         ))}
       </div>
     </ToastContext.Provider>
@@ -132,7 +151,7 @@ ToastProvider.propTypes = {
   children: PropTypes.node.isRequired
 };
 
-function Toast({ id, message, type, onClose }) {
+function Toast({ message, type, onClose }) {
   const variants = {
     success: 'bg-green-500 border-green-600',
     error: 'bg-red-500 border-red-600',
@@ -182,7 +201,6 @@ function Toast({ id, message, type, onClose }) {
 }
 
 Toast.propTypes = {
-  id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   message: PropTypes.string.isRequired,
   type: PropTypes.oneOf(['success', 'error', 'warning', 'info']).isRequired,
   onClose: PropTypes.func.isRequired
