@@ -41,9 +41,7 @@ from models.access.auth_models import OIDCAuthURLRequest, OIDCCodeExchangeReques
 from models.access.auth_models import AuthModeResponse
 
 from middleware.dependencies import (
-    get_current_user,
     get_current_user_or_mfa_setup,
-    require_permission,
     require_any_permission_with_scope,
     auth_service,
     enforce_public_endpoint_security,

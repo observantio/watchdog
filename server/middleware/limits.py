@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable, Awaitable, Optional
+from typing import Optional
 
 from starlette.responses import PlainTextResponse
 
@@ -41,13 +41,6 @@ class _TooLarge(Exception):
 
 
 class RequestSizeLimitMiddleware:
-    """Reject requests whose body exceeds max_bytes.
-
-    Uses Content-Length when available (fast path).
-    Enforces a hard cap while reading the body when Content-Length is
-    missing or incorrect.
-    """
-
     def __init__(self, app, max_bytes: int = 1_048_576) -> None:
         self.app = app
         self.max_bytes = int(max_bytes)
@@ -106,11 +99,6 @@ class RequestSizeLimitMiddleware:
 
 
 class ConcurrencyLimitMiddleware:
-    """Apply backpressure by limiting concurrent in-flight requests.
-
-    If the semaphore cannot be acquired within acquire_timeout, return 503.
-    """
-
     def __init__(
         self,
         app,

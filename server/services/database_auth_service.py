@@ -20,7 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 try:
-    from db_models import AuditLog, Group, Permission, Tenant, User, UserApiKey
+    from db_models import Group, User, UserApiKey
 except ImportError:
     import importlib.util
     import os
@@ -34,13 +34,12 @@ except ImportError:
     db_models = importlib.util.module_from_spec(spec)
     sys.modules["db_models"] = db_models
     spec.loader.exec_module(db_models)
-    from db_models import AuditLog, Group, Permission, Tenant, User, UserApiKey
+    from db_models import Group, User, UserApiKey
 
 from config import config
-from database import get_db_session
 from models.access.api_key_models import ApiKey, ApiKeyCreate, ApiKeyUpdate
-from models.access.auth_models import ROLE_PERMISSIONS, Role, Token, TokenData
-from models.access.group_models import Group as GroupSchema, GroupCreate, GroupUpdate, PermissionInfo
+from models.access.auth_models import Token, TokenData
+from models.access.group_models import Group as GroupSchema, GroupCreate, GroupUpdate
 from models.access.user_models import (
     User as UserSchema,
     UserCreate,
@@ -62,8 +61,6 @@ from services.auth.api_key_ops import (
 from services.auth.auth_ops import (
     authenticate_user as authenticate_user_op,
     create_access_token as create_access_token_op,
-    create_mfa_setup_token as create_mfa_setup_token_op,
-    decode_token as decode_token_op,
     update_password as update_password_op,
     validate_otlp_token as validate_otlp_token_op,
 )
@@ -77,7 +74,6 @@ from services.auth.group_ops import (
     update_group_permissions as update_group_permissions_op,
 )
 from services.auth.oidc_service import OIDCService
-from services.auth.permission_defs import PERMISSION_DEFS
 from services.auth.user_ops import (
     create_user as create_user_op,
     delete_user as delete_user_op,
@@ -109,7 +105,6 @@ _MFA_REQUIRED_RESPONSE = "mfa_required"
 class DatabaseAuthService:
     _MFA_SETUP_RESPONSE = "mfa_setup_required"
     _MFA_REQUIRED_RESPONSE = "mfa_required"
-
     """Enterprise authentication service backed by PostgreSQL."""
 
     def __init__(self):
@@ -486,7 +481,6 @@ class DatabaseAuthService:
             actor_permissions=actor_permissions,
             actor_is_superuser=actor_is_superuser,
         )
-
         
     def _log_audit(
         self,

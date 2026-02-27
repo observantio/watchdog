@@ -21,7 +21,7 @@ from middleware.dependencies import (
     apply_scoped_rate_limit,
     enforce_header_token,
     enforce_public_endpoint_security,
-    get_current_user,
+    get_current_user_or_mfa_setup
 )
 from models.access.auth_models import Permission, TokenData
 from services.benotified_proxy_service import benotified_proxy_service
@@ -367,7 +367,7 @@ async def public_rules_proxy(request: Request):
 async def alertmanager_proxy(
     path: str,
     request: Request,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_or_mfa_setup),
 ):
     required = _required_permissions(path, request.method)
     if required is None:

@@ -8,75 +8,113 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import random
 from functools import wraps
-from typing import Callable, TypeVar, ParamSpec
+from typing import Callable, ParamSpec, TypeVar
+
 import httpx
 
 from config import config
 
 logger = logging.getLogger(__name__)
 
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+def _is_retriable_httpx(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        resp = getattr(exc, "response", None)
+        if resp is None:
+            return True
+        status = resp.status_code
+        if 400 <= status < 500 and status not in (408, 429):
+            return False
+        return True
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, httpx.TransportError)):
+        return True
+    return False
+
+
+def _backoff_delay(attempt: int, base: float, cap: float, jitter_ratio: float) -> float:
+    delay = min(cap, max(0.0, base) * (2**attempt))
+    jr = max(0.0, jitter_ratio)
+    if jr:
+        jitter = delay * jr
+        delay = max(0.0, delay + random.uniform(-jitter, jitter))
+    return delay
+
 
 def with_retry(
     max_retries: int = config.MAX_RETRIES,
-    backoff: float = config.RETRY_BACKOFF
+    backoff: float = config.RETRY_BACKOFF,
+    *,
+    max_backoff: float = config.RETRY_MAX_BACKOFF,
+    jitter: float = config.RETRY_JITTER,
+    retriable: Callable[[Exception], bool] = _is_retriable_httpx,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    max_retries = max(0, int(max_retries))
+
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            last_exception = None
+            last_exc: Exception | None = None
 
             for attempt in range(max_retries + 1):
                 try:
                     return await func(*args, **kwargs)
-                except (httpx.HTTPError, asyncio.TimeoutError) as e:
-                    if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
-                        status_code = e.response.status_code
-                        if 400 <= status_code < 500:
-                            logger.debug(
-                                "%s: non-retriable HTTPStatusError %s — failing fast",
-                                func.__name__, status_code
-                            )
-                            raise
+                except Exception as e:
+                    if not retriable(e):
+                        raise
 
-                    last_exception = e
-                    if attempt < max_retries:
-                        wait_time = min(config.RETRY_MAX_BACKOFF, backoff * (2 ** attempt))
-                        jitter = wait_time * max(0.0, config.RETRY_JITTER)
-                        wait_time = max(0.0, wait_time + random.uniform(-jitter, jitter))
-                        logger.warning(
-                            f"Attempt {attempt + 1}/{max_retries + 1} failed for "
-                            f"{func.__name__}: {e}. Retrying in {wait_time}s..."
-                        )
-                        await asyncio.sleep(wait_time)
-                    else:
+                    last_exc = e
+                    if attempt >= max_retries:
                         logger.error(
-                            f"All {max_retries + 1} attempts failed for "
-                            f"{func.__name__}: {e}"
+                            "Retry exhausted: fn=%s attempts=%d last_error=%r",
+                            func.__name__,
+                            max_retries + 1,
+                            e,
                         )
+                        raise
 
-            if last_exception is not None:
-                raise last_exception
-            raise RuntimeError(f"Retry wrapper exited without result or captured exception for {func.__name__}")
+                    delay = _backoff_delay(attempt, backoff, max_backoff, jitter)
+                    logger.warning(
+                        "Retrying: fn=%s attempt=%d/%d delay=%.3fs error=%r",
+                        func.__name__,
+                        attempt + 1,
+                        max_retries + 1,
+                        delay,
+                        e,
+                    )
+                    await asyncio.sleep(delay)
+
+            raise last_exc if last_exc is not None else RuntimeError(
+                f"Retry wrapper exited unexpectedly for {func.__name__}"
+            )
 
         return wrapper
+
     return decorator
 
 
-def with_timeout(timeout: float = config.DEFAULT_TIMEOUT) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def with_timeout(
+    timeout: float = config.DEFAULT_TIMEOUT,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    timeout = float(timeout)
+
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             try:
                 return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
-            except asyncio.TimeoutError:
-                logger.error(f"Timeout after {timeout}s for {func.__name__}")
-                raise
+            except asyncio.TimeoutError as e:
+                logger.error("Timeout: fn=%s timeout=%.3fs", func.__name__, timeout)
+                raise e
 
         return wrapper
+
     return decorator
