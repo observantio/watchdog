@@ -54,8 +54,8 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (formData.newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters long')
+    if (formData.newPassword.length < 12) {
+      toast.error('Password must be at least 12 characters long')
       return
     }
     
@@ -119,7 +119,7 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
     >
       {isForced && !showTour && (
         <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500 rounded text-yellow-500 text-sm">
-          You must change your password before continuing. Please choose a secure password with at least 8 characters.
+          You must change your password before continuing. Please choose a secure password with at least 12 characters.
         </div>
       )}
       {showTour ? (
@@ -154,7 +154,10 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
             <label htmlFor="currentPassword" className="block text-sm font-medium text-sre-text">
               Current Password
             </label>
-            <HelpTooltip text="Enter your current password to verify your identity before changing it." />
+            <HelpTooltip
+              text="Enter your current password to verify your identity before changing it."
+              autoShow={isOpen}
+            />
           </div>
           <Input
             id="currentPassword"
@@ -199,7 +202,7 @@ export default function ChangePasswordModal({ isOpen, onClose, userId, isForced 
             onChange={(e) => handleChange('confirmPassword', e.target.value)}
             placeholder="Confirm new password"
             required
-            minLength={8}
+            minLength={12}
           />
         </div>
 

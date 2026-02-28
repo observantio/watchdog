@@ -8,20 +8,25 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-import uuid
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, cast
 
-from sqlalchemy.orm import joinedload
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from database import get_db_session
-from db_models import User, UserApiKey, ApiKeyShare, Group
-from models.access.api_key_models import ApiKeyCreate, ApiKeyUpdate, ApiKey, ApiKeyShareUser
+from db_models import ApiKeyShare, Group, User, UserApiKey
+from models.access.api_key_models import ApiKey, ApiKeyCreate, ApiKeyShareUser, ApiKeyUpdate
 
 _BACKFILL_BATCH_SIZE = 500
 _ORG_SCOPE_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _normalize_scope_key(raw: Optional[str]) -> Optional[str]:
@@ -37,38 +42,88 @@ def _normalize_scope_key(raw: Optional[str]) -> Optional[str]:
     return value
 
 
+def _require_user(db, user_id: str) -> User:
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        raise ValueError("User not found")
+    return user
+
+
+def _require_user_in_tenant(db, user_id: str, tenant_id: str) -> User:
+    user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
+    if not user:
+        raise ValueError("User not found")
+    return user
+
+
+def _require_api_key_in_tenant(db, key_id: str, tenant_id: str) -> UserApiKey:
+    api_key = db.query(UserApiKey).filter_by(id=key_id, tenant_id=tenant_id).first()
+    if not api_key:
+        raise ValueError("API key not found")
+    return api_key
+
+
+def _disable_other_enabled_keys(
+    db, user_id: str, tenant_id: str, now: datetime, exclude_key_id: Optional[str] = None
+) -> None:
+    q = db.query(UserApiKey).filter(
+        UserApiKey.user_id == user_id,
+        UserApiKey.tenant_id == tenant_id,
+        UserApiKey.is_enabled.is_(True),
+    )
+    if exclude_key_id is not None:
+        q = q.filter(UserApiKey.id != exclude_key_id)
+    q.update({"is_enabled": False, "updated_at": now})
+
+
+def _set_org_id(user: User, new_org_id: Optional[str], now: datetime) -> None:
+    if new_org_id is None:
+        return
+    if str(user.org_id or "") != str(new_org_id or ""):
+        user.org_id = new_org_id
+        user.updated_at = now
+
+
 def _api_key_to_schema(
-    service,
     api_key: UserApiKey,
-    viewer: User,
-    *,
     is_shared: bool,
     can_use: bool,
     viewer_enabled: bool,
     revealed_otlp_token: Optional[str] = None,
 ) -> ApiKey:
-    shared_with = []
+    shared_with: List[ApiKeyShareUser] = []
     if not is_shared:
         for share in (getattr(api_key, "shares", None) or []):
             shared_user = getattr(share, "shared_user", None)
-            shared_with.append(ApiKeyShareUser(
-                user_id=str(getattr(share, 'shared_user_id', '')),
-                username=getattr(shared_user, "username", None),
-                email=getattr(shared_user, "email", None),
-                can_use=bool(getattr(share, "can_use", True)),
-                created_at=cast(datetime, getattr(share, 'created_at')),
-            ))
+            shared_with.append(
+                ApiKeyShareUser(
+                    user_id=str(getattr(share, "shared_user_id", "")),
+                    username=getattr(shared_user, "username", None),
+                    email=getattr(shared_user, "email", None),
+                    can_use=bool(getattr(share, "can_use", True)),
+                    created_at=cast(datetime, getattr(share, "created_at")),
+                )
+            )
+
     owner_username = getattr(getattr(api_key, "user", None), "username", None)
+
+    if is_shared:
+        otlp_token_value = None
+    else:
+        otlp_token_value = (
+            revealed_otlp_token if revealed_otlp_token is not None else getattr(api_key, "otlp_token", None)
+        )
+
     payload = {
         "id": getattr(api_key, "id", None),
         "name": getattr(api_key, "name", None),
         "key": getattr(api_key, "key", None),
-        "otlp_token": (None if is_shared else (revealed_otlp_token if revealed_otlp_token is not None else getattr(api_key, "otlp_token", None))),
+        "otlp_token": otlp_token_value,
         "owner_user_id": getattr(api_key, "user_id", None),
         "owner_username": owner_username,
         "is_shared": is_shared,
         "can_use": can_use,
-        "shared_with": [s.model_dump() if hasattr(s, 'model_dump') else s for s in shared_with],
+        "shared_with": [s.model_dump() if hasattr(s, "model_dump") else s for s in shared_with],
         "is_default": bool(getattr(api_key, "is_default", False)),
         "is_enabled": bool(viewer_enabled),
         "created_at": getattr(api_key, "created_at", None),
@@ -86,11 +141,8 @@ def list_api_keys(service, user_id: str) -> List[ApiKey]:
 
         own_keys = (
             db.query(UserApiKey)
-            .options(joinedload(UserApiKey.shares).joinedload(ApiKeyShare.shared_user))
-            .filter(
-                UserApiKey.user_id == user_id,
-                UserApiKey.tenant_id == viewer.tenant_id,
-            )
+            .options(joinedload(UserApiKey.shares).joinedload(ApiKeyShare.shared_user), joinedload(UserApiKey.user))
+            .filter(UserApiKey.user_id == user_id, UserApiKey.tenant_id == viewer.tenant_id)
             .order_by(UserApiKey.created_at.asc())
             .all()
         )
@@ -98,14 +150,10 @@ def list_api_keys(service, user_id: str) -> List[ApiKey]:
         shared_links = (
             db.query(ApiKeyShare)
             .options(
-                joinedload(ApiKeyShare.api_key)
-                .joinedload(UserApiKey.shares)
-                .joinedload(ApiKeyShare.shared_user)
+                joinedload(ApiKeyShare.api_key).joinedload(UserApiKey.shares).joinedload(ApiKeyShare.shared_user),
+                joinedload(ApiKeyShare.api_key).joinedload(UserApiKey.user),
             )
-            .filter(
-                ApiKeyShare.shared_user_id == user_id,
-                ApiKeyShare.tenant_id == viewer.tenant_id,
-            )
+            .filter(ApiKeyShare.shared_user_id == user_id, ApiKeyShare.tenant_id == viewer.tenant_id)
             .all()
         )
 
@@ -114,30 +162,33 @@ def list_api_keys(service, user_id: str) -> List[ApiKey]:
         has_enabled_owned_key = any(bool(getattr(k, "is_enabled", False)) for k in own_keys)
 
         for key in own_keys:
-            output.append(_api_key_to_schema(
-                service, key, viewer,
-                is_shared=False,
-                can_use=True,
-                viewer_enabled=bool(key.is_enabled),
-            ))
-            seen_ids.add(key.id)
+            output.append(
+                _api_key_to_schema(
+                    key,
+                    is_shared=False,
+                    can_use=True,
+                    viewer_enabled=bool(getattr(key, "is_enabled", False)),
+                )
+            )
+            seen_ids.add(getattr(key, "id", None))
 
         for link in shared_links:
-            key = link.api_key
-            if not key or key.id in seen_ids:
+            key = getattr(link, "api_key", None)
+            if not key:
                 continue
-            can_use = bool(link.can_use)
-            output.append(_api_key_to_schema(
-                service, key, viewer,
-                is_shared=True,
-                can_use=can_use,
-                viewer_enabled=(
-                    can_use
-                    and (not has_enabled_owned_key)
-                    and (str(viewer.org_id or "") == str(key.key or ""))
-                ),
-            ))
-            seen_ids.add(key.id)
+            key_id = getattr(key, "id", None)
+            if key_id in seen_ids:
+                continue
+
+            can_use = bool(getattr(link, "can_use", True))
+            viewer_enabled = bool(
+                can_use
+                and (not has_enabled_owned_key)
+                and (str(viewer.org_id or "") == str(getattr(key, "key", None) or ""))
+            )
+
+            output.append(_api_key_to_schema(key, is_shared=True, can_use=can_use, viewer_enabled=viewer_enabled))
+            seen_ids.add(key_id)
 
         output.sort(key=lambda item: item.created_at)
         return output
@@ -146,9 +197,7 @@ def list_api_keys(service, user_id: str) -> List[ApiKey]:
 def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCreate) -> ApiKey:
     service._lazy_init()
     with get_db_session() as db:
-        user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
-        if not user:
-            raise ValueError("User not found")
+        user = _require_user_in_tenant(db, user_id, tenant_id)
 
         requested_key = _normalize_scope_key(key_create.key)
         if requested_key:
@@ -159,18 +208,14 @@ def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCrea
                 raise ValueError("API key value already exists in this tenant")
             key_value = requested_key
         else:
-            # Server-generated values avoid tenant-scope collisions.
             while True:
                 candidate = str(uuid.uuid4())
                 if not db.query(UserApiKey.id).filter(UserApiKey.key == candidate).first():
                     key_value = candidate
                     break
-        now = datetime.now(timezone.utc)
 
-        db.query(UserApiKey).filter(
-            UserApiKey.user_id == user_id,
-            UserApiKey.is_enabled.is_(True),
-        ).update({"is_enabled": False, "updated_at": now})
+        now = _utcnow()
+        _disable_other_enabled_keys(db, user_id=user_id, tenant_id=tenant_id, now=now)
 
         raw_otlp_token = service._generate_otlp_token()
         api_key = UserApiKey(
@@ -184,7 +229,13 @@ def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCrea
             is_enabled=True,
         )
         db.add(api_key)
-        db.flush()
+
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            raise ValueError("API key value already exists in this tenant")
+
         user.org_id = api_key.key
         user.updated_at = now
 
@@ -199,10 +250,9 @@ def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCrea
         )
         db.commit()
         db.refresh(api_key)
+
         return _api_key_to_schema(
-            service,
             api_key,
-            user,
             is_shared=False,
             can_use=True,
             viewer_enabled=True,
@@ -213,20 +263,22 @@ def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCrea
 def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate) -> ApiKey:
     service._lazy_init()
     with get_db_session() as db:
-        viewer = db.query(User).filter_by(id=user_id).first()
-        if not viewer:
-            raise ValueError("User not found")
+        viewer = _require_user(db, user_id)
+        api_key = _require_api_key_in_tenant(db, key_id, viewer.tenant_id)
 
-        api_key = db.query(UserApiKey).filter_by(id=key_id, tenant_id=viewer.tenant_id).first()
-        if not api_key:
-            raise ValueError("API key not found")
-
-        is_owner = api_key.user_id == user_id
+        is_owner = str(getattr(api_key, "user_id", "")) == str(user_id)
 
         if not is_owner:
-            share_link = db.query(ApiKeyShare).filter_by(
-                api_key_id=key_id, shared_user_id=user_id, can_use=True, tenant_id=viewer.tenant_id
-            ).first()
+            share_link = (
+                db.query(ApiKeyShare)
+                .filter_by(
+                    api_key_id=key_id,
+                    shared_user_id=user_id,
+                    can_use=True,
+                    tenant_id=viewer.tenant_id,
+                )
+                .first()
+            )
             if not share_link:
                 raise ValueError("API key not found")
 
@@ -236,17 +288,12 @@ def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate)
             if key_update.is_enabled is not True:
                 raise ValueError("Shared API key selection requires is_enabled=true")
 
-            now = datetime.now(timezone.utc)
-            db.query(UserApiKey).filter(
-                UserApiKey.user_id == user_id,
-                UserApiKey.is_enabled.is_(True),
-            ).update({"is_enabled": False, "updated_at": now})
+            now = _utcnow()
+            _disable_other_enabled_keys(db, user_id=user_id, tenant_id=viewer.tenant_id, now=now)
 
-            if str(viewer.org_id or "") != str(api_key.key or ""):
-                viewer.org_id = api_key.key
-                viewer.updated_at = now
-
+            _set_org_id(viewer, getattr(api_key, "key", None), now)
             db.flush()
+
             service._log_audit(
                 db,
                 viewer.tenant_id,
@@ -258,55 +305,64 @@ def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate)
             )
             db.commit()
             db.refresh(api_key)
-            return _api_key_to_schema(service, api_key, viewer, is_shared=True, can_use=True, viewer_enabled=True)
+            return _api_key_to_schema(api_key, is_shared=True, can_use=True, viewer_enabled=True)
 
-        now = datetime.now(timezone.utc)
+        now = _utcnow()
 
         if key_update.name is not None:
             api_key.name = key_update.name
 
         if key_update.is_default is not None and key_update.is_default:
-            has_shares = db.query(ApiKeyShare).filter_by(api_key_id=key_id).first() is not None
+            has_shares = (
+                db.query(ApiKeyShare)
+                .filter(ApiKeyShare.api_key_id == key_id, ApiKeyShare.tenant_id == viewer.tenant_id)
+                .first()
+                is not None
+            )
             if has_shares:
                 raise ValueError("Shared keys cannot be set as default. Remove shares first")
 
             db.query(UserApiKey).filter(
                 UserApiKey.user_id == user_id,
+                UserApiKey.tenant_id == viewer.tenant_id,
                 UserApiKey.id != key_id,
                 UserApiKey.is_default.is_(True),
             ).update({"is_default": False, "updated_at": now})
 
-            db.query(UserApiKey).filter(
-                UserApiKey.user_id == user_id,
-                UserApiKey.id != key_id,
-                UserApiKey.is_enabled.is_(True),
-            ).update({"is_enabled": False, "updated_at": now})
+            _disable_other_enabled_keys(
+                db,
+                user_id=user_id,
+                tenant_id=viewer.tenant_id,
+                now=now,
+                exclude_key_id=key_id,
+            )
 
             api_key.is_default = True
             api_key.is_enabled = True
 
-            user = db.query(User).filter_by(id=user_id).first()
-            if user:
-                user.org_id = api_key.key
-                user.updated_at = now
+            owner = db.query(User).filter_by(id=user_id).first()
+            if owner:
+                _set_org_id(owner, getattr(api_key, "key", None), now)
             db.flush()
 
         if key_update.is_enabled is not None:
-            if api_key.is_default and not key_update.is_enabled:
+            if bool(getattr(api_key, "is_default", False)) and not key_update.is_enabled:
                 raise ValueError("Default key cannot be disabled")
             if not key_update.is_enabled:
                 raise ValueError("At least one API key must be enabled")
 
-            db.query(UserApiKey).filter(
-                UserApiKey.user_id == user_id,
-                UserApiKey.id != key_id,
-                UserApiKey.is_enabled.is_(True),
-            ).update({"is_enabled": False, "updated_at": now})
+            _disable_other_enabled_keys(
+                db,
+                user_id=user_id,
+                tenant_id=viewer.tenant_id,
+                now=now,
+                exclude_key_id=key_id,
+            )
             api_key.is_enabled = True
-            viewer.org_id = api_key.key
-            viewer.updated_at = now
+            _set_org_id(viewer, getattr(api_key, "key", None), now)
 
         api_key.updated_at = now
+
         service._log_audit(
             db,
             api_key.tenant_id,
@@ -318,20 +374,17 @@ def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate)
         )
         db.commit()
         db.refresh(api_key)
-        return _api_key_to_schema(service, api_key, viewer, is_shared=False, can_use=True, viewer_enabled=bool(api_key.is_enabled))
+
+        return _api_key_to_schema(api_key, is_shared=False, can_use=True, viewer_enabled=bool(api_key.is_enabled))
 
 
 def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
     service._lazy_init()
     with get_db_session() as db:
-        viewer = db.query(User).filter_by(id=user_id).first()
-        if not viewer:
-            raise ValueError("User not found")
+        viewer = _require_user(db, user_id)
+        api_key = _require_api_key_in_tenant(db, key_id, viewer.tenant_id)
 
-        api_key = db.query(UserApiKey).filter_by(id=key_id, tenant_id=viewer.tenant_id).first()
-        if not api_key:
-            raise ValueError("API key not found")
-        if api_key.user_id != user_id:
+        if str(getattr(api_key, "user_id", "")) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to rotate API key token")
         if bool(getattr(api_key, "is_default", False)):
             raise HTTPException(
@@ -339,7 +392,7 @@ def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
                 detail="Default key OTLP token cannot be regenerated",
             )
 
-        now = datetime.now(timezone.utc)
+        now = _utcnow()
         raw_otlp_token = service._generate_otlp_token()
         api_key.otlp_token_hash = service._hash_otlp_token(raw_otlp_token)
         api_key.otlp_token = None
@@ -356,10 +409,9 @@ def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
         )
         db.commit()
         db.refresh(api_key)
+
         return _api_key_to_schema(
-            service,
             api_key,
-            viewer,
             is_shared=False,
             can_use=True,
             viewer_enabled=bool(api_key.is_enabled),
@@ -370,24 +422,48 @@ def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
 def delete_api_key(service, user_id: str, key_id: str) -> bool:
     service._lazy_init()
     with get_db_session() as db:
-        api_key = db.query(UserApiKey).filter_by(id=key_id).first()
+        viewer = db.query(User).filter_by(id=user_id).first()
+        if not viewer:
+            return False
+
+        api_key = (
+            db.query(UserApiKey)
+            .filter(UserApiKey.id == key_id, UserApiKey.tenant_id == viewer.tenant_id)
+            .first()
+        )
         if not api_key:
             return False
 
-        if api_key.user_id != user_id:
+        if str(getattr(api_key, "user_id", "")) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete API key")
-
-        if api_key.is_default:
+        if bool(getattr(api_key, "is_default", False)):
             raise ValueError("Default key cannot be deleted")
 
         db.delete(api_key)
         db.flush()
 
-        enabled_count = db.query(UserApiKey).filter_by(user_id=user_id, is_enabled=True).count()
+        enabled_count = (
+            db.query(UserApiKey)
+            .filter(
+                UserApiKey.user_id == user_id,
+                UserApiKey.tenant_id == api_key.tenant_id,
+                UserApiKey.is_enabled.is_(True),
+            )
+            .count()
+        )
         if enabled_count == 0:
-            default_key = db.query(UserApiKey).filter_by(user_id=user_id, is_default=True).first()
+            default_key = (
+                db.query(UserApiKey)
+                .filter(
+                    UserApiKey.user_id == user_id,
+                    UserApiKey.tenant_id == api_key.tenant_id,
+                    UserApiKey.is_default.is_(True),
+                )
+                .first()
+            )
             if default_key:
                 default_key.is_enabled = True
+                default_key.updated_at = _utcnow()
 
         service._log_audit(
             db,
@@ -412,16 +488,17 @@ def list_api_key_shares(service, owner_user_id: str, tenant_id: str, key_id: str
         shares = (
             db.query(ApiKeyShare)
             .options(joinedload(ApiKeyShare.shared_user))
-            .filter_by(api_key_id=key_id)
+            .filter(ApiKeyShare.api_key_id == key_id, ApiKeyShare.tenant_id == tenant_id)
             .all()
         )
+
         return [
             ApiKeyShareUser(
-                user_id=str(getattr(share, 'shared_user_id', '')),
-                username=getattr(share.shared_user, "username", None),
-                email=getattr(share.shared_user, "email", None),
-                can_use=bool(share.can_use),
-                created_at=cast(datetime, getattr(share, 'created_at')),
+                user_id=str(getattr(share, "shared_user_id", "")),
+                username=getattr(getattr(share, "shared_user", None), "username", None),
+                email=getattr(getattr(share, "shared_user", None), "email", None),
+                can_use=bool(getattr(share, "can_use", True)),
+                created_at=cast(datetime, getattr(share, "created_at")),
             )
             for share in shares
         ]
@@ -441,10 +518,13 @@ def replace_api_key_shares(
         if not api_key:
             raise ValueError("API key not found")
 
-        normalized_ids = list(dict.fromkeys(
-            uid.strip() for uid in (user_ids or [])
-            if uid and uid.strip() and uid.strip() != owner_user_id
-        ))
+        normalized_user_ids = list(
+            dict.fromkeys(
+                uid.strip()
+                for uid in (user_ids or [])
+                if uid and uid.strip() and uid.strip() != owner_user_id
+            )
+        )
 
         normalized_group_ids = [gid.strip() for gid in (group_ids or []) if gid and gid.strip()]
         member_user_ids_from_groups: List[str] = []
@@ -466,45 +546,55 @@ def replace_api_key_shares(
                 raise ValueError("Invalid share groups: " + ", ".join(missing_groups))
 
             owner_group_ids = {
-                str(g.id) for g in groups
-                if any(str(getattr(m, 'id', '')) == owner_user_id for m in (g.members or []))
+                str(g.id)
+                for g in groups
+                if any(str(getattr(m, "id", "")) == owner_user_id for m in (getattr(g, "members", None) or []))
             }
             unauthorized = sorted(found_group_ids - owner_group_ids)
             if unauthorized:
                 raise ValueError("You can only share with groups you are in: " + ", ".join(unauthorized))
 
             for group in groups:
-                for member in (group.members or []):
-                    if str(getattr(member, 'id', '')) != owner_user_id and getattr(member, 'is_active', False) and getattr(member, 'tenant_id', None) == tenant_id:
-                        member_user_ids_from_groups.append(str(getattr(member, 'id', '')))
+                for member in (getattr(group, "members", None) or []):
+                    if (
+                        str(getattr(member, "id", "")) != owner_user_id
+                        and bool(getattr(member, "is_active", False))
+                        and str(getattr(member, "tenant_id", "")) == str(tenant_id)
+                    ):
+                        member_user_ids_from_groups.append(str(getattr(member, "id", "")))
 
-        combined_user_ids = list(dict.fromkeys([*normalized_ids, *member_user_ids_from_groups]))
+        combined_user_ids = list(dict.fromkeys([*normalized_user_ids, *member_user_ids_from_groups]))
 
         if bool(getattr(api_key, "is_default", False)) and combined_user_ids:
             raise ValueError("Default key cannot be shared")
 
         if combined_user_ids:
-            allowed_users = db.query(User).filter(
-                User.tenant_id == tenant_id,
-                User.id.in_(combined_user_ids),
-                User.is_active.is_(True),
-            ).all()
+            allowed_users = (
+                db.query(User)
+                .filter(User.tenant_id == tenant_id, User.id.in_(combined_user_ids), User.is_active.is_(True))
+                .all()
+            )
             allowed_user_ids = {str(u.id) for u in allowed_users}
             missing = sorted(set(combined_user_ids) - allowed_user_ids)
             if missing:
                 raise ValueError("Invalid share users: " + ", ".join(missing))
 
-        db.query(ApiKeyShare).filter_by(api_key_id=key_id).delete(synchronize_session=False)
-        now = datetime.now(timezone.utc)
+        db.query(ApiKeyShare).filter(
+            ApiKeyShare.api_key_id == key_id, ApiKeyShare.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
+
+        now = _utcnow()
         for shared_user_id in combined_user_ids:
-            db.add(ApiKeyShare(
-                tenant_id=tenant_id,
-                api_key_id=key_id,
-                owner_user_id=owner_user_id,
-                shared_user_id=shared_user_id,
-                can_use=True,
-                created_at=now,
-            ))
+            db.add(
+                ApiKeyShare(
+                    tenant_id=tenant_id,
+                    api_key_id=key_id,
+                    owner_user_id=owner_user_id,
+                    shared_user_id=shared_user_id,
+                    can_use=True,
+                    created_at=now,
+                )
+            )
 
         service._log_audit(
             db,
@@ -520,16 +610,22 @@ def replace_api_key_shares(
     return list_api_key_shares(service, owner_user_id, tenant_id, key_id)
 
 
-def delete_api_key_share(
-    service, owner_user_id: str, tenant_id: str, key_id: str, shared_user_id: str
-) -> bool:
+def delete_api_key_share(service, owner_user_id: str, tenant_id: str, key_id: str, shared_user_id: str) -> bool:
     service._lazy_init()
     with get_db_session() as db:
         api_key = db.query(UserApiKey).filter_by(id=key_id, user_id=owner_user_id, tenant_id=tenant_id).first()
         if not api_key:
             raise ValueError("API key not found")
 
-        share = db.query(ApiKeyShare).filter_by(api_key_id=key_id, shared_user_id=shared_user_id).first()
+        share = (
+            db.query(ApiKeyShare)
+            .filter(
+                ApiKeyShare.api_key_id == key_id,
+                ApiKeyShare.shared_user_id == shared_user_id,
+                ApiKeyShare.tenant_id == tenant_id,
+            )
+            .first()
+        )
         if not share:
             return False
 
@@ -547,28 +643,30 @@ def delete_api_key_share(
         return True
 
 
-def backfill_otlp_tokens(service):
+def backfill_otlp_tokens(service) -> None:
+    service._lazy_init()
     with get_db_session() as db:
-        offset = 0
         total = 0
         while True:
             batch = (
                 db.query(UserApiKey)
                 .filter(UserApiKey.otlp_token_hash.is_(None))
+                .order_by(UserApiKey.id.asc())
                 .limit(_BACKFILL_BATCH_SIZE)
-                .offset(offset)
                 .all()
             )
             if not batch:
                 break
-            now = datetime.now(timezone.utc)
+
+            now = _utcnow()
             for key in batch:
-                source_token = key.otlp_token or service._generate_otlp_token()
+                source_token = getattr(key, "otlp_token", None) or service._generate_otlp_token()
                 key.otlp_token_hash = service._hash_otlp_token(source_token)
                 key.otlp_token = None
                 key.updated_at = now
+
             db.commit()
             total += len(batch)
-            offset += len(batch)
+
         if total:
             service.logger.info("Backfilled otlp_token_hash for %d API keys", total)

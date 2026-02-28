@@ -9,12 +9,13 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import secrets
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import bcrypt
 import pyotp
 from cryptography.fernet import Fernet, InvalidToken
 
+from services.auth.auth_ops import create_mfa_setup_token as create_mfa_setup_token_op
 from database import get_db_session
 from db_models import User
 
@@ -160,12 +161,8 @@ def reset_totp(service, user_id: str, admin_id: str) -> bool:
         service._log_audit(db, user.tenant_id, admin_id, "mfa.reset", "users", user.id, {"admin_id": admin_id})
         return True
 
-
-from services.auth.auth_ops import create_mfa_setup_token as create_mfa_setup_token_op
-
-
 def _mfa_setup_challenge(service, user: User) -> dict:
-    setup_token = create_mfa_setup_token_op(service, user)
+    setup_token = create_mfa_setup_token_op(user)
     return {
         service._MFA_SETUP_RESPONSE: True,
         "setup_token": setup_token.access_token if setup_token else None,

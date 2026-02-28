@@ -111,7 +111,7 @@ def _check_permissions(current_user: TokenData, required: Set[str]) -> None:
     perms = set(current_user.permissions or [])
     if perms.intersection(required):
         return
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to perform this action")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to communicate with Be Notified. Required permissions: {', '.join(required)}")
 
 
 def _is_mutating(method: str) -> bool:

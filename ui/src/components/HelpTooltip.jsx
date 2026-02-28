@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useId } from 'react'
+import PropTypes from 'prop-types'
 
-export default function HelpTooltip({ text }) {
-  const [show, setShow] = useState(false)
+export default function HelpTooltip({ text, autoShow = false }) {
+  // optionally start visible (used in modals that open with context)
+  const [show, setShow] = useState(autoShow)
   const wrapperRef = useRef(null)
   const tooltipRef = useRef(null)
   const [tooltipStyle, setTooltipStyle] = useState({})
@@ -20,6 +22,9 @@ export default function HelpTooltip({ text }) {
   }
 
   useEffect(() => {
+    if (autoShow) {
+      setShow(true)
+    }
     if (!show) return
 
     const update = () => {
