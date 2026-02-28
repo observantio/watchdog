@@ -20,7 +20,7 @@ from db_models import Tenant, User
 from models.access.auth_models import Role
 
 
-def extract_permissions_from_oidc_claims(service, claims: Dict[str, Any]) -> List[str]:
+def extract_permissions_from_oidc_claims(claims: Dict[str, Any]) -> List[str]:
     extracted = set()
     direct = claims.get("permissions")
     if isinstance(direct, list):
@@ -29,6 +29,25 @@ def extract_permissions_from_oidc_claims(service, claims: Dict[str, Any]) -> Lis
     if isinstance(scp, list):
         extracted.update(str(item).strip() for item in scp if str(item).strip())
     return [v for v in extracted if ":" in v]
+
+
+def _claim_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
+
+
+def _can_auto_link_by_email(claims: Dict[str, Any]) -> bool:
+    enabled = _claim_truthy(getattr(config, "OIDC_AUTO_LINK_BY_EMAIL", False))
+    if not enabled:
+        return False
+    if _claim_truthy(getattr(config, "OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK", True)):
+        return _claim_truthy(claims.get("email_verified"))
+    return True
 
 
 def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User]:
@@ -43,23 +62,39 @@ def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User
     full_name = (claims.get("name") or "").strip() or None
 
     with get_db_session() as db:
-        user_by_subject = (
-            db.query(User).filter(User.external_subject == subject).first()
-            if subject else None
-        )
+        user_by_subject = db.query(User).filter(User.external_subject == subject).first() if subject else None
 
         if user_by_subject:
             user = user_by_subject
         else:
             candidate = db.query(User).filter(func.lower(User.email) == email).first()
+
             if candidate and candidate.auth_provider != config.AUTH_PROVIDER:
-                service.logger.warning(
-                    "OIDC email %s matches existing account with auth_provider=%s; refusing link",
-                    email,
-                    candidate.auth_provider,
-                )
-                return None
-            user = candidate
+                if not _can_auto_link_by_email(claims):
+                    service.logger.warning(
+                        "OIDC email %s matches existing account with auth_provider=%s; refusing link",
+                        email,
+                        candidate.auth_provider,
+                    )
+                    return None
+
+                if subject:
+                    existing_subject_owner = (
+                        db.query(User)
+                        .filter(User.external_subject == subject, User.id != candidate.id)
+                        .first()
+                    )
+                    if existing_subject_owner:
+                        service.logger.warning(
+                            "OIDC subject %s is already linked to another account; refusing link for email %s",
+                            subject,
+                            email,
+                        )
+                        return None
+
+                user = candidate
+            else:
+                user = candidate
 
         if not user:
             if not config.OIDC_AUTO_PROVISION_USERS:
@@ -69,7 +104,7 @@ def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User
             if not user.is_active:
                 service.logger.warning("OIDC login attempted for inactive user %s", user.id)
                 return None
-            update_oidc_user(service, db, user, email, full_name, subject)
+            update_oidc_user(db, user, email, full_name, subject)
 
         user.last_login = datetime.now(timezone.utc)
         db.commit()
@@ -107,7 +142,7 @@ def provision_oidc_user(
         email=email,
         full_name=full_name,
         org_id=config.DEFAULT_ORG_ID,
-        role=Role.USER,
+        role=Role.VIEWER,
         is_active=True,
         is_superuser=False,
         hashed_password=service.hash_password(secrets.token_urlsafe(24)),
@@ -124,7 +159,6 @@ def provision_oidc_user(
 
 
 def update_oidc_user(
-    service,
     db,
     user: User,
     email: str,
@@ -132,8 +166,15 @@ def update_oidc_user(
     subject: str,
 ) -> None:
     user.auth_provider = config.AUTH_PROVIDER
-    if subject:
-        user.external_subject = subject
+
+    if subject and user.external_subject != subject:
+        conflict = db.query(User).filter(
+            User.external_subject == subject,
+            User.id != user.id,
+        ).first()
+        if not conflict:
+            user.external_subject = subject
+
     if email and user.email.lower() != email:
         conflict = db.query(User).filter(
             func.lower(User.email) == email,
@@ -141,5 +182,6 @@ def update_oidc_user(
         ).first()
         if not conflict:
             user.email = email
+
     if full_name is not None and user.full_name != full_name:
         user.full_name = full_name or None

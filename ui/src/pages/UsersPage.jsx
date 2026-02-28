@@ -280,7 +280,8 @@ export default function UsersPage() {
                     </div>
 
                     <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
+                      {/* wrap badges to avoid overflowing the card when there are many */}
+                      <div className="flex flex-wrap items-center gap-3">
                         <Badge variant={roleVariant} className="whitespace-nowrap text-xs px-3 py-1 font-medium">{u.role}</Badge>
                         {/* show counts for groups & permissions */}
                         {!u.is_active && <Badge variant="warning" className="whitespace-nowrap text-xs px-3 py-1 font-medium">Inactive</Badge>}

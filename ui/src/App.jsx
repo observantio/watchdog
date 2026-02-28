@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import PropTypes from 'prop-types'
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
@@ -42,36 +42,30 @@ function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
   const location = useLocation()
 
-  if (loading) {
-    return <PageLoader />
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />
-  }
-
+  if (loading) return <PageLoader />
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />
   return children
 }
 
-ProtectedRoute.propTypes = {
-  children: PropTypes.node
-}
+ProtectedRoute.propTypes = { children: PropTypes.node }
 
 function ProtectedPermissionRoute({ children, permissions }) {
   return (
     <ProtectedRoute>
-      {permissions?.length > 0 ? (
+      {permissions?.length ? (
         <PermissionGuard any={permissions} fallback={<AccessDenied />}>
           {children}
         </PermissionGuard>
-      ) : children}
+      ) : (
+        children
+      )}
     </ProtectedRoute>
   )
 }
 
 ProtectedPermissionRoute.propTypes = {
   children: PropTypes.node,
-  permissions: PropTypes.arrayOf(PropTypes.string)
+  permissions: PropTypes.arrayOf(PropTypes.string),
 }
 
 function AppContent() {
@@ -81,34 +75,33 @@ function AppContent() {
   const location = useLocation()
 
   useEffect(() => {
-    let active = true
+    let cancelled = false
 
     if (!isAuthenticated) {
       setInfo(null)
       setShowPasswordChange(false)
       return () => {
-        active = false
+        cancelled = true
       }
     }
 
     fetchInfo()
-      .then((response) => {
-        if (active) setInfo(response)
+      .then((resp) => {
+        if (!cancelled) setInfo(resp)
       })
       .catch(() => {
-        if (active) setInfo(null)
+        if (!cancelled) setInfo(null)
       })
 
     setShowPasswordChange(Boolean(user?.needs_password_change))
 
     return () => {
-      active = false
+      cancelled = true
     }
   }, [isAuthenticated, user?.needs_password_change])
 
   const handlePasswordChangeClose = async () => {
     setShowPasswordChange(false)
-    // Refresh user data to get updated needs_password_change flag
     await refreshUser()
   }
 
@@ -124,43 +117,56 @@ function AppContent() {
     { path: '/groups', element: <GroupsPage /> },
     { path: '/apikey', element: <ApiKeyPage /> },
     { path: '/integrations', element: <IntegrationsPage />, permissions: ['read:channels'] },
-    { path: '/audit-compliance', element: <AuditCompliancePage />, permissions: ['read:audit_logs'] }
+    { path: '/audit-compliance', element: <AuditCompliancePage />, permissions: ['read:audit_logs'] },
   ]
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-sre-bg via-sre-bg-alt to-sre-bg">
       {isAuthenticated && <Header />}
+
       {user?.needs_password_change && (
         <ChangePasswordModal
           isOpen={showPasswordChange}
           onClose={handlePasswordChangeClose}
           userId={user.id}
-          isForced={true}
+          isForced
         />
       )}
-      <main className={isAuthenticated ? "container flex-1 mt-4" : "flex-1"}>
+
+      <main className={isAuthenticated ? 'container flex-1 mt-4' : 'flex-1'}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<OIDCCallbackPage />} />
+
             {protectedRoutes.map((route) => (
               <Route
                 key={route.path}
                 path={route.path}
-                element={(
+                element={
                   <ProtectedPermissionRoute permissions={route.permissions}>
                     {route.element}
                   </ProtectedPermissionRoute>
-                )}
+                }
               />
             ))}
+
+            <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
           </Routes>
         </Suspense>
       </main>
 
       {location.pathname !== '/login' && (
         <footer className="container text-center text-xs text-sre-text-muted mt-8 mb-8">
-          © Be Observant — Apache 2.0 License — <a href="https://github.com/StefanKumarasinghe/BeObservant" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">GitHub</a>
+          © Be Observant — Apache 2.0 License —{' '}
+          <a
+            href="https://github.com/StefanKumarasinghe/BeObservant"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sre-primary hover:underline"
+          >
+            GitHub
+          </a>
         </footer>
       )}
     </div>

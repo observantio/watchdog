@@ -181,6 +181,11 @@ class Config:
         self.RATE_LIMIT_REGISTER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_REGISTER_PER_HOUR", "5"))
         self.RATE_LIMIT_GRAFANA_PROXY_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_GRAFANA_PROXY_PER_MINUTE", "3000"))
 
+        # redis URL that may be used for rate limiting or other subsystems
+        self.RATE_LIMIT_REDIS_URL: str = os.getenv("RATE_LIMIT_REDIS_URL", "").strip()
+        self.TTL_CACHE_REDIS_URL: str = os.getenv("TTL_CACHE_REDIS_URL", "").strip()
+        self.TTL_CACHE_KEY_PREFIX: str = os.getenv("TTL_CACHE_KEY_PREFIX", "beobs:ttl").strip()
+
         # Client IP and network boundary controls
         self.TRUST_PROXY_HEADERS: bool = _to_bool(os.getenv("TRUST_PROXY_HEADERS"), default=False)
         self.AUTH_PUBLIC_IP_ALLOWLIST: Optional[str] = os.getenv("AUTH_PUBLIC_IP_ALLOWLIST")
@@ -239,6 +244,12 @@ class Config:
         self.OIDC_JWKS_URL: Optional[str] = os.getenv("OIDC_JWKS_URL")
         self.OIDC_SCOPES: str = os.getenv("OIDC_SCOPES", "openid profile email")
         self.OIDC_AUTO_PROVISION_USERS: bool = _to_bool(os.getenv("OIDC_AUTO_PROVISION_USERS"), default=True)
+        self.OIDC_AUTO_LINK_BY_EMAIL: bool = _to_bool(os.getenv("OIDC_AUTO_LINK_BY_EMAIL"), default=True)
+        self.OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK: bool = _to_bool(os.getenv("OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK"), default=True )
+        # when true, skip enforcing local TOTP/\nMFA for accounts that are backed by an external\nauth provider (OIDC/Keycloak). disabling this\nflag will force the usual database-side MFA\nchecks even for non-local users.
+        self.SKIP_LOCAL_MFA_FOR_EXTERNAL: bool = _to_bool(
+            os.getenv("SKIP_LOCAL_MFA_FOR_EXTERNAL"), default=True
+        )
 
         # Keycloak admin API (optional, for app-driven user provisioning)
         self.KEYCLOAK_ADMIN_URL: Optional[str] = os.getenv("KEYCLOAK_ADMIN_URL")

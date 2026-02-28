@@ -36,3 +36,36 @@ def test_enroll_and_verify_mfa_flow():
     # ensure user now has MFA enabled
     updated = svc.get_user_by_id(user.id)
     assert updated.mfa_enabled is True
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_skip_local_mfa_for_external(monkeypatch):
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    # create a normal local user and simulate MFA requirement
+    user = svc.create_user(
+        UserCreate(username='ext-mfa', email='ext-mfa@example.com', password='pw', full_name='External MFA'),
+        tenant_id,
+    )
+
+    # mark the account as belonging to an external provider and require setup
+    with get_db_session() as db:
+        db_user = db.query(User).filter_by(id=user.id).first()
+        db_user.auth_provider = 'oidc'
+        db_user.must_setup_mfa = True
+        db_user.mfa_enabled = False
+        db.commit()
+
+    # default config skips local MFA for external users
+    result = svc._check_local_mfa(svc, db_user, None)
+    assert result is True
+
+    # if the flag is disabled we should see the normal challenge behavior
+    monkeypatch.setattr(config, 'SKIP_LOCAL_MFA_FOR_EXTERNAL', False)
+    result2 = svc._check_local_mfa(svc, db_user, None)
+    assert isinstance(result2, dict) and result2.get('mfa_setup_required')

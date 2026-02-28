@@ -90,8 +90,12 @@ Control who sees what using **Visibility Scopes**:
 
 1. **Generate an API Key:** Navigate to **API Keys** and create a token for your OTel agent.
 2. **Configure Datasource:** Use the key to connect your metrics/logs.
-3. **Open in Grafana:** Click "Open in Grafana" to see your data instantly. *Note: You can view shared dashboards but cannot edit their metadata unless granted permission.*
-
+3. **Open in Grafana:** Click "Open in Grafana" to see your data instantly. *Note: You can view shared dashboards but cannot edit their metadata unless granted permission.*  
+  > **HTTP development caveat:** when the UI is served over plain HTTP the
+  > Grafana session cookie is normally marked `Secure` and will be ignored by
+  > the browser, causing a never‑ending loading spinner and repeated
+  > `/api/grafana/auth` requests. To fix this set `GF_SECURITY_COOKIE_SECURE=false`
+  > in your `.env` (or run the server on HTTPS).
 ### 2. Investigating with RCA engine (BeCertain)
 
 When an anomaly occurs, use the `/rca` console to trigger an asynchronous analysis job.
@@ -117,7 +121,10 @@ Be Observant is built for high-security environments.
 
 * **Secret Management:** Set `VAULT_ENABLED=true` to fetch credentials from HashiCorp Vault instead of `.env` files.
 * **Asymmetric Auth:** In production, use explicit RS256/ES256 keys via `JWT_PRIVATE_KEY`.
-* **MFA/TOTP:** Enforce two-factor authentication for all password-based accounts.
+* **MFA/TOTP:** Enforce two-factor authentication for all password-based accounts.  
+  When using an external identity provider you can disable the local requirement by setting `SKIP_LOCAL_MFA_FOR_EXTERNAL=true` (the default); turn the flag off if you still want the app to prompt for TOTP even when `auth_provider` is not "local".
+
+* **OIDC user role:** Accounts automatically provisioned or linked via SSO will receive the **viewer** role by default. Administrators may elevate the role to `user` or higher after initial login.
 * **Audit Logs:** Every action is recorded in an append-only Postgres table protected by DB triggers.
 
 ### Administrative Runbooks

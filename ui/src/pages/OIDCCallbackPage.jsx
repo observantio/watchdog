@@ -3,37 +3,52 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Spinner } from '../components/ui'
 
+const readParams = () => {
+  const url = new URL(globalThis.location.href)
+  const search = url.searchParams
+  return {
+    code: search.get('code') || '',
+    state: search.get('state') || '',
+    oidcError: search.get('error') || '',
+    errorDescription: search.get('error_description') || '',
+  }
+}
+
 export default function OIDCCallbackPage() {
   const navigate = useNavigate()
   const { finishOIDCLogin } = useAuth()
   const [error, setError] = useState('')
 
-  const params = useMemo(() => {
-    const hash = globalThis.location.hash || ''
-    const query = hash.includes('?') ? hash.split('?')[1] : ''
-    const search = new URLSearchParams(query)
-    return {
-      code: search.get('code') || '',
-      state: search.get('state') || '',
-      oidcError: search.get('error') || '',
-      errorDescription: search.get('error_description') || '',
-    }
-  }, [])
+  const params = useMemo(() => readParams(), [])
 
   useEffect(() => {
+    let alive = true
+
     const run = async () => {
       if (params.oidcError) {
-        setError(params.errorDescription || params.oidcError)
+        if (alive) setError(params.errorDescription || params.oidcError)
         return
       }
+
+      if (!params.code || !params.state) {
+        if (alive) setError('Missing OIDC callback parameters')
+        return
+      }
+
       try {
         await finishOIDCLogin({ code: params.code, state: params.state })
+        if (!alive) return
+        globalThis.history.replaceState({}, '', '/')
         navigate('/', { replace: true })
-      } catch (err) {
-        setError(err?.message || 'OIDC login failed')
+      } catch (e) {
+        if (alive) setError(e?.message || 'OIDC login failed')
       }
     }
+
     run()
+    return () => {
+      alive = false
+    }
   }, [finishOIDCLogin, navigate, params])
 
   return (

@@ -264,7 +264,6 @@ async def oidc_authorize_url(request: Request, payload: OIDCAuthURLRequest):
         logger.error("Failed to build OIDC authorization URL: %s", exc)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to initialize OIDC login")
 
-
 @router.post("/oidc/exchange", response_model=Token)
 async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest, response: Response):
     enforce_public_endpoint_security(
@@ -276,21 +275,29 @@ async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest
     )
     if not await run_in_threadpool(auth_service.is_external_auth_enabled):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC is not enabled")
-    token_or_challenge = await run_in_threadpool(
-        auth_service.exchange_oidc_authorization_code,
-        payload.code,
-        payload.redirect_uri,
-        payload.transaction_id,
-        payload.state,
-        payload.code_verifier,
-    )
+
+    try:
+        token_or_challenge = await run_in_threadpool(
+            auth_service.exchange_oidc_authorization_code,
+            payload.code,
+            payload.redirect_uri,
+            payload.transaction_id,
+            payload.state,
+            payload.code_verifier,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc) or "OIDC authentication failed")
+    except Exception:
+        logger.exception("OIDC exchange failed")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed")
+
     if not token_or_challenge:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed")
-    if isinstance(token_or_challenge, dict) and token_or_challenge.get('mfa_setup_required'):
+    if isinstance(token_or_challenge, dict) and token_or_challenge.get("mfa_setup_required"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=token_or_challenge)
+
     _set_auth_cookie(request, response, token_or_challenge.access_token)
     return token_or_challenge
-
 
 @router.post("/logout")
 async def logout(request: Request, response: Response):

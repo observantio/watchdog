@@ -9,7 +9,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// bundle visualizer for build analysis when ANALYZE=true
 import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig(({ mode }) => {

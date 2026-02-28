@@ -2,7 +2,7 @@ import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { AuthProvider, useAuth } from '../contexts/AuthContext'
+import { AuthProvider, useAuth, computeOidcRedirectUri } from '../contexts/AuthContext'
 import * as api from '../api'
 
 vi.mock('../api')
@@ -20,6 +20,7 @@ function Status() {
     </div>
   )
 }
+
 
 describe('AuthContext cookie-first behavior', () => {
   const renderWithRouter = (node) =>

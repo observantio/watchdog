@@ -116,7 +116,7 @@ class DatabaseAuthService:
         self._secret_provider: Optional["SecretProvider"] = None 
 
     def is_external_auth_enabled(self) -> bool:
-        return config.AUTH_PROVIDER == "keycloak" and self.oidc_service.is_enabled()
+        return config.AUTH_PROVIDER in {"oidc", "keycloak"} and self.oidc_service.is_enabled()
 
     def is_password_auth_enabled(self) -> bool:
         return bool(config.AUTH_PASSWORD_FLOW_ENABLED)
@@ -266,7 +266,7 @@ class DatabaseAuthService:
 
 
     def _extract_permissions_from_oidc_claims(self, claims: Dict[str, Any]) -> List[str]:
-        return db_oidc.extract_permissions_from_oidc_claims(self, claims)
+        return db_oidc.extract_permissions_from_oidc_claims(claims)
 
     def _sync_user_from_oidc_claims(self, claims: Dict[str, Any]) -> Optional[User]:
         return db_oidc.sync_user_from_oidc_claims(self, claims)
@@ -284,7 +284,7 @@ class DatabaseAuthService:
     def _update_oidc_user(
         self, db: Session, user: User, email: str, full_name: Optional[str], subject: str
     ):
-        return db_oidc.update_oidc_user(self, db, user, email, full_name, subject)
+        return db_oidc.update_oidc_user(db, user, email, full_name, subject)
 
 
     def get_user_permissions(self, user: User) -> List[str]:
