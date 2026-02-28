@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from datetime import datetime, timezone
 import secrets
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Iterable
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
@@ -22,18 +22,30 @@ from db_models import User, Group, Permission
 from models.access.user_models import UserCreate, UserUpdate, User as UserSchema
 from models.access.auth_models import Role
 
-_MUTABLE_USER_FIELDS = {
-    "full_name", "email", "is_active", "role", "org_id",
-    "must_setup_mfa", "needs_password_change",
+MUTABLE_USER_FIELDS = {
+    "full_name",
+    "email",
+    "is_active",
+    "role",
+    "org_id",
+    "must_setup_mfa",
+    "needs_password_change",
 }
-_SENSITIVE_USER_FIELDS = {"role", "org_id", "group_ids"}
-_ROLE_RANK = {
-    Role.VIEWER.value: 0,
-    Role.USER.value: 1,
-    Role.ADMIN.value: 2,
+SENSITIVE_USER_FIELDS = {"role", "org_id", "group_ids"}
+
+ROLE_RANK = {
+    Role.PROVISIONING.value: 0,
+    Role.VIEWER.value: 1,
+    Role.USER.value: 2,
+    Role.ADMIN.value: 3,
 }
-_ADMIN_PERMISSION_PATTERNS = ("manage:",)
-_ADMIN_ONLY_PERMISSION_EXACT = {"update:user_permissions", "update:group_permissions"}
+
+ADMIN_PERMISSION_PATTERNS = ("manage:",)
+ADMIN_ONLY_PERMISSION_EXACT = {"update:user_permissions", "update:group_permissions"}
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _role_to_text(value) -> str:
@@ -46,26 +58,54 @@ def _role_to_text(value) -> str:
 
 
 def _role_rank(value) -> int:
-    return _ROLE_RANK.get(_role_to_text(value), 0)
+    return ROLE_RANK.get(_role_to_text(value), 0)
 
 
 def _is_admin_actor(*, actor_role: Optional[str], actor_is_superuser: bool) -> bool:
     return bool(actor_is_superuser or _role_to_text(actor_role) == Role.ADMIN.value)
 
 
+def _is_admin_user(user: Optional[User]) -> bool:
+    if not user:
+        return False
+    return _role_to_text(getattr(user, "role", None)) == Role.ADMIN.value
+
+
 def _permission_is_admin_only(name: str) -> bool:
     perm = str(name or "").strip()
     if not perm:
         return False
-    if perm in _ADMIN_ONLY_PERMISSION_EXACT:
+    if perm in ADMIN_ONLY_PERMISSION_EXACT:
         return True
-    if any(perm.startswith(prefix) for prefix in _ADMIN_PERMISSION_PATTERNS):
+    if any(perm.startswith(prefix) for prefix in ADMIN_PERMISSION_PATTERNS):
         return True
     return perm.startswith("update:") and perm.endswith("permissions")
 
 
-def _normalize_permissions(values: Optional[List[str]]) -> Set[str]:
+def _normalize_permissions(values: Optional[Iterable[str]]) -> Set[str]:
     return {str(v).strip() for v in (values or []) if str(v).strip()}
+
+
+def _get_user(
+    db,
+    *,
+    user_id: str,
+    tenant_id: str,
+    with_groups: bool = False,
+    with_permissions: bool = False,
+    with_api_keys: bool = False,
+) -> Optional[User]:
+    opts = []
+    if with_groups:
+        opts.append(joinedload(User.groups))
+    if with_permissions:
+        opts.append(joinedload(User.permissions))
+    if with_api_keys:
+        opts.append(joinedload(User.api_keys))
+    q = db.query(User).filter_by(id=user_id, tenant_id=tenant_id)
+    if opts:
+        q = q.options(*opts)
+    return q.first()
 
 
 def _resolve_actor_permissions(
@@ -81,9 +121,13 @@ def _resolve_actor_permissions(
         return provided
     if not actor_user_id:
         return set()
+
     actor = (
         db.query(User)
-        .options(joinedload(User.groups).joinedload(Group.permissions), joinedload(User.permissions))
+        .options(
+            joinedload(User.groups).joinedload(Group.permissions),
+            joinedload(User.permissions),
+        )
         .filter_by(id=actor_user_id, tenant_id=tenant_id)
         .first()
     )
@@ -101,15 +145,19 @@ def _enforce_permission_delegation(
 ) -> None:
     if actor_is_superuser:
         return
+
     actor_is_admin = _is_admin_actor(actor_role=actor_role, actor_is_superuser=False)
+
     if not requested_permissions.issubset(actor_permissions):
         forbidden = sorted(requested_permissions - actor_permissions)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Cannot grant permissions outside your own scope: {forbidden}",
         )
+
     if actor_is_admin:
         return
+
     privileged = sorted(p for p in requested_permissions if _permission_is_admin_only(p))
     if privileged:
         raise HTTPException(
@@ -121,11 +169,15 @@ def _enforce_permission_delegation(
 def get_user_by_id(service, user_id: str, tenant_id: Optional[str] = None) -> Optional[UserSchema]:
     service._lazy_init()
     with get_db_session() as db:
-        query = db.query(User).options(
-            joinedload(User.groups),
-            joinedload(User.permissions),
-            joinedload(User.api_keys),
-        ).filter_by(id=user_id)
+        query = (
+            db.query(User)
+            .options(
+                joinedload(User.groups),
+                joinedload(User.permissions),
+                joinedload(User.api_keys),
+            )
+            .filter_by(id=user_id)
+        )
         if tenant_id is not None:
             query = query.filter_by(tenant_id=tenant_id)
         user = query.first()
@@ -135,6 +187,7 @@ def get_user_by_id(service, user_id: str, tenant_id: Optional[str] = None) -> Op
 
 
 def get_user_by_username(service, username: str) -> Optional[UserSchema]:
+    service._lazy_init()
     username = (username or "").strip().lower()
     with get_db_session() as db:
         user = (
@@ -154,15 +207,16 @@ def create_user(
     tenant_id: str,
     creator_id: Optional[str] = None,
     actor_role: Optional[str] = None,
-    actor_permissions: Optional[List[str]] = None,
     actor_is_superuser: bool = False,
 ) -> UserSchema:
+    service._lazy_init()
     with get_db_session() as db:
         requested_role = _role_to_text(getattr(user_create, "role", None) or Role.USER.value)
         actor_role_text = _role_to_text(actor_role)
 
+        creator = None
         if creator_id:
-            creator = db.query(User).filter_by(id=creator_id, tenant_id=tenant_id).first()
+            creator = _get_user(db, user_id=creator_id, tenant_id=tenant_id)
             if not creator:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -224,7 +278,7 @@ def create_user(
 
         raw_password = user_create.password
         if is_external and not raw_password:
-            raw_password = secrets.token_urlsafe(24)
+           raw_password = secrets.token_urlsafe(24)
         if not raw_password:
             raise ValueError("Password is required when local authentication is enabled")
 
@@ -233,6 +287,8 @@ def create_user(
             requested_org = str(getattr(user_create, "org_id", "") or "").strip()
             if requested_org:
                 org_value = requested_org
+
+        enforce_change = auth_provider == "local"
 
         user = User(
             tenant_id=tenant_id,
@@ -243,20 +299,19 @@ def create_user(
             role=requested_role,
             is_active=user_create.is_active,
             hashed_password=service.hash_password(raw_password),
-            needs_password_change=(not is_external),
-            password_changed_at=datetime.now(timezone.utc),
+            needs_password_change=enforce_change,
+            password_changed_at=_now_utc(),
             auth_provider=auth_provider,
             external_subject=external_subject,
             must_setup_mfa=getattr(user_create, "must_setup_mfa", False),
         )
 
         if user_create.group_ids:
-            groups = db.query(Group).filter(
-                and_(
-                    Group.id.in_(user_create.group_ids),
-                    Group.tenant_id == tenant_id,
-                )
-            ).all()
+            groups = (
+                db.query(Group)
+                .filter(and_(Group.id.in_(user_create.group_ids), Group.tenant_id == tenant_id))
+                .all()
+            )
             user.groups.extend(groups)
 
         db.add(user)
@@ -264,18 +319,22 @@ def create_user(
         service._ensure_default_api_key(db, user)
 
         if creator_id:
-            service._log_audit(db, tenant_id, creator_id, "create_user", "users", user.id, {
-                "username": user.username,
-                "role": user.role,
-            })
+            service._log_audit(
+                db,
+                tenant_id,
+                creator_id,
+                "create_user",
+                "users",
+                user.id,
+                {"username": user.username, "role": user.role},
+            )
 
         db.commit()
         return service._to_user_schema(user)
 
 
-def list_users(
-    service, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0
-) -> List[UserSchema]:
+def list_users(service, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
+    service._lazy_init()
     try:
         requested_limit = int(limit) if limit is not None else int(getattr(config, "DEFAULT_QUERY_LIMIT", 100))
         max_limit = int(getattr(config, "MAX_QUERY_LIMIT", 5000))
@@ -297,16 +356,22 @@ def list_users(
 
 
 def update_user(
-    service, user_id: str, user_update: UserUpdate, tenant_id: str, updater_id: Optional[str] = None
+    service,
+    user_id: str,
+    user_update: UserUpdate,
+    tenant_id: str,
+    updater_id: Optional[str] = None,
 ) -> Optional[UserSchema]:
+    service._lazy_init()
     with get_db_session() as db:
-        user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
+        user = _get_user(db, user_id=user_id, tenant_id=tenant_id, with_groups=True, with_api_keys=True)
         if not user:
             return None
 
         update_data = {
-            k: v for k, v in user_update.model_dump(exclude_unset=True).items()
-            if k in _MUTABLE_USER_FIELDS or k == "group_ids"
+            k: v
+            for k, v in user_update.model_dump(exclude_unset=True).items()
+            if k in MUTABLE_USER_FIELDS or k == "group_ids"
         }
 
         if updater_id and user_id == updater_id and update_data.get("is_active") is False:
@@ -315,20 +380,18 @@ def update_user(
                 detail="You cannot disable your own account",
             )
 
-        updater_user = None
-        if updater_id:
-            updater_user = db.query(User).filter_by(id=updater_id, tenant_id=tenant_id).first()
+        updater_user = _get_user(db, user_id=updater_id, tenant_id=tenant_id) if updater_id else None
         updater_is_superuser = bool(getattr(updater_user, "is_superuser", False))
         updater_role_text = _role_to_text(getattr(updater_user, "role", ""))
 
-        if user.role == Role.ADMIN and updater_user and updater_role_text != Role.ADMIN.value and not updater_is_superuser:
+        if _is_admin_user(user) and updater_user and updater_role_text != Role.ADMIN.value and not updater_is_superuser:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only administrators can modify admin accounts",
             )
 
         if updater_user and not updater_is_superuser:
-            if _SENSITIVE_USER_FIELDS & set(update_data.keys()) and updater_role_text != Role.ADMIN.value:
+            if (SENSITIVE_USER_FIELDS & set(update_data.keys())) and updater_role_text != Role.ADMIN.value:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only administrators can modify role, tenant scope, or group memberships",
@@ -349,17 +412,16 @@ def update_user(
 
         for field, value in update_data.items():
             if field == "group_ids" and value is not None:
-                groups = db.query(Group).filter(
-                    and_(
-                        Group.id.in_(value),
-                        Group.tenant_id == tenant_id,
-                    )
-                ).all()
+                groups = (
+                    db.query(Group)
+                    .filter(and_(Group.id.in_(value), Group.tenant_id == tenant_id))
+                    .all()
+                )
                 user.groups = groups
             else:
                 setattr(user, field, value)
 
-        user.updated_at = datetime.now(timezone.utc)
+        user.updated_at = _now_utc()
 
         if "org_id" in update_data:
             service._ensure_default_api_key(db, user)
@@ -371,7 +433,7 @@ def update_user(
         return service._to_user_schema(user)
 
 
-def set_grafana_user_id(service, user_id: str, grafana_user_id: int, tenant_id: str) -> bool:
+def set_grafana_user_id(user_id: str, grafana_user_id: int, tenant_id: str) -> bool:
     with get_db_session() as db:
         user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
         if not user:
@@ -382,33 +444,40 @@ def set_grafana_user_id(service, user_id: str, grafana_user_id: int, tenant_id: 
 
 
 def delete_user(service, user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
+    service._lazy_init()
     if deleter_id and user_id == deleter_id:
         raise ValueError("Users cannot delete their own account")
 
     with get_db_session() as db:
-        user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
+        user = _get_user(db, user_id=user_id, tenant_id=tenant_id)
         if not user:
             return False
-        if user.role == Role.ADMIN:
+
+        if _is_admin_user(user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Admin accounts cannot be deleted",
             )
 
+        deleter = _get_user(db, user_id=deleter_id, tenant_id=tenant_id) if deleter_id else None
         if deleter_id:
-            deleter = db.query(User).filter_by(id=deleter_id, tenant_id=tenant_id).first()
             if not deleter:
                 return False
-            if deleter.role != Role.ADMIN and not deleter.is_superuser:
+            if _role_to_text(getattr(deleter, "role", None)) != Role.ADMIN.value and not getattr(deleter, "is_superuser", False):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only administrators can delete users",
                 )
 
-        if deleter_id:
-            service._log_audit(db, tenant_id, deleter_id, "delete_user", "users", user_id, {
-                "username": user.username,
-            })
+            service._log_audit(
+                db,
+                tenant_id,
+                deleter_id,
+                "delete_user",
+                "users",
+                user_id,
+                {"username": user.username},
+            )
 
         db.delete(user)
         db.commit()
@@ -425,6 +494,7 @@ def update_user_permissions(
     actor_permissions: Optional[List[str]] = None,
     actor_is_superuser: bool = False,
 ) -> bool:
+    service._lazy_init()
     with get_db_session() as db:
         if not actor_user_id:
             raise HTTPException(
@@ -432,11 +502,11 @@ def update_user_permissions(
                 detail="Actor context is required for permission updates",
             )
 
-        user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
+        user = _get_user(db, user_id=user_id, tenant_id=tenant_id, with_permissions=True)
         if not user:
             return False
 
-        actor = db.query(User).filter_by(id=actor_user_id, tenant_id=tenant_id).first()
+        actor = _get_user(db, user_id=actor_user_id, tenant_id=tenant_id)
         if not actor:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Actor not found")
 
@@ -451,7 +521,7 @@ def update_user_permissions(
         )
 
         if not _is_admin_actor(actor_role=actor_role_text, actor_is_superuser=actor_is_superuser):
-            if _role_to_text(getattr(user, "role", None)) == Role.ADMIN.value:
+            if _is_admin_user(user):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only administrators can modify admin permissions",
@@ -471,7 +541,7 @@ def update_user_permissions(
         )
 
         known_names = {
-            name for (name,) in db.query(Permission.name).filter(Permission.name.in_(permission_names)).all()
+            name for (name,) in db.query(Permission.name).filter(Permission.name.in_(normalized_requested)).all()
         }
         unknown = normalized_requested - known_names
         if unknown:

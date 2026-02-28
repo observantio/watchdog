@@ -7,12 +7,13 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-from datetime import datetime, timezone
-from typing import Optional
+from __future__ import annotations
 
-from sqlalchemy import func
+from datetime import datetime, timezone
+from typing import Iterable, Optional, Set
+
+from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import SQLAlchemyError, NoSuchTableError
-from sqlalchemy import inspect, text
 
 from config import config
 from database import get_db_session
@@ -20,39 +21,124 @@ from db_models import Permission, Tenant, User, UserApiKey
 from models.access.auth_models import Role
 
 
-def ensure_permissions(service, db):
+_BOOTSTRAP_PG_LOCK_KEY = 947201
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _norm_lower(value: Optional[str]) -> str:
+    return (value or "").strip().lower()
+
+
+def _dialect(db) -> str:
+    return str(getattr(db.bind.dialect, "name", "")).lower()
+
+
+def _pg_advisory_lock(db, key: int) -> None:
+    if _dialect(db) != "postgresql":
+        return
+    db.execute(text("SELECT pg_advisory_lock(:k)"), {"k": key})
+
+
+def _pg_advisory_unlock(db, key: int) -> None:
+    if _dialect(db) != "postgresql":
+        return
+    db.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
+
+
+def _table_columns(db, table_name: str) -> Set[str]:
+    insp = inspect(db.bind)
+    try:
+        return {c.get("name") for c in insp.get_columns(table_name)}
+    except NoSuchTableError:
+        return set()
+
+
+def _ensure_column(db, table: str, col: str, ddl: str) -> bool:
+    cols = _table_columns(db, table)
+    if not cols or col in cols:
+        return False
+    db.execute(text(ddl))
+    return True
+
+
+def _ensure_indexes(db, statements: Iterable[str]) -> None:
+    for stmt in statements:
+        try:
+            db.execute(text(stmt))
+        except Exception as exc:
+            raise ValueError(f"Failed to enforce API key constraint ({stmt}): {exc}") from exc
+
+
+def ensure_permissions(db) -> None:
     from services.auth.permission_defs import PERMISSION_DEFS
 
+    wanted = [p[0] for p in PERMISSION_DEFS]
+    if not wanted:
+        return
+
+    existing = {
+        n for (n,) in db.query(Permission.name).filter(Permission.name.in_(wanted)).all()
+    }
+
     for name, display_name, description, resource_type, action in PERMISSION_DEFS:
-        if not db.query(Permission).filter_by(name=name).first():
-            db.add(Permission(
+        if name in existing:
+            continue
+        db.add(
+            Permission(
                 name=name,
                 display_name=display_name,
                 description=description,
                 resource_type=resource_type,
                 action=action,
-            ))
+            )
+        )
     db.flush()
 
 
-def ensure_default_api_key(service, db, user: User):
+def _disable_other_enabled_keys(db, user_id, keep_id) -> None:
+    now = _now_utc()
+    db.execute(
+        text(
+            """
+            UPDATE user_api_keys
+            SET is_enabled = false, updated_at = :now
+            WHERE user_id = :uid
+              AND is_enabled = true
+              AND id <> :keep
+            """
+        ),
+        {"uid": str(user_id), "keep": str(keep_id), "now": now},
+    )
+
+
+def ensure_default_api_key(service, db, user: User) -> None:
     if not user:
         return
 
-    is_system_user = (
-        (getattr(user, "username", "") or "").strip().lower()
-        == (config.DEFAULT_ADMIN_USERNAME or "").strip().lower()
+    now = _now_utc()
+    is_system_user = _norm_lower(getattr(user, "username", "")) == _norm_lower(
+        config.DEFAULT_ADMIN_USERNAME
     )
 
-    existing = db.query(UserApiKey).filter_by(user_id=user.id, is_default=True).first()
+    existing = (
+        db.query(UserApiKey)
+        .filter_by(user_id=user.id, is_default=True)
+        .with_for_update()
+        .first()
+    )
+
     if existing:
+        _disable_other_enabled_keys(db, existing.user_id, existing.id)
+        if not existing.is_enabled:
+            existing.is_enabled = True
+            existing.updated_at = now
+
         if existing.name == "Default" and is_system_user:
-            desired_token = service._resolve_default_otlp_token()
-            desired_hash = service._hash_otlp_token(desired_token)
-            now = datetime.now(timezone.utc)
-            if not existing.is_enabled:
-                existing.is_enabled = True
-                existing.updated_at = now
+            desired_raw = service._resolve_default_otlp_token()
+            desired_hash = service._hash_otlp_token(desired_raw)
             if (
                 not getattr(existing, "otlp_token_hash", None)
                 or (config.DEFAULT_OTLP_TOKEN and existing.otlp_token_hash != desired_hash)
@@ -60,15 +146,21 @@ def ensure_default_api_key(service, db, user: User):
                 existing.otlp_token_hash = desired_hash
                 existing.otlp_token = None
                 existing.updated_at = now
-        elif not getattr(existing, "otlp_token_hash", None):
+            return
+
+        if not getattr(existing, "otlp_token_hash", None):
             source = existing.otlp_token or service._generate_otlp_token()
             existing.otlp_token_hash = service._hash_otlp_token(source)
             existing.otlp_token = None
-            existing.updated_at = datetime.now(timezone.utc)
+            existing.updated_at = now
         return
 
-    raw_token = service._resolve_default_otlp_token() if is_system_user else service._generate_otlp_token()
-    db.add(UserApiKey(
+    raw_token = (
+        service._resolve_default_otlp_token()
+        if is_system_user
+        else service._generate_otlp_token()
+    )
+    new_key = UserApiKey(
         tenant_id=user.tenant_id,
         user_id=user.id,
         name="Default",
@@ -77,68 +169,85 @@ def ensure_default_api_key(service, db, user: User):
         otlp_token_hash=service._hash_otlp_token(raw_token),
         is_default=True,
         is_enabled=True,
-    ))
+    )
+    db.add(new_key)
+    db.flush()
+    _disable_other_enabled_keys(db, user.id, new_key.id)
 
 
-def ensure_default_setup(service):
+def ensure_default_setup(service) -> None:
     try:
         with get_db_session() as db:
-            _ensure_user_security_columns(service, db)
-            _ensure_api_key_constraints(service, db)
-            _backfill_password_changed_at(service, db)
-            default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
-            ensure_permissions(service, db)
+            _pg_advisory_lock(db, _BOOTSTRAP_PG_LOCK_KEY)
+            try:
+                _ensure_user_security_columns(db)
+                _ensure_api_key_constraints(db)
+                _backfill_password_changed_at(db)
 
-            if not config.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
+                ensure_permissions(db)
+
+                default_tenant = (
+                    db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+                )
+
+                if not config.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
+                    if not default_tenant:
+                        service.logger.warning(
+                            "DEFAULT_ADMIN_BOOTSTRAP_ENABLED is false and default tenant is missing. "
+                            "Run explicit bootstrap before serving production traffic."
+                        )
+                    return
+
+                if not config.DEFAULT_ADMIN_PASSWORD or len(config.DEFAULT_ADMIN_PASSWORD) < 16:
+                    raise ValueError("DEFAULT_ADMIN_PASSWORD must be at least 16 characters")
+
                 if not default_tenant:
-                    service.logger.warning(
-                        "DEFAULT_ADMIN_BOOTSTRAP_ENABLED is false and default tenant is missing. "
-                        "Run explicit bootstrap before serving production traffic."
+                    default_tenant = Tenant(
+                        name=config.DEFAULT_ADMIN_TENANT,
+                        display_name="Default Organization",
+                        is_active=True,
                     )
-                return
+                    db.add(default_tenant)
+                    db.flush()
+                    service.logger.info("Created default tenant")
 
-            if not config.DEFAULT_ADMIN_PASSWORD or len(config.DEFAULT_ADMIN_PASSWORD) < 16:
-                raise ValueError(
-                    "DEFAULT_ADMIN_PASSWORD must be at least 16 characters"
+                admin_username = _norm_lower(config.DEFAULT_ADMIN_USERNAME)
+                admin_user = (
+                    db.query(User)
+                    .filter(
+                        User.tenant_id == default_tenant.id,
+                        func.lower(User.username) == admin_username,
+                    )
+                    .with_for_update()
+                    .first()
                 )
 
-            if not default_tenant:
-                default_tenant = Tenant(
-                    name=config.DEFAULT_ADMIN_TENANT,
-                    display_name="Default Organization",
-                    is_active=True,
-                )
-                db.add(default_tenant)
-                db.flush()
-                service.logger.info("Created default tenant")
+                if not admin_user:
+                    admin_user = User(
+                        tenant_id=default_tenant.id,
+                        username=admin_username,
+                        email=config.DEFAULT_ADMIN_EMAIL,
+                        full_name="System Administrator",
+                        org_id=config.DEFAULT_ORG_ID,
+                        role=Role.ADMIN,
+                        is_active=True,
+                        is_superuser=True,
+                        hashed_password=service.hash_password(config.DEFAULT_ADMIN_PASSWORD),
+                        password_changed_at=_now_utc(),
+                        must_setup_mfa=True,
+                    )
+                    db.add(admin_user)
+                    db.flush()
+                    admin_user.permissions.extend(db.query(Permission).all())
+                    service.logger.info(
+                        "Created default admin user: %s", config.DEFAULT_ADMIN_USERNAME
+                    )
 
-            admin_username = (config.DEFAULT_ADMIN_USERNAME or "").strip().lower()
-            admin_user = db.query(User).filter(
-                User.tenant_id == default_tenant.id,
-                func.lower(User.username) == admin_username,
-            ).first()
+                ensure_default_api_key(service, db, admin_user)
+                db.commit()
+            finally:
+                _pg_advisory_unlock(db, _BOOTSTRAP_PG_LOCK_KEY)
 
-            if not admin_user:
-                admin_user = User(
-                    tenant_id=default_tenant.id,
-                    username=admin_username,
-                    email=config.DEFAULT_ADMIN_EMAIL,
-                    full_name="System Administrator",
-                    org_id=config.DEFAULT_ORG_ID,
-                    role=Role.ADMIN,
-                    is_active=True,
-                    is_superuser=True,
-                    hashed_password=service.hash_password(config.DEFAULT_ADMIN_PASSWORD),
-                    password_changed_at=datetime.now(timezone.utc),
-                    must_setup_mfa=True,
-                )
-                db.add(admin_user)
-                db.flush()
-                admin_user.permissions.extend(db.query(Permission).all())
-                service.logger.info("Created default admin user: %s", config.DEFAULT_ADMIN_USERNAME)
-
-            ensure_default_api_key(service, db, admin_user)
-            db.commit()
     except SQLAlchemyError as exc:
         service.logger.error("Database error during default setup: %s", exc)
         raise
@@ -147,24 +256,25 @@ def ensure_default_setup(service):
         raise
 
 
-def _ensure_user_security_columns(service, db) -> None:
-    # Keep schema compatible for existing deployments where users table predates these fields.
-    insp = inspect(db.bind)
-    try:
-        cols = {c.get("name") for c in insp.get_columns("users")}
-    except NoSuchTableError:
-        return
+def _ensure_user_security_columns(db) -> None:
+    changed = False
+    changed |= _ensure_column(
+        db,
+        "users",
+        "password_changed_at",
+        "ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP",
+    )
+    changed |= _ensure_column(
+        db,
+        "users",
+        "session_invalid_before",
+        "ALTER TABLE users ADD COLUMN session_invalid_before TIMESTAMP",
+    )
+    if changed:
+        db.flush()
 
-    # Use SQL that works on PostgreSQL and modern SQLite.
-    if "password_changed_at" not in cols:
-        db.execute(text("ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP"))
-    if "session_invalid_before" not in cols:
-        db.execute(text("ALTER TABLE users ADD COLUMN session_invalid_before TIMESTAMP"))
-    db.flush()
 
-
-def _backfill_password_changed_at(service, db) -> None:
-    # Backfill legacy local users so periodic expiry works deterministically.
+def _backfill_password_changed_at(db) -> None:
     db.execute(
         text(
             """
@@ -178,18 +288,18 @@ def _backfill_password_changed_at(service, db) -> None:
     db.flush()
 
 
-def _ensure_api_key_constraints(service, db) -> None:
-    insp = inspect(db.bind)
-    try:
-        cols = {c.get("name") for c in insp.get_columns("user_api_keys")}
-    except NoSuchTableError:
+def _ensure_api_key_constraints(db) -> None:
+    cols = _table_columns(db, "user_api_keys")
+    if not cols:
         return
 
-    dialect = str(getattr(db.bind.dialect, "name", "")).lower()
+    changed = False
     if "otlp_token_hash" not in cols:
         db.execute(text("ALTER TABLE user_api_keys ADD COLUMN otlp_token_hash VARCHAR(64)"))
+        changed = True
 
-    statements = []
+    dialect = _dialect(db)
+
     if dialect == "postgresql":
         statements = [
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_otlp_token_hash ON user_api_keys (otlp_token_hash)",
@@ -202,11 +312,12 @@ def _ensure_api_key_constraints(service, db) -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_user_default_true ON user_api_keys (user_id) WHERE is_default = 1",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_api_keys_user_enabled_true ON user_api_keys (user_id) WHERE is_enabled = 1",
         ]
+    else:
+        statements = []
 
-    for stmt in statements:
-        try:
-            db.execute(text(stmt))
-        except Exception as exc:
-            service.logger.error("Failed to enforce API key constraint (%s): %s", stmt, exc)
-            raise
-    db.flush()
+    if statements:
+        _ensure_indexes(db, statements)
+        changed = True
+
+    if changed:
+        db.flush()

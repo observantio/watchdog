@@ -11,8 +11,7 @@ from typing import Any, Dict, Optional
 from services.audit_context import get_request_audit_context
 from db_models import AuditLog
 
-
-def log_audit(service, db, tenant_id: str, user_id: str, action: str, resource_type: str, resource_id: str, details: Dict[str, Any], ip_address: Optional[str] = None, user_agent: Optional[str] = None):
+def log_audit(db, tenant_id: str, user_id: str, action: str, resource_type: str, resource_id: str, details: Dict[str, Any], ip_address: Optional[str] = None, user_agent: Optional[str] = None):
     ctx_ip, ctx_user_agent = get_request_audit_context()
     db.add(AuditLog(
         tenant_id=tenant_id,

@@ -7,50 +7,85 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
-from typing import Any, Dict, List
 
-from sqlalchemy.orm import joinedload
+from __future__ import annotations
 
-from models.access.auth_models import ROLE_PERMISSIONS, Role
+from typing import Any, Dict, List, Optional, Set
+
+from sqlalchemy.orm import selectinload
+
 from database import get_db_session
-from db_models import User, Group, Permission
+from db_models import Group, Permission, User
+from models.access.auth_models import ROLE_PERMISSIONS, Role
 
 
 def get_user_permissions(service, user: User) -> List[str]:
     user_id = getattr(user, "id", None)
     if not user_id:
         return []
+
     with get_db_session() as db:
-        db_user = db.query(User).options(
-            joinedload(User.groups).joinedload(Group.permissions),
-            joinedload(User.permissions),
-        ).filter_by(id=user_id).first()
-        return collect_permissions(service, db_user) if db_user else []
+        db_user = (
+            db.query(User)
+            .options(
+                selectinload(User.groups).selectinload(Group.permissions),
+                selectinload(User.permissions),
+            )
+            .filter(User.id == user_id)
+            .first()
+        )
+        return collect_permissions(db_user, service=service) if db_user else []
 
 
-def get_user_direct_permissions(service, user: User) -> List[str]:
+def get_user_direct_permissions(user: User) -> List[str]:
     user_id = getattr(user, "id", None)
     if not user_id:
         return []
+
     with get_db_session() as db:
-        db_user = db.query(User).options(joinedload(User.permissions)).filter_by(id=user_id).first()
-        return [p.name for p in (db_user.permissions or [])] if db_user else []
+        db_user = (
+            db.query(User)
+            .options(selectinload(User.permissions))
+            .filter(User.id == user_id)
+            .first()
+        )
+        if not db_user:
+            return []
+        return sorted({p.name for p in (db_user.permissions or []) if getattr(p, "name", None)})
 
 
-def collect_permissions(service, user: User) -> List[str]:
-    role_perms = {p.value for p in ROLE_PERMISSIONS.get(Role(user.role), [])}
-    group_perms = {
-        p.name
-        for group in user.groups
-        if group.is_active
-        for p in group.permissions
-    }
-    direct_perms = {p.name for p in user.permissions}
-    return list(role_perms | group_perms | direct_perms)
+def collect_permissions(user: User, service=None) -> List[str]:
+    perms: Set[str] = set()
+
+    role = _safe_role(getattr(user, "role", None))
+    for p in ROLE_PERMISSIONS.get(role, []):
+        v = getattr(p, "value", None)
+        if v:
+            perms.add(v)
+
+    for group in (getattr(user, "groups", None) or []):
+        if not getattr(group, "is_active", False):
+            continue
+        for p in (getattr(group, "permissions", None) or []):
+            name = getattr(p, "name", None)
+            if name:
+                perms.add(name)
+
+    for p in (getattr(user, "permissions", None) or []):
+        name = getattr(p, "name", None)
+        if name:
+            perms.add(name)
+
+    return sorted(perms)
 
 
-def list_all_permissions(service) -> List[Dict[str, Any]]:
+def list_all_permissions() -> List[Dict[str, Any]]:
     with get_db_session() as db:
+        perms = (
+            db.query(Permission)
+            .order_by(Permission.resource_type, Permission.action)
+            .all()
+        )
         return [
             {
                 "id": p.id,
@@ -60,5 +95,12 @@ def list_all_permissions(service) -> List[Dict[str, Any]]:
                 "resource_type": p.resource_type,
                 "action": p.action,
             }
-            for p in db.query(Permission).order_by(Permission.resource_type, Permission.action).all()
+            for p in perms
         ]
+
+
+def _safe_role(raw_role: Optional[str]) -> Role:
+    try:
+        return Role(raw_role) 
+    except Exception:
+        return Role.USER

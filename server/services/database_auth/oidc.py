@@ -1,5 +1,5 @@
 """
-Database authentication service utilities for handling OpenID Connect (OIDC) user synchronization and provisioning, including functions to extract permissions from OIDC claims, synchronize user information from OIDC claims with the local database, provision new users based on OIDC claims when auto-provisioning is enabled, and update existing user records with information from OIDC claims during login. This module provides a common interface for integrating OIDC authentication with the database authentication service, allowing for seamless synchronization of user data and permissions based on the claims provided by the OIDC provider while ensuring that user accounts are properly managed in the local database.
+Database authentication service utilities for handling OpenID Connect (OIDC) user synchronization and provisioning.
 
 Copyright (c) 2026 Stefan Kumarasinghe
 
@@ -10,9 +10,11 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import secrets
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from config import config
 from database import get_db_session
@@ -21,14 +23,20 @@ from models.access.auth_models import Role
 
 
 def extract_permissions_from_oidc_claims(claims: Dict[str, Any]) -> List[str]:
-    extracted = set()
-    direct = claims.get("permissions")
-    if isinstance(direct, list):
-        extracted.update(str(item).strip() for item in direct if str(item).strip())
-    scp = claims.get("scp")
-    if isinstance(scp, list):
-        extracted.update(str(item).strip() for item in scp if str(item).strip())
-    return [v for v in extracted if ":" in v]
+    extracted = _normalize_claim_list(claims.get("permissions"))
+    extracted |= _normalize_claim_list(claims.get("scp"))
+    return sorted(p for p in extracted if ":" in p)
+
+
+def _normalize_claim_list(value: Any) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    out: set[str] = set()
+    for item in value:
+        s = str(item).strip()
+        if s:
+            out.add(s)
+    return out
 
 
 def _claim_truthy(value: Any) -> bool:
@@ -45,58 +53,107 @@ def _can_auto_link_by_email(claims: Dict[str, Any]) -> bool:
     enabled = _claim_truthy(getattr(config, "OIDC_AUTO_LINK_BY_EMAIL", False))
     if not enabled:
         return False
-    if _claim_truthy(getattr(config, "OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK", True)):
-        return _claim_truthy(claims.get("email_verified"))
-    return True
+    require_verified = _claim_truthy(getattr(config, "OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK", True))
+    return _claim_truthy(claims.get("email_verified")) if require_verified else True
+
+
+def _normalize_email(claims: Dict[str, Any]) -> str:
+    return (claims.get("email") or "").strip().lower()
+
+
+def _normalize_subject(claims: Dict[str, Any]) -> str:
+    return (claims.get("sub") or "").strip()
+
+
+def _preferred_username(claims: Dict[str, Any], email: str) -> str:
+    raw = (claims.get("preferred_username") or "").strip().lower()
+    if raw:
+        return raw
+    return email.split("@", 1)[0].strip().lower()
+
+
+def _full_name(claims: Dict[str, Any]) -> Optional[str]:
+    name = (claims.get("name") or "").strip()
+    return name or None
+
+
+def _get_user_by_subject(db: Session, subject: str) -> Optional[User]:
+    if not subject:
+        return None
+    return db.query(User).filter(User.external_subject == subject).first()
+
+
+def _get_user_by_email(db: Session, email: str) -> Optional[User]:
+    if not email:
+        return None
+    return db.query(User).filter(func.lower(User.email) == email).first()
+
+
+def _subject_is_owned_by_other(db: Session, subject: str, user_id: int) -> bool:
+    if not subject:
+        return False
+    return (
+        db.query(User)
+        .filter(User.external_subject == subject, User.id != user_id)
+        .first()
+        is not None
+    )
+
+
+def _resolve_existing_user(
+    service,
+    db: Session,
+    *,
+    email: str,
+    subject: str,
+    claims: Dict[str, Any],
+) -> Optional[User]:
+    by_subject = _get_user_by_subject(db, subject)
+    if by_subject:
+        return by_subject
+
+    candidate = _get_user_by_email(db, email)
+    if not candidate:
+        return None
+
+    if candidate.auth_provider == config.AUTH_PROVIDER:
+        return candidate
+
+    if not _can_auto_link_by_email(claims):
+        service.logger.warning(
+            "OIDC email %s matches existing account with auth_provider=%s; refusing link",
+            email,
+            candidate.auth_provider,
+        )
+        return None
+
+    if subject and _subject_is_owned_by_other(db, subject, candidate.id):
+        service.logger.warning(
+            "OIDC subject %s is already linked to another account; refusing link for email %s",
+            subject,
+            email,
+        )
+        return None
+
+    return candidate
 
 
 def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User]:
     service._lazy_init()
-    email = (claims.get("email") or "").strip().lower()
-    subject = (claims.get("sub") or "").strip()
+
+    email = _normalize_email(claims)
+    subject = _normalize_subject(claims)
     if not email:
         service.logger.warning("OIDC token missing email claim")
         return None
 
-    preferred_username = (claims.get("preferred_username") or email.split("@", 1)[0]).strip().lower()
-    full_name = (claims.get("name") or "").strip() or None
+    preferred_username = _preferred_username(claims, email)
+    full_name = _full_name(claims)
 
     with get_db_session() as db:
-        user_by_subject = db.query(User).filter(User.external_subject == subject).first() if subject else None
+        user = _resolve_existing_user(service, db, email=email, subject=subject, claims=claims)
 
-        if user_by_subject:
-            user = user_by_subject
-        else:
-            candidate = db.query(User).filter(func.lower(User.email) == email).first()
-
-            if candidate and candidate.auth_provider != config.AUTH_PROVIDER:
-                if not _can_auto_link_by_email(claims):
-                    service.logger.warning(
-                        "OIDC email %s matches existing account with auth_provider=%s; refusing link",
-                        email,
-                        candidate.auth_provider,
-                    )
-                    return None
-
-                if subject:
-                    existing_subject_owner = (
-                        db.query(User)
-                        .filter(User.external_subject == subject, User.id != candidate.id)
-                        .first()
-                    )
-                    if existing_subject_owner:
-                        service.logger.warning(
-                            "OIDC subject %s is already linked to another account; refusing link for email %s",
-                            subject,
-                            email,
-                        )
-                        return None
-
-                user = candidate
-            else:
-                user = candidate
-
-        if not user:
+        if user is None:
             if not config.OIDC_AUTO_PROVISION_USERS:
                 return None
             user = provision_oidc_user(service, db, email, preferred_username, full_name, subject)
@@ -112,6 +169,46 @@ def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User
         return user
 
 
+def _ensure_default_tenant(db: Session) -> Tenant:
+    tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+    if tenant:
+        return tenant
+
+    tenant = Tenant(
+        name=config.DEFAULT_ADMIN_TENANT,
+        display_name="Default Organization",
+        is_active=True,
+    )
+    db.add(tenant)
+    try:
+        db.flush()
+        return tenant
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        if existing:
+            return existing
+        raise
+
+
+def _base_username(preferred_username: str, email: str) -> str:
+    base = (preferred_username or "").strip().lower()
+    return base or email.split("@", 1)[0].strip().lower()
+
+
+def _username_exists(db: Session, username: str) -> bool:
+    return db.query(User).filter(func.lower(User.username) == username.lower()).first() is not None
+
+
+def _pick_unique_username(db: Session, base: str) -> str:
+    candidate = base
+    suffix = 1
+    while _username_exists(db, candidate):
+        candidate = f"{base}{suffix}"
+        suffix += 1
+    return candidate
+
+
 def provision_oidc_user(
     service,
     db,
@@ -120,42 +217,39 @@ def provision_oidc_user(
     full_name: Optional[str],
     subject: str,
 ) -> User:
-    default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
-    if not default_tenant:
-        default_tenant = Tenant(
-            name=config.DEFAULT_ADMIN_TENANT,
-            display_name="Default Organization",
+    default_tenant = _ensure_default_tenant(db)
+
+    base = _base_username(preferred_username, email)
+    must_setup_mfa = _claim_truthy(getattr(config, "REQUIRE_MFA_FOR_NEW_USERS", False))
+
+    for _ in range(3):
+        username = _pick_unique_username(db, base)
+        user = User(
+            tenant_id=default_tenant.id,
+            username=username,
+            email=email,
+            full_name=full_name,
+            org_id=config.DEFAULT_ORG_ID,
+            role=Role.VIEWER,
             is_active=True,
+            is_superuser=False,
+            hashed_password=service.hash_password(secrets.token_urlsafe(24)),
+            needs_password_change=False,
+            password_changed_at=datetime.now(timezone.utc),
+            must_setup_mfa=must_setup_mfa,
+            auth_provider=config.AUTH_PROVIDER,
+            external_subject=subject or None,
         )
-        db.add(default_tenant)
-        db.flush()
+        db.add(user)
+        try:
+            db.flush()
+            service._ensure_default_api_key(db, user)
+            return user
+        except IntegrityError:
+            db.rollback()
+            continue
 
-    base = preferred_username or email.split("@", 1)[0]
-    candidate, suffix = base, 1
-    while db.query(User).filter(func.lower(User.username) == candidate.lower()).first():
-        candidate = f"{base}{suffix}"
-        suffix += 1
-
-    user = User(
-        tenant_id=default_tenant.id,
-        username=candidate,
-        email=email,
-        full_name=full_name,
-        org_id=config.DEFAULT_ORG_ID,
-        role=Role.VIEWER,
-        is_active=True,
-        is_superuser=False,
-        hashed_password=service.hash_password(secrets.token_urlsafe(24)),
-        needs_password_change=False,
-        password_changed_at=datetime.now(timezone.utc),
-        must_setup_mfa=getattr(config, "REQUIRE_MFA_FOR_NEW_USERS", False),
-        auth_provider=config.AUTH_PROVIDER,
-        external_subject=subject or None,
-    )
-    db.add(user)
-    db.flush()
-    service._ensure_default_api_key(db, user)
-    return user
+    raise IntegrityError("Failed to provision user due to repeated uniqueness conflicts", params=None, orig=None)
 
 
 def update_oidc_user(
@@ -165,7 +259,11 @@ def update_oidc_user(
     full_name: Optional[str],
     subject: str,
 ) -> None:
+    # switch the account to the configured external provider and clear any
+    # outstanding password-change requirement since credentials are no longer
+    # used.
     user.auth_provider = config.AUTH_PROVIDER
+    user.needs_password_change = False
 
     if subject and user.external_subject != subject:
         conflict = db.query(User).filter(

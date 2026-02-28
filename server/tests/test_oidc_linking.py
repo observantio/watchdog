@@ -8,6 +8,7 @@ from database import get_db_session
 from config import config
 from services.database_auth_service import DatabaseAuthService
 from models.access.user_models import UserCreate
+from models.access.auth_models import Role
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
@@ -66,6 +67,63 @@ def test_oidc_refuses_if_auto_provision_disabled(monkeypatch):
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_local_user_needs_password_change_with_oidc_enabled(monkeypatch):
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(database.db_models.Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    # enable OIDC globally but keep password flow active
+    monkeypatch.setattr(config, 'AUTH_PROVIDER', 'oidc')
+    monkeypatch.setattr(config, 'AUTH_PASSWORD_FLOW_ENABLED', True)
+
+    # create a purely local account
+    user = svc.create_user(
+        UserCreate(username='pwuser', email='pwuser@example.com', password='password123', full_name='Password User'),
+        tenant_id,
+    )
+    assert user.auth_provider == 'local'
+    assert user.needs_password_change, "local users should still be prompted to change password"
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_password_login_triggers_expiry_even_if_provider_set(monkeypatch):
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(database.db_models.Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    # create a user and manually age the password
+    user = svc.create_user(
+        UserCreate(username='expire', email='expire@example.com', password='password123', full_name='Exp'),
+        tenant_id,
+    )
+    assert user.auth_provider == 'local'
+
+    # make user appear as though it belongs to the external provider (simulating
+    # a linked account) and bump the password change date back in time
+    with get_db_session() as db:
+        u = db.query(database.db_models.User).filter_by(id=user.id).first()
+        u.auth_provider = 'oidc'
+        # set last change far in the past
+        from datetime import timedelta
+
+        u.password_changed_at = u.password_changed_at - timedelta(days=365)
+        db.commit()
+
+    # configure a short expiration window
+    monkeypatch.setattr(config, 'PASSWORD_RESET_INTERVAL_DAYS', 30)
+
+    # calling authenticate_user with a password should still enforce expiry
+    logged = svc.authenticate_user('expire', 'password123')
+    assert logged is not None
+    assert logged.needs_password_change
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
 def test_oidc_auto_provisions_with_viewer_role(monkeypatch):
     svc = DatabaseAuthService()
     svc._lazy_init()
@@ -83,3 +141,5 @@ def test_oidc_auto_provisions_with_viewer_role(monkeypatch):
     assert new is not None
     assert new.role == Role.VIEWER.value
     assert new.auth_provider == 'oidc'
+    # OIDC-provisioned accounts should not require a password change
+    assert not getattr(new, "needs_password_change", False)

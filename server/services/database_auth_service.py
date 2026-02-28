@@ -133,7 +133,7 @@ class DatabaseAuthService:
         return db_bootstrap.ensure_default_setup(self)
 
     def _ensure_permissions(self, db: Session):
-        return db_bootstrap.ensure_permissions(self, db)
+        return db_bootstrap.ensure_permissions(db)
 
     def _ensure_default_api_key(self, db: Session, user: User):
         return db_bootstrap.ensure_default_api_key(self, db, user)
@@ -201,10 +201,10 @@ class DatabaseAuthService:
         return db_mfa.reset_totp(self, user_id, admin_id)
 
     def _mfa_setup_challenge(self, user: User) -> dict:
-        return db_mfa._mfa_setup_challenge(self, user)
+        return db_mfa.mfa_setup_challenge(self, user)
 
     def _needs_mfa_setup(self, user: User) -> bool:
-        return db_mfa._needs_mfa_setup(self, user)
+        return db_mfa.needs_mfa_setup(user)
 
     def create_access_token(self, user: User) -> Token:
         return create_access_token_op(self, user)
@@ -291,13 +291,13 @@ class DatabaseAuthService:
         return db_permissions.get_user_permissions(self, user)
 
     def get_user_direct_permissions(self, user: User) -> List[str]:
-        return db_permissions.get_user_direct_permissions(self, user)
+        return db_permissions.get_user_direct_permissions(user)
 
     def _collect_permissions(self, user: User) -> List[str]:
-        return db_permissions.collect_permissions(self, user)
+        return db_permissions.collect_permissions(user)
 
     def list_all_permissions(self) -> List[Dict[str, Any]]:
-        return db_permissions.list_all_permissions(self)
+        return db_permissions.list_all_permissions()
 
     def _to_user_schema(self, user: User) -> UserSchema:
         return db_schema.to_user_schema(self, user)
@@ -310,10 +310,10 @@ class DatabaseAuthService:
         return db_schema.build_user_response(self, user, fallback_permissions)
 
     def _to_api_key_schema(self, key: UserApiKey) -> ApiKey:
-        return db_schema.to_api_key_schema(self, key)
+        return db_schema.to_api_key_schema(key)
 
     def _to_group_schema(self, group: Group) -> GroupSchema:
-        return db_schema.to_group_schema(self, group)
+        return db_schema.to_group_schema(group)
 
     def get_user_by_id(self, user_id: str, tenant_id: Optional[str] = None) -> Optional[UserSchema]:
         return get_user_by_id_op(self, user_id, tenant_id)
@@ -330,7 +330,6 @@ class DatabaseAuthService:
         tenant_id: str,
         creator_id: Optional[str] = None,
         actor_role: Optional[str] = None,
-        actor_permissions: Optional[List[str]] = None,
         actor_is_superuser: bool = False,
     ) -> UserSchema:
         return create_user_op(
@@ -339,7 +338,6 @@ class DatabaseAuthService:
             tenant_id,
             creator_id,
             actor_role=actor_role,
-            actor_permissions=actor_permissions,
             actor_is_superuser=actor_is_superuser,
         )
 
@@ -352,7 +350,7 @@ class DatabaseAuthService:
         return update_user_op(self, user_id, user_update, tenant_id, updater_id)
 
     def set_grafana_user_id(self, user_id: str, grafana_user_id: int, tenant_id: str) -> bool:
-        return set_grafana_user_id_op(self, user_id, grafana_user_id, tenant_id)
+        return set_grafana_user_id_op(user_id, grafana_user_id, tenant_id)
 
     def delete_user(self, user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
         return delete_user_op(self, user_id, tenant_id, deleter_id)
@@ -495,6 +493,6 @@ class DatabaseAuthService:
         user_agent: Optional[str] = None,
     ):
         return db_audit.log_audit(
-            self, db, tenant_id, user_id, action, resource_type, resource_id, details,
+            db, tenant_id, user_id, action, resource_type, resource_id, details,
             ip_address=ip_address, user_agent=user_agent,
         )

@@ -193,7 +193,7 @@ def create_group(service, group_create: GroupCreate, tenant_id: str, creator_id:
 
         db.commit()
 
-        group = _get_group(db, group_id=group.id, tenant_id=tenant_id)  # load permissions for schema
+        group = _get_group(db, group_id=group.id, tenant_id=tenant_id)
         return service._to_group_schema(group)
 
 

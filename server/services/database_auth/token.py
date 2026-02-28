@@ -8,17 +8,16 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import Optional, Set
 
 from models.access.auth_models import Role, TokenData
 from services.auth.auth_ops import decode_token as decode_token_op
 
 
 def build_token_data_for_user(service, user) -> TokenData:
-    try:
-        role = Role(user.role)
-    except ValueError:
-        role = Role.USER
+    role = _safe_role(getattr(user, "role", None))
 
     return TokenData(
         user_id=user.id,
@@ -26,8 +25,8 @@ def build_token_data_for_user(service, user) -> TokenData:
         tenant_id=user.tenant_id,
         org_id=user.org_id,
         role=role,
-        is_superuser=user.is_superuser,
-        permissions=service.get_user_permissions(user),
+        is_superuser=getattr(user, "is_superuser", False),
+        permissions=service.get_user_permissions(user) or [],
         group_ids=[g.id for g in (getattr(user, "groups", None) or [])],
     )
 
@@ -45,14 +44,37 @@ def decode_token(service, token: str) -> Optional[TokenData]:
         return None
 
     user = service._sync_user_from_oidc_claims(claims)
-    if not user or not user.is_active:
+    if not user or not getattr(user, "is_active", False):
         return None
 
     token_data = build_token_data_for_user(service, user)
     token_data.iat = claims.get("iat")
 
-    known_permissions = {p["name"] for p in service.list_all_permissions()}
-    oidc_perms = set(service._extract_permissions_from_oidc_claims(claims)) & known_permissions
-    token_data.permissions = list(set(token_data.permissions) | oidc_perms)
+    known_permissions = _known_permission_names(service)
+    oidc_permissions = set(service._extract_permissions_from_oidc_claims(claims) or [])
+    merged = set(token_data.permissions or []) | (oidc_permissions & known_permissions)
+    token_data.permissions = sorted(merged)
 
     return token_data
+
+
+def _safe_role(raw_role: Optional[str]) -> Role:
+    try:
+        return Role(raw_role) 
+    except Exception:
+        return Role.USER
+
+
+def _known_permission_names(service) -> Set[str]:
+    perms = service.list_all_permissions() or []
+    names: Set[str] = set()
+    for p in perms:
+        if isinstance(p, dict):
+            name = p.get("name")
+            if name:
+                names.add(name)
+        else:
+            name = getattr(p, "name", None)
+            if name:
+                names.add(name)
+    return names

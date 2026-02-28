@@ -15,12 +15,10 @@ from __future__ import annotations
 from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
 from typing import Sequence
 
-_Network = IPv4Network | IPv6Network
+Network = IPv4Network | IPv6Network
 
-
-def _parse_networks(cidrs: Sequence[str]) -> list[_Network]:
+def _parse_networks(cidrs: Sequence[str]) -> list[Network]:
     return [ip_network(c, strict=False) for c in cidrs]
-
 
 def is_secure_cookie_request(
     request,

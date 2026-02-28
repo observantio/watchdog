@@ -161,7 +161,7 @@ def reset_totp(service, user_id: str, admin_id: str) -> bool:
         service._log_audit(db, user.tenant_id, admin_id, "mfa.reset", "users", user.id, {"admin_id": admin_id})
         return True
 
-def _mfa_setup_challenge(service, user: User) -> dict:
+def mfa_setup_challenge(service, user: User) -> dict:
     setup_token = create_mfa_setup_token_op(user)
     return {
         service._MFA_SETUP_RESPONSE: True,
@@ -169,5 +169,5 @@ def _mfa_setup_challenge(service, user: User) -> dict:
     }
 
 
-def _needs_mfa_setup(service, user: User) -> bool:
+def needs_mfa_setup(user: User) -> bool:
     return getattr(user, "must_setup_mfa", False) and not getattr(user, "mfa_enabled", False)

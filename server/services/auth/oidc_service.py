@@ -251,7 +251,6 @@ class OIDCService:
         return self._verify_jwt(token, nonce=nonce, require_nonce=bool(nonce))
 
     def verify_access_token(self, token: str) -> Optional[Dict[str, Any]]:
-        # Access tokens can be opaque (Google). If it's not a JWT, don't attempt JWT validation.
         return self._verify_jwt(token)
 
     def fetch_userinfo(self, access_token: str) -> Optional[Dict[str, Any]]:
@@ -388,7 +387,7 @@ class OIDCService:
             self._bg_thread = t
             t.start()
             self._bg_ready.wait()
-            return self._bg_loop  # type: ignore[return-value]
+            return self._bg_loop 
 
     def _run_async(self, coro: Coroutine[Any, Any, Any]):
         if self._in_event_loop():

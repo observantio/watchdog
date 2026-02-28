@@ -114,6 +114,7 @@ export const LOG_VIEW_MODES = ['table', 'compact', 'raw']
 
 // User roles
 export const USER_ROLES = [
+  { value: 'provisioning', label: 'Provisioning - Limited access for initial setup' },
   { value: 'viewer', label: 'Viewer - Read-only access' },
   { value: 'user', label: 'User - Read and write access' },
   { value: 'admin', label: 'Admin - Full access' },

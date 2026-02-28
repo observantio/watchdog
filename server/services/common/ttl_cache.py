@@ -20,10 +20,8 @@ class TTLCache:
     def __init__(self) -> None:
         self._data: Dict[str, tuple[Any, float]] = {}
         self._lock = asyncio.Lock()
-
         self._redis_url = (config.TTL_CACHE_REDIS_URL or config.RATE_LIMIT_REDIS_URL or "").strip()
         self._key_prefix = (config.TTL_CACHE_KEY_PREFIX or "beobs:ttl").strip()
-
         self._redis_client = None
         self._redis_connected = False
         self._redis_loop_id: Optional[int] = None

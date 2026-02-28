@@ -688,7 +688,6 @@ async def create_user(
         current_user.tenant_id,
         current_user.user_id,
         current_user.role,
-        list(getattr(current_user, "permissions", []) or []),
         bool(getattr(current_user, "is_superuser", False)),
     )
     try:

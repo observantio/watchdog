@@ -21,8 +21,8 @@ from database import get_db_session
 from db_models import ApiKeyShare, Group, User, UserApiKey
 from models.access.api_key_models import ApiKey, ApiKeyCreate, ApiKeyShareUser, ApiKeyUpdate
 
-_BACKFILL_BATCH_SIZE = 500
-_ORG_SCOPE_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$")
+BACKFILL_BATCH_SIZE = 500
+ORG_SCOPE_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$")
 
 
 def _utcnow() -> datetime:
@@ -35,7 +35,7 @@ def _normalize_scope_key(raw: Optional[str]) -> Optional[str]:
     value = str(raw).strip()
     if not value:
         raise ValueError("API key value cannot be blank")
-    if not _ORG_SCOPE_KEY_RE.fullmatch(value):
+    if not ORG_SCOPE_KEY_RE.fullmatch(value):
         raise ValueError(
             "API key value must be 3-200 chars and contain only letters, numbers, dot, underscore, hyphen, or colon"
         )
@@ -652,7 +652,7 @@ def backfill_otlp_tokens(service) -> None:
                 db.query(UserApiKey)
                 .filter(UserApiKey.otlp_token_hash.is_(None))
                 .order_by(UserApiKey.id.asc())
-                .limit(_BACKFILL_BATCH_SIZE)
+                .limit(BACKFILL_BATCH_SIZE)
                 .all()
             )
             if not batch:

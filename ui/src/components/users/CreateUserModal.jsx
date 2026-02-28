@@ -11,6 +11,7 @@ import {
   validateCreateUserForm,
   buildCreateUserPayload,
 } from './createUserFormUtils'
+import { USER_ROLES } from '../../utils/constants'
 
 export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [], users = [] }) {
   const toast = useToast()
@@ -265,18 +266,19 @@ export default function CreateUserModal({ isOpen, onClose, onCreated, groups = [
 
         <div className="flex items-start gap-2">
           <div className="flex-1">
-            <label className="block text-sm font-medium text-sre-text mb-2">Role</label>
+            <label htmlFor="role" className="block text-sm font-medium text-sre-text mb-2">Role</label>
             <select
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-              className="w-full px-4 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text"
-            >
-              <option value="viewer">Viewer</option>
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
+                id="role"
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="w-full max-w-xs rounded border border-sre-border bg-sre-bg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sre-primary"
+              >
+                {USER_ROLES.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
           </div>
-          <HelpTooltip text="User role determines baseline permissions. Admin has full access, User can read and modify most resources, Viewer has read-only access." />
+          <HelpTooltip text="Roles provide baseline permissions. Admin has full access to all features, User can read and modify most resources, Viewer has read-only access." />
         </div>
 
         <div className="flex items-center gap-3">

@@ -12,6 +12,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 class Role(str, Enum):
+    PROVISIONING = "provisioning"
     ADMIN = "admin"
     USER = "user"
     VIEWER = "viewer"
@@ -105,7 +106,22 @@ ROLE_PERMISSIONS = {
         Permission.READ_USERS,
         Permission.READ_GROUPS,
     ],
-    Role.VIEWER: []
+    Role.VIEWER: [
+        Permission.READ_ALERTS,
+        Permission.READ_SILENCES,
+        Permission.READ_RULES,
+        Permission.READ_CHANNELS,
+        Permission.READ_INCIDENTS,
+        Permission.READ_LOGS,
+        Permission.READ_TRACES,
+        Permission.READ_RCA,
+        Permission.READ_DASHBOARDS,
+        Permission.READ_DATASOURCES,
+        Permission.QUERY_DATASOURCES,
+        Permission.READ_FOLDERS,
+        Permission.READ_AGENTS,
+    ],
+    Role.PROVISIONING: []
 }
 
 class Token(BaseModel):

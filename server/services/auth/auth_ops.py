@@ -193,19 +193,23 @@ def authenticate_user(service, username: str, password: str) -> Optional[User]:
         if user.username == config.DEFAULT_ADMIN_USERNAME and password == config.DEFAULT_ADMIN_PASSWORD:
             user.needs_password_change = True
 
-        if getattr(user, "auth_provider", "local") == "local":
-            interval_days = int(getattr(config, "PASSWORD_RESET_INTERVAL_DAYS", 0) or 0)
-            changed_at = getattr(user, "password_changed_at", None)
-            if changed_at is None:
-                user.password_changed_at = now
-                changed_at = now
+        # When the user has reached this code path they are authenticating with
+        # a password.  Expiration/rotation policies should be applied regardless
+        # of the recorded auth_provider flag; the earlier implementation skipped
+        # the check for accounts that had been marked as external, which meant
+        # that someone could bypass rotation simply by flipping the provider.
+        interval_days = int(getattr(config, "PASSWORD_RESET_INTERVAL_DAYS", 0) or 0)
+        changed_at = getattr(user, "password_changed_at", None)
+        if changed_at is None:
+            user.password_changed_at = now
+            changed_at = now
 
-            if interval_days > 0 and changed_at is not None:
-                if getattr(changed_at, "tzinfo", None) is None:
-                    changed_at = changed_at.replace(tzinfo=timezone.utc)
-                expiry_cutoff = now - timedelta(days=interval_days)
-                if changed_at <= expiry_cutoff:
-                    user.needs_password_change = True
+        if interval_days > 0 and changed_at is not None:
+            if getattr(changed_at, "tzinfo", None) is None:
+                changed_at = changed_at.replace(tzinfo=timezone.utc)
+            expiry_cutoff = now - timedelta(days=interval_days)
+            if changed_at <= expiry_cutoff:
+                user.needs_password_change = True
 
         user.last_login = now
         db.flush()

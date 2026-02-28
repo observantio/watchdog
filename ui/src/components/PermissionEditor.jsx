@@ -4,6 +4,7 @@ import { Button, Card, Spinner, Modal } from './ui'
 import { useToast } from '../contexts/ToastContext'
 import HelpTooltip from './HelpTooltip'
 import * as api from '../api'
+import { USER_ROLES } from '../utils/constants'
 import { getCategoryDescription } from '../utils/groupManagementUtils'
 
 export default function PermissionEditor({ user, groups, onClose, onSave }) {
@@ -100,7 +101,6 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
   }, [toast])
 
   useEffect(() => {
-    // Initialize editable state from the user payload
     const hasDirectPermissions = Object.hasOwn(user, 'direct_permissions')
     const directPermsSource = hasDirectPermissions ? (user.direct_permissions || []) : []
     const directPerms = directPermsSource.map(p => (typeof p === 'string' ? p : p.name))
@@ -110,7 +110,6 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
   }, [user])
 
   useEffect(() => {
-    // Compute all permissions (role + group + direct) for display
     const rolePerms = getRoleDefaults(role)
     const groupPerms = new Set()
     ;(selectedGroups || []).forEach(gid => {
@@ -226,11 +225,11 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                 id='role'
                 value={role}
                 onChange={(e) => handleRoleChange(e.target.value)}
-                className="w-full px-3 pr-10 py-2 bg-sre-bg-alt border border-sre-border rounded text-sre-text"
+                className="w-full max-w-xs rounded border border-sre-border bg-sre-bg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sre-primary"
               >
-                <option value="viewer">Viewer - Read-only access</option>
-                <option value="user">User - Read and write access</option>
-                <option value="admin">Admin - Full access</option>
+                {USER_ROLES.map(r => (
+                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                ))}
               </select>
             </div>
             <HelpTooltip text="Roles provide baseline permissions. Admin has full access to all features, User can read and modify most resources, Viewer has read-only access." />
