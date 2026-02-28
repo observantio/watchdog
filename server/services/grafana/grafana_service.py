@@ -1,6 +1,4 @@
 """
-Service for managing Grafana dashboards and datasources, providing functions to proxy requests to Grafana while enforcing authentication and authorization based on user roles and group memberships. This module includes logic to handle incoming requests for Grafana resources, to validate access permissions, and to interact with the Grafana API for operations related to dashboards and datasources. The service ensures that only authorized users can access or modify Grafana resources through the proxy, and it provides utility functions to manage visibility and sharing of these resources within the context of the application.
-
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,7 +9,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import base64
 import logging
 from typing import Any, Dict, List, Optional
+
 import httpx
+
 from config import config
 from middleware.resilience import with_retry, with_timeout
 from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardSearchResult, DashboardUpdate
@@ -26,6 +26,7 @@ class GrafanaAPIError(Exception):
         self.status = status
         self.body = body
         super().__init__(f"Grafana API error {status}: {body}")
+
 
 class GrafanaService:
     def __init__(
@@ -65,7 +66,6 @@ class GrafanaService:
         url = f"{self.grafana_url}{path}"
         headers = kwargs.pop("headers", None) or self._headers()
         response = await self._client.request(method, url, headers=headers, **kwargs)
-
         if (
             response.status_code == 401
             and self._using_api_key
@@ -75,7 +75,6 @@ class GrafanaService:
             self.auth_header = self._basic_auth_header
             self._using_api_key = False
             response = await self._client.request(method, url, headers=self._headers(), **kwargs)
-
         return response
 
     async def _safe_request(self, method: str, path: str, default: Any = None, **kwargs) -> Any:
@@ -107,11 +106,14 @@ class GrafanaService:
         starred: Optional[bool] = None,
     ) -> List[DashboardSearchResult]:
         params: Dict[str, Any] = {"type": "dash-db"}
-        if query: params["query"] = query
-        if tag: params["tag"] = tag
-        if folder_ids: params["folderIds"] = folder_ids
-        if starred is not None: params["starred"] = starred
-
+        if query:
+            params["query"] = query
+        if tag:
+            params["tag"] = tag
+        if folder_ids:
+            params["folderIds"] = folder_ids
+        if starred is not None:
+            params["starred"] = starred
         data = await self._safe_request("GET", "/api/search", default=[], params=params)
         return [DashboardSearchResult(**item) for item in data]
 
@@ -185,14 +187,12 @@ class GrafanaService:
         existing = await self.get_datasource(uid)
         if not existing:
             return None
-
         data = datasource_update.model_dump(by_alias=True, exclude_none=True, exclude={"org_id"})
         data.setdefault("type", existing.type)
         data.setdefault("name", existing.name)
         data.setdefault("url", existing.url)
         data.setdefault("access", existing.access)
         data.setdefault("isDefault", getattr(existing, "is_default", None))
-
         result = await self._mutating_request("PUT", f"/api/datasources/uid/{uid}", json=data)
         return Datasource(**result["datasource"]) if result and "datasource" in result else await self.get_datasource(uid)
 
@@ -211,7 +211,7 @@ class GrafanaService:
     @with_retry()
     @with_timeout()
     async def create_folder(self, title: str) -> Optional[Folder]:
-        data = await self._safe_request("POST", "/api/folders", default=None, json={"title": title})
+        data = await self._mutating_request("POST", "/api/folders", json={"title": title})
         return Folder(**data) if data else None
 
     @with_retry()

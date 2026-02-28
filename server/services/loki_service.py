@@ -32,17 +32,11 @@ from services.common.ttl_cache import TTLCache
 from services.loki.label_utils import (
     normalize_label_value,
     normalize_label_values,
-    parse_labelset_value,
 )
 from services.loki.http_client import LokiHttpClient
 from services.loki.fallback import build_service_fallback_queries, run_fallback_queries
 
 logger = logging.getLogger(__name__)
-
-_SERVICE_LABEL_EXACT_RE = re.compile(
-    r'(?P<label>service_name|service\.name)\s*=\s*"(?P<value>[^"]+)"'
-)
-
 
 class LokiService:
     def __init__(self, loki_url: str = config.LOKI_URL):
@@ -155,7 +149,6 @@ class LokiService:
         except Exception as exc:
             if not future.done():
                 future.set_exception(exc)
-                # Mark retrieved for the owner path when there are no waiters.
                 _ = future.exception()
             raise
         finally:

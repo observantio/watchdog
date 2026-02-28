@@ -1,8 +1,16 @@
+"""
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
+
 import hashlib
 import re
 import threading
 import time
-from typing import Dict, Optional, Set, Tuple, Any
+from typing import Any, Dict, Optional, Set, Tuple
 
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -11,7 +19,7 @@ from sqlalchemy.orm import joinedload
 from config import config
 from database import get_db_session
 from db_models import GrafanaDashboard, GrafanaDatasource
-from models.access.auth_models import Permission, TokenData, Role
+from models.access.auth_models import Permission, Role, TokenData
 
 _PROXY_AUTH_CACHE: Dict[str, Dict[str, Any]] = {}
 _PROXY_AUTH_CACHE_TTL = int(getattr(config, "GRAFANA_PROXY_CACHE_TTL", 10))
@@ -20,7 +28,6 @@ _PROXY_AUTH_CACHE_GC_EVERY = 500
 _proxy_auth_cache_ops = 0
 
 _HEADER_SAFE_RE = re.compile(r"[\r\n\x00]")
-
 _STATIC_PREFIXES = ("/grafana/public/", "/grafana/public/build/")
 
 
@@ -36,14 +43,12 @@ def _normalize_cache_path(path: str) -> str:
 
 
 def _cache_key(token: str, method: str, path: str, tenant_id: str) -> str:
-    raw = "|".join(
-        [
-            hashlib.sha256(token.encode("utf-8")).hexdigest(),
-            (method or "GET").upper(),
-            _normalize_cache_path(path),
-            str(tenant_id or ""),
-        ]
-    )
+    raw = "|".join([
+        hashlib.sha256(token.encode("utf-8")).hexdigest(),
+        (method or "GET").upper(),
+        _normalize_cache_path(path),
+        str(tenant_id or ""),
+    ])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -100,37 +105,29 @@ def _required_permissions_for_path(path: str, method: str) -> Set[str]:
 
     if p.startswith("/grafana/d/") or p.startswith("/grafana/d-solo/"):
         return {Permission.READ_DASHBOARDS.value}
-
     if p.startswith("/grafana/connections/datasources/edit/"):
         return {Permission.UPDATE_DATASOURCES.value, Permission.CREATE_DATASOURCES.value}
-
     if p.startswith("/grafana/api/search"):
         return {Permission.READ_DASHBOARDS.value}
-
     if p.startswith("/grafana/api/ds/query"):
         return {Permission.QUERY_DATASOURCES.value}
-
     if p.startswith("/grafana/api/query-history"):
         if m in {"POST", "PUT", "PATCH", "DELETE"}:
             return {Permission.QUERY_DATASOURCES.value}
         return {Permission.QUERY_DATASOURCES.value, Permission.READ_DASHBOARDS.value}
-
     if p.startswith("/grafana/api/datasources/proxy/"):
         return {Permission.QUERY_DATASOURCES.value}
-
     if p.startswith("/grafana/api/dashboards/db") and m == "POST":
         return {
             Permission.CREATE_DASHBOARDS.value,
             Permission.UPDATE_DASHBOARDS.value,
             Permission.WRITE_DASHBOARDS.value,
         }
-
     if p.startswith("/grafana/api/dashboards/uid/"):
         if m == "GET":
             return {Permission.READ_DASHBOARDS.value}
         if m == "DELETE":
             return {Permission.DELETE_DASHBOARDS.value}
-
     if p.startswith("/grafana/api/datasources/uid/"):
         if "/resources/" in p or "/health" in p or p.endswith("/resources"):
             if m in {"GET", "HEAD", "OPTIONS"}:
@@ -142,18 +139,15 @@ def _required_permissions_for_path(path: str, method: str) -> Set[str]:
             return {Permission.UPDATE_DATASOURCES.value}
         if m == "DELETE":
             return {Permission.DELETE_DATASOURCES.value}
-
     if p.startswith("/grafana/api/datasources/proxy/uid/"):
         if m in {"GET", "HEAD", "OPTIONS"}:
             return {Permission.READ_DATASOURCES.value}
         return {Permission.QUERY_DATASOURCES.value}
-
     if p.startswith("/grafana/api/datasources"):
         if m == "GET":
             return {Permission.READ_DATASOURCES.value}
         if m == "POST":
             return {Permission.CREATE_DATASOURCES.value}
-
     if p.startswith("/grafana/api/folders"):
         if m == "GET":
             return {Permission.READ_FOLDERS.value}
@@ -161,17 +155,14 @@ def _required_permissions_for_path(path: str, method: str) -> Set[str]:
             return {Permission.CREATE_FOLDERS.value}
         if m == "DELETE":
             return {Permission.DELETE_FOLDERS.value}
-
     if p.startswith("/grafana/api/live"):
         return {Permission.READ_DASHBOARDS.value}
-
     if m in {"GET", "HEAD", "OPTIONS"}:
         return {
             Permission.READ_DASHBOARDS.value,
             Permission.READ_DATASOURCES.value,
             Permission.READ_FOLDERS.value,
         }
-
     return set()
 
 
@@ -181,24 +172,21 @@ def _is_dashboard_save_request(path: str, method: str) -> bool:
 
 def _is_dashboard_write_intent(path: str, method: str) -> bool:
     return (path or "").lower().startswith("/grafana/api/dashboards/uid/") and (method or "GET").upper() in {
-        "DELETE",
-        "PUT",
-        "PATCH",
-        "POST",
+        "DELETE", "PUT", "PATCH", "POST",
     }
 
 
 def _is_datasource_write_intent(path: str, method: str) -> bool:
     p = (path or "").lower()
     m = (method or "GET").upper()
-    if p.startswith("/grafana/api/datasources/uid/") and m in {"PUT", "PATCH", "DELETE"}:
-        return True
-    return p.startswith("/grafana/connections/datasources/edit/")
+    return p.startswith("/grafana/api/datasources/uid/") and m in {"PUT", "PATCH", "DELETE"}
 
 
 async def _enforce_writable_datasource(service, datasource_uid: str) -> None:
     datasource = await service.grafana_service.get_datasource(datasource_uid)
-    if datasource and (bool(getattr(datasource, "is_default", False)) or bool(getattr(datasource, "read_only", False))):
+    if datasource and (
+        bool(getattr(datasource, "is_default", False)) or bool(getattr(datasource, "read_only", False))
+    ):
         raise HTTPException(status_code=403, detail="Default/read-only datasources are view/query only")
 
 
@@ -214,7 +202,9 @@ def is_resource_accessible(service, resource, token_data: TokenData, *, require_
         return False
     if resource.created_by == token_data.user_id:
         return True
-    if not require_write and (bool(getattr(resource, "is_default", False)) or bool(getattr(resource, "read_only", False))):
+    if not require_write and (
+        bool(getattr(resource, "is_default", False)) or bool(getattr(resource, "read_only", False))
+    ):
         return True
     if require_write:
         return False
@@ -308,45 +298,42 @@ def _db_load_context(
     datasource_uid: Optional[str],
     datasource_id: Optional[int],
 ) -> Tuple[Any, Optional[GrafanaDashboard], Optional[GrafanaDatasource], Optional[GrafanaDatasource]]:
+    user = auth_service.get_user_by_id(token_data.user_id)
+    if not user or not getattr(user, "is_active", False):
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    token_data.org_id = getattr(user, "org_id", token_data.org_id)
+    token_data.permissions = auth_service.get_user_permissions(user) or []
+
+    live_groups = getattr(user, "groups", None)
+    if isinstance(live_groups, list):
+        token_data.group_ids = [str(g.id) for g in live_groups if getattr(g, "id", None)]
+
+    needs_db = dashboard_uid or datasource_uid or datasource_id is not None
+    if not needs_db:
+        return user, None, None, None
+
     with get_db_session() as s:
-        user = auth_service.get_user_by_id(token_data.user_id)
-        if not user or not getattr(user, "is_active", False):
-            raise HTTPException(status_code=401, detail="User not found or inactive")
+        dash = (
+            s.query(GrafanaDashboard)
+            .options(joinedload(GrafanaDashboard.shared_groups))
+            .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
+            .first()
+        ) if dashboard_uid else None
 
-        token_data.org_id = getattr(user, "org_id", token_data.org_id)
-        token_data.permissions = auth_service.get_user_permissions(user) or []
+        ds_uid = (
+            s.query(GrafanaDatasource)
+            .options(joinedload(GrafanaDatasource.shared_groups))
+            .filter(GrafanaDatasource.grafana_uid == datasource_uid)
+            .first()
+        ) if datasource_uid else None
 
-        live_groups = getattr(user, "groups", None)
-        if isinstance(live_groups, list):
-            token_data.group_ids = [str(g.id) for g in live_groups if getattr(g, "id", None)]
-
-        dash = None
-        ds_uid = None
-        ds_id = None
-
-        if dashboard_uid:
-            dash = (
-                s.query(GrafanaDashboard)
-                .options(joinedload(GrafanaDashboard.shared_groups))
-                .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
-                .first()
-            )
-
-        if datasource_uid:
-            ds_uid = (
-                s.query(GrafanaDatasource)
-                .options(joinedload(GrafanaDatasource.shared_groups))
-                .filter(GrafanaDatasource.grafana_uid == datasource_uid)
-                .first()
-            )
-
-        if datasource_id is not None:
-            ds_id = (
-                s.query(GrafanaDatasource)
-                .options(joinedload(GrafanaDatasource.shared_groups))
-                .filter(GrafanaDatasource.grafana_id == datasource_id)
-                .first()
-            )
+        ds_id = (
+            s.query(GrafanaDatasource)
+            .options(joinedload(GrafanaDatasource.shared_groups))
+            .filter(GrafanaDatasource.grafana_id == datasource_id)
+            .first()
+        ) if datasource_id is not None else None
 
         return user, dash, ds_uid, ds_id
 
@@ -364,7 +351,10 @@ async def authorize_proxy_request(
 
     token_data = await run_in_threadpool(auth_service.decode_token, token_to_verify)
     if not token_data:
-        raise HTTPException(status_code=401, detail="Your session has expired or your token is invalid. Let's get you a new one.")
+        raise HTTPException(
+            status_code=401,
+            detail="Your session has expired or your token is invalid. Let's get you a new one.",
+        )
     if isinstance(token_data, dict):
         token_data = TokenData(**token_data)
 
@@ -387,7 +377,11 @@ async def authorize_proxy_request(
     datasource_uid = extract_datasource_uid(service, original_path)
     datasource_id = extract_datasource_id(service, original_path)
 
-    await run_in_threadpool(_db_load_context, auth_service, token_data, dashboard_uid, datasource_uid, datasource_id)
+    # Single DB session: enrich token_data AND load all resources at once.
+    _user, dash, ds_uid_obj, ds_id_obj = await run_in_threadpool(
+        _db_load_context,
+        auth_service, token_data, dashboard_uid, datasource_uid, datasource_id,
+    )
 
     user_permissions = set(token_data.permissions or [])
     allowed_grafana_perms = {
@@ -425,47 +419,20 @@ async def authorize_proxy_request(
     datasource_write_intent = _is_datasource_write_intent(original_path, original_method)
 
     if dashboard_uid:
-        def _load_dash() -> Optional[GrafanaDashboard]:
-            with get_db_session() as s:
-                return (
-                    s.query(GrafanaDashboard)
-                    .options(joinedload(GrafanaDashboard.shared_groups))
-                    .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
-                    .first()
-                )
-        dash = await run_in_threadpool(_load_dash)
         if not dash or not is_resource_accessible(service, dash, token_data, require_write=dashboard_write_intent):
             raise HTTPException(status_code=403, detail="Dashboard access denied")
 
     if datasource_uid:
-        def _load_ds_uid() -> Optional[GrafanaDatasource]:
-            with get_db_session() as s:
-                return (
-                    s.query(GrafanaDatasource)
-                    .options(joinedload(GrafanaDatasource.shared_groups))
-                    .filter(GrafanaDatasource.grafana_uid == datasource_uid)
-                    .first()
-                )
-        ds = await run_in_threadpool(_load_ds_uid)
-        if not ds or not is_resource_accessible(service, ds, token_data, require_write=datasource_write_intent):
+        if not ds_uid_obj or not is_resource_accessible(service, ds_uid_obj, token_data, require_write=datasource_write_intent):
             raise HTTPException(status_code=403, detail="Datasource access denied")
         if datasource_write_intent:
-            await _enforce_writable_datasource(service, str(getattr(ds, "grafana_uid", "")))
+            await _enforce_writable_datasource(service, str(getattr(ds_uid_obj, "grafana_uid", "")))
 
     if datasource_id is not None:
-        def _load_ds_id() -> Optional[GrafanaDatasource]:
-            with get_db_session() as s:
-                return (
-                    s.query(GrafanaDatasource)
-                    .options(joinedload(GrafanaDatasource.shared_groups))
-                    .filter(GrafanaDatasource.grafana_id == datasource_id)
-                    .first()
-                )
-        ds2 = await run_in_threadpool(_load_ds_id)
-        if not ds2 or not is_resource_accessible(service, ds2, token_data, require_write=datasource_write_intent):
+        if not ds_id_obj or not is_resource_accessible(service, ds_id_obj, token_data, require_write=datasource_write_intent):
             raise HTTPException(status_code=403, detail="Datasource access denied")
         if datasource_write_intent:
-            await _enforce_writable_datasource(service, str(getattr(ds2, "grafana_uid", "")))
+            await _enforce_writable_datasource(service, str(getattr(ds_id_obj, "grafana_uid", "")))
 
     headers = _headers_for(token_data)
     _cache_set(token_to_verify, original_method, original_path, str(token_data.tenant_id), headers)

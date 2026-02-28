@@ -24,14 +24,15 @@ from middleware.dependencies import (
     get_current_user_or_mfa_setup
 )
 from models.access.auth_models import Permission, TokenData
-from services.benotified_proxy_service import benotified_proxy_service
+from services.benotified_proxy_service import BeNotifiedProxyService
 
 router = APIRouter(prefix="/api/alertmanager", tags=["alertmanager"])
 webhook_router = APIRouter(tags=["alertmanager-webhooks"])
 
-alertmanager_service = benotified_proxy_service
+benotified_proxy_service = BeNotifiedProxyService()
+
 notification_service = None
-_SILENCE_META_KEY = "beobservant_meta"
+SILENCE_META_KEY = "beobservant_meta"
 
 
 def _required_permissions(path: str, method: str) -> Optional[Set[str]]:
@@ -134,7 +135,7 @@ def _normalize_group_ids(raw: Any) -> List[str]:
 
 
 def _extract_silence_meta(silence: Dict[str, Any]) -> Dict[str, Any]:
-    meta = silence.get(_SILENCE_META_KEY)
+    meta = silence.get(SILENCE_META_KEY)
     if isinstance(meta, dict):
         return meta
     if isinstance(meta, str):
@@ -145,7 +146,7 @@ def _extract_silence_meta(silence: Dict[str, Any]) -> Dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
     annotations = silence.get("annotations")
     if isinstance(annotations, dict):
-        raw = annotations.get(_SILENCE_META_KEY)
+        raw = annotations.get(SILENCE_META_KEY)
         if isinstance(raw, dict):
             return raw
         if isinstance(raw, str):

@@ -27,10 +27,11 @@ from models.observability.becertain_models import (
     AnalyzeRequestPayload,
     AnalyzeProxyPayload,
 )
-from services.becertain_proxy_service import becertain_proxy_service
+from services.becertain_proxy_service import BeCertainProxyService
 
 router = APIRouter(prefix="/api/becertain", tags=["becertain"])
 
+becertain_proxy_service = BeCertainProxyService()
 
 def _inject_tenant(payload: Optional[Dict[str, Any]], tenant_id: str) -> Dict[str, Any]:
     data: Dict[str, Any] = dict(payload or {})
