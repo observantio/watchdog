@@ -172,7 +172,6 @@ def create_user(
                 actor_role_text = _role_to_text(getattr(creator, "role", None))
             actor_is_superuser = bool(actor_is_superuser or getattr(creator, "is_superuser", False))
         else:
-            # Self-registration flow: enforce least privilege.
             requested_role = Role.USER.value
             actor_role_text = Role.USER.value
 
