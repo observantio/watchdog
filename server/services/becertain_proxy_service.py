@@ -14,34 +14,34 @@ import asyncio
 import json
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import httpx
-import jwt
 from fastapi import HTTPException, status
 
 from config import config
-from database import get_db_session
-from db_models import AuditLog
 from models.access.auth_models import TokenData
 from services.common.ttl_cache import TTLCache
+from services.proxy.base_proxy import BaseProxyService
 from middleware.resilience import with_retry, with_timeout
 
-class BeCertainProxyService:
+
+class BeCertainProxyService(BaseProxyService):
+    _resource_type = "becertain_proxy"
+
     def __init__(self) -> None:
-        self.base_url = config.BECERTAIN_URL.rstrip("/")
-        self.timeout = float(config.BECERTAIN_TIMEOUT_SECONDS)
-        self._cache_ttl_seconds = max(0, int(getattr(config, "BECERTAIN_PROXY_CACHE_TTL_SECONDS", 15)))
+        super().__init__(
+            base_url=config.BECERTAIN_URL,
+            timeout=float(config.BECERTAIN_TIMEOUT_SECONDS),
+            tls_enabled=bool(config.BECERTAIN_TLS_ENABLED),
+            ca_cert_path=config.BECERTAIN_CA_CERT_PATH,
+        )
+        self._cache_ttl_seconds = max(
+            0, int(getattr(config, "BECERTAIN_PROXY_CACHE_TTL_SECONDS", 15))
+        )
         self._read_cache = TTLCache()
         self._read_inflight: Dict[str, asyncio.Future] = {}
         self._read_inflight_lock = asyncio.Lock()
-        verify: str | bool = True
-        if not bool(config.BECERTAIN_TLS_ENABLED):
-            verify = False
-        elif config.BECERTAIN_CA_CERT_PATH:
-            verify = config.BECERTAIN_CA_CERT_PATH
-        self._client = httpx.AsyncClient(timeout=self.timeout, verify=verify)
 
     @staticmethod
     def _cache_key(
@@ -67,62 +67,33 @@ class BeCertainProxyService:
     def _sign_context_token(self, *, current_user: TokenData, tenant_id: str) -> str:
         key = config.get_secret("BECERTAIN_CONTEXT_SIGNING_KEY")
         if not key:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Missing BeCertain signing key")
-
-        now = datetime.now(timezone.utc)
-        payload = {
-            "iss": config.BECERTAIN_CONTEXT_ISSUER,
-            "aud": config.BECERTAIN_CONTEXT_AUDIENCE,
-            "iat": int(now.timestamp()),
-            "exp": int((now + timedelta(seconds=int(config.BECERTAIN_CONTEXT_TTL_SECONDS))).timestamp()),
-            "jti": str(uuid.uuid4()),
-            "tenant_id": tenant_id,
-            "org_id": getattr(current_user, "org_id", tenant_id),
-            "user_id": current_user.user_id,
-            "username": current_user.username,
-            "role": getattr(getattr(current_user, "role", "user"), "value", getattr(current_user, "role", "user")),
-            "group_ids": list(getattr(current_user, "group_ids", []) or []),
-            "permissions": list(getattr(current_user, "permissions", []) or []),
-            "is_superuser": bool(getattr(current_user, "is_superuser", False)),
-        }
-        algo = str(config.BECERTAIN_CONTEXT_ALGORITHM or "HS256").strip()
-        return jwt.encode(payload, key, algorithm=algo)
-
-    @staticmethod
-    def _extract_error_detail(response: httpx.Response) -> str:
-        try:
-            body = response.json()
-        except ValueError:
-            text = (response.text or "").strip()
-            return text or response.reason_phrase
-        if isinstance(body, dict):
-            detail = body.get("detail")
-            if isinstance(detail, str) and detail:
-                return detail
-            message = body.get("message")
-            if isinstance(message, str) and message:
-                return message
-        return json.dumps(body)[:500]
-
-    def write_audit(
-        self,
-        *,
-        current_user: Optional[TokenData],
-        action: str,
-        resource_id: str,
-        details: Dict[str, Any],
-    ) -> None:
-        with get_db_session() as db:
-            db.add(
-                AuditLog(
-                    tenant_id=getattr(current_user, "tenant_id", None),
-                    user_id=getattr(current_user, "user_id", None),
-                    action=action,
-                    resource_type="becertain_proxy",
-                    resource_id=resource_id,
-                    details=details,
-                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Missing BeCertain signing key",
             )
+        claims = self._build_base_jwt_claims(
+            current_user=current_user,
+            tenant_id=tenant_id,
+            issuer=config.BECERTAIN_CONTEXT_ISSUER,
+            audience=config.BECERTAIN_CONTEXT_AUDIENCE,
+            ttl_seconds=int(config.BECERTAIN_CONTEXT_TTL_SECONDS),
+        )
+        return self._encode_jwt(
+            claims,
+            key,
+            str(config.BECERTAIN_CONTEXT_ALGORITHM or "HS256").strip(),
+        )
+
+    def _resolve_inflight_error(
+        self,
+        owner: bool,
+        future: Optional[asyncio.Future],
+        exc: HTTPException,
+    ) -> None:
+        if owner and future is not None and not future.done():
+            future.set_exception(exc)
+            _ = future.exception()
+
     @with_retry(retries=2, backoff_factor=0.5, retry_on=(httpx.RequestError,))
     @with_timeout(timeout_seconds=30)
     async def request_json(
@@ -140,13 +111,21 @@ class BeCertainProxyService:
     ) -> Any:
         service_token = config.get_secret("BECERTAIN_SERVICE_TOKEN")
         if not service_token:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="BeCertain service token not configured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="BeCertain service token not configured",
+            )
 
         method_upper = method.upper()
-        effective_cache_ttl = self._cache_ttl_seconds if cache_ttl_seconds is None else max(0, int(cache_ttl_seconds))
-        cache_key = None
+        effective_cache_ttl = (
+            self._cache_ttl_seconds
+            if cache_ttl_seconds is None
+            else max(0, int(cache_ttl_seconds))
+        )
+        cache_key: Optional[str] = None
         inflight_future: Optional[asyncio.Future] = None
         owner = False
+
         if method_upper == "GET" and effective_cache_ttl > 0:
             cache_key = self._cache_key(
                 method=method_upper,
@@ -170,7 +149,9 @@ class BeCertainProxyService:
             if not owner:
                 return await inflight_future
 
-        context_token = self._sign_context_token(current_user=current_user, tenant_id=tenant_id)
+        context_token = self._sign_context_token(
+            current_user=current_user, tenant_id=tenant_id
+        )
         corr = correlation_id or str(uuid.uuid4())
         target = f"{self.base_url}{upstream_path}"
         headers = {
@@ -183,34 +164,44 @@ class BeCertainProxyService:
         started = time.time()
         try:
             response = await self._client.request(
-                method=method.upper(),
+                method=method_upper,
                 url=target,
                 headers=headers,
                 params=params or None,
                 json=payload if payload is not None else None,
             )
         except httpx.TimeoutException as exc:
-            err = HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="BeCertain request timed out")
-            if owner and inflight_future is not None and not inflight_future.done():
-                inflight_future.set_exception(err)
-                _ = inflight_future.exception()
+            err = HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="BeCertain request timed out",
+            )
+            self._resolve_inflight_error(owner, inflight_future, err)
             self.write_audit(
                 current_user=current_user,
                 action=f"{audit_action}.timeout",
                 resource_id=upstream_path,
-                details={"correlation_id": corr, "timeout": self.timeout, "method": method.upper()},
+                details={
+                    "correlation_id": corr,
+                    "timeout": self.timeout,
+                    "method": method_upper,
+                },
             )
             raise err from exc
         except Exception as exc:
-            err = HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to contact BeCertain")
-            if owner and inflight_future is not None and not inflight_future.done():
-                inflight_future.set_exception(err)
-                _ = inflight_future.exception()
+            err = HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to contact BeCertain",
+            )
+            self._resolve_inflight_error(owner, inflight_future, err)
             self.write_audit(
                 current_user=current_user,
                 action=f"{audit_action}.error",
                 resource_id=upstream_path,
-                details={"correlation_id": corr, "error": type(exc).__name__, "method": method.upper()},
+                details={
+                    "correlation_id": corr,
+                    "error": type(exc).__name__,
+                    "method": method_upper,
+                },
             )
             raise err from exc
 
@@ -223,16 +214,14 @@ class BeCertainProxyService:
                 "correlation_id": corr,
                 "status_code": response.status_code,
                 "latency_ms": elapsed_ms,
-                "method": method.upper(),
+                "method": method_upper,
             },
         )
 
         if response.status_code >= 400:
             detail = self._extract_error_detail(response)
             err = HTTPException(status_code=response.status_code, detail=detail)
-            if owner and inflight_future is not None and not inflight_future.done():
-                inflight_future.set_exception(err)
-                _ = inflight_future.exception()
+            self._resolve_inflight_error(owner, inflight_future, err)
             raise err
 
         try:
@@ -243,10 +232,11 @@ class BeCertainProxyService:
                 inflight_future.set_result(result)
             return result
         except ValueError as exc:
-            err = HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="BeCertain returned invalid JSON")
-            if owner and inflight_future is not None and not inflight_future.done():
-                inflight_future.set_exception(err)
-                _ = inflight_future.exception()
+            err = HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="BeCertain returned invalid JSON",
+            )
+            self._resolve_inflight_error(owner, inflight_future, err)
             raise err from exc
         finally:
             if owner and cache_key:

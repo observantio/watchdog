@@ -7,14 +7,15 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 from __future__ import annotations
 
 import json
 from json import JSONDecodeError
 from typing import Any, Dict, List, Optional, Set
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
 import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from config import config
 from middleware.dependencies import (
@@ -100,7 +101,10 @@ def _check_permissions(current_user: TokenData, required: Set[str]) -> None:
     if not required or current_user.is_superuser:
         return
     if not set(current_user.permissions or []).intersection(required):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to communicate with Be Notified. Required permissions: {', '.join(required)}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You do not have permission to communicate with Be Notified. Required permissions: {', '.join(required)}",
+        )
 
 
 def _is_mutating(method: str) -> bool:
@@ -197,12 +201,19 @@ def _extract_silence_id(path: str, payload: Optional[Dict[str, Any]]) -> Optiona
     return None
 
 
-async def _find_silence_for_mutation(*, request: Request, current_user: TokenData, silence_id: str) -> Dict[str, Any]:
+async def _find_silence_for_mutation(
+    *, request: Request, current_user: TokenData, silence_id: str
+) -> Dict[str, Any]:
     service_token = config.get_secret("BENOTIFIED_SERVICE_TOKEN")
     if not service_token:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="BeNotified service token not configured")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="BeNotified service token not configured",
+        )
 
-    context_token = benotified_proxy_service._sign_context_token(current_user=current_user, api_key_id=None)
+    context_token = benotified_proxy_service._sign_context_token(
+        current_user=current_user, api_key_id=None
+    )
     headers = {
         "X-Service-Token": service_token,
         "X-Correlation-ID": request.headers.get("X-Request-ID", ""),
@@ -238,12 +249,15 @@ async def _find_silence_for_mutation(*, request: Request, current_user: TokenDat
 def _webhook_route(upstream_suffix: str, audit_action: str, scope: str):
     async def handler(request: Request):
         enforce_public_endpoint_security(
-            request, scope=scope,
-            limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE, window_seconds=60,
+            request,
+            scope=scope,
+            limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+            window_seconds=60,
             allowlist=config.WEBHOOK_IP_ALLOWLIST,
         )
         enforce_header_token(
-            request, header_name="x-beobservant-webhook-token",
+            request,
+            header_name="x-beobservant-webhook-token",
             expected_token=config.INBOUND_WEBHOOK_TOKEN,
             unauthorized_detail="Invalid webhook token",
         )
@@ -257,16 +271,30 @@ def _webhook_route(upstream_suffix: str, audit_action: str, scope: str):
     return handler
 
 
-webhook_router.add_api_route("/alerts/webhook", _webhook_route("webhook", "alertmanager.webhook", "alertmanager_webhook"), methods=["POST"])
-webhook_router.add_api_route("/alerts/critical", _webhook_route("critical", "alertmanager.webhook.critical", "alertmanager_critical"), methods=["POST"])
-webhook_router.add_api_route("/alerts/warning", _webhook_route("warning", "alertmanager.webhook.warning", "alertmanager_warning"), methods=["POST"])
+webhook_router.add_api_route(
+    "/alerts/webhook",
+    _webhook_route("webhook", "alertmanager.webhook", "alertmanager_webhook"),
+    methods=["POST"],
+)
+webhook_router.add_api_route(
+    "/alerts/critical",
+    _webhook_route("critical", "alertmanager.webhook.critical", "alertmanager_critical"),
+    methods=["POST"],
+)
+webhook_router.add_api_route(
+    "/alerts/warning",
+    _webhook_route("warning", "alertmanager.webhook.warning", "alertmanager_warning"),
+    methods=["POST"],
+)
 
 
 @router.get("/public/rules")
 async def public_rules_proxy(request: Request):
     enforce_public_endpoint_security(
-        request, scope="alertmanager_public_rules",
-        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE, window_seconds=60,
+        request,
+        scope="alertmanager_public_rules",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
+        window_seconds=60,
         allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
     )
     return await benotified_proxy_service.forward(
@@ -304,7 +332,9 @@ async def alertmanager_proxy(
         silence_id = _extract_silence_id(path, payload)
         if not silence_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Silence id is required")
-        existing_silence = await _find_silence_for_mutation(request=request, current_user=current_user, silence_id=silence_id)
+        existing_silence = await _find_silence_for_mutation(
+            request=request, current_user=current_user, silence_id=silence_id
+        )
         _assert_silence_owner(current_user, existing_silence)
 
     apply_scoped_rate_limit(current_user, "alertmanager")
@@ -317,5 +347,3 @@ async def alertmanager_proxy(
         audit_action="alertmanager.proxy",
     )
 
-
-__all__ = ["router", "webhook_router", "notification_service"]

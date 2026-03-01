@@ -13,33 +13,30 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
-import jwt
 from fastapi import HTTPException, Request, Response, status
 
 from config import config
-from database import get_db_session
-from db_models import AuditLog
 from middleware.dependencies import auth_service
 from models.access.auth_models import TokenData
 from middleware.resilience import with_retry, with_timeout
+from services.proxy.base_proxy import BaseProxyService
 
 logger = logging.getLogger(__name__)
 
 
-class BeNotifiedProxyService:
+class BeNotifiedProxyService(BaseProxyService):
+    _resource_type = "alertmanager_proxy"
+
     def __init__(self) -> None:
-        self.base_url = (config.BENOTIFIED_URL).rstrip("/")
-        self.timeout = float(config.BENOTIFIED_TIMEOUT_SECONDS)
-        verify: str | bool = True
-        if not bool(config.BENOTIFIED_TLS_ENABLED):
-            verify = False
-        elif config.BENOTIFIED_CA_CERT_PATH:
-            verify = config.BENOTIFIED_CA_CERT_PATH
-        self._client = httpx.AsyncClient(timeout=self.timeout, verify=verify)
+        super().__init__(
+            base_url=config.BENOTIFIED_URL,
+            timeout=float(config.BENOTIFIED_TIMEOUT_SECONDS),
+            tls_enabled=bool(config.BENOTIFIED_TLS_ENABLED),
+            ca_cert_path=config.BENOTIFIED_CA_CERT_PATH,
+        )
 
     def _resolve_actor_api_key_id(self, current_user: TokenData) -> Optional[str]:
         try:
@@ -60,57 +57,32 @@ class BeNotifiedProxyService:
     ) -> str:
         key = config.get_secret("BENOTIFIED_CONTEXT_SIGNING_KEY")
         if not key:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Missing BeNotified signing key")
-
-        algo = str(config.BENOTIFIED_CONTEXT_ALGORITHM or "HS256").strip()
-        now = datetime.now(timezone.utc)
-        payload = {
-            "iss": config.BENOTIFIED_CONTEXT_ISSUER,
-            "aud": config.BENOTIFIED_CONTEXT_AUDIENCE,
-            "iat": int(now.timestamp()),
-            "exp": int((now + timedelta(seconds=int(config.BENOTIFIED_CONTEXT_TTL_SECONDS))).timestamp()),
-            "jti": str(uuid.uuid4()),
-            "tenant_id": current_user.tenant_id,
-            "user_id": current_user.user_id,
-            "username": current_user.username,
-            "org_id": getattr(current_user, "org_id", current_user.tenant_id),
-            "role": getattr(getattr(current_user, "role", "user"), "value", getattr(current_user, "role", "user")),
-            "group_ids": list(getattr(current_user, "group_ids", []) or []),
-            "permissions": list(getattr(current_user, "permissions", []) or []),
-            "is_superuser": bool(getattr(current_user, "is_superuser", False)),
-            "api_key_id": api_key_id,
-        }
-        return jwt.encode(payload, key, algorithm=algo)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Missing BeNotified signing key",
+            )
+        claims = self._build_base_jwt_claims(
+            current_user=current_user,
+            tenant_id=current_user.tenant_id,
+            issuer=config.BENOTIFIED_CONTEXT_ISSUER,
+            audience=config.BENOTIFIED_CONTEXT_AUDIENCE,
+            ttl_seconds=int(config.BENOTIFIED_CONTEXT_TTL_SECONDS),
+        )
+        claims["api_key_id"] = api_key_id
+        return self._encode_jwt(
+            claims,
+            key,
+            str(config.BENOTIFIED_CONTEXT_ALGORITHM or "HS256").strip(),
+        )
 
     @staticmethod
     def _forwardable_response_headers(headers: httpx.Headers) -> dict[str, str]:
         passthrough = {}
         for key, value in headers.items():
-            lk = key.lower()
-            if lk in {"content-type", "cache-control", "etag", "x-request-id"}:
+            if key.lower() in {"content-type", "cache-control", "etag", "x-request-id"}:
                 passthrough[key] = value
         return passthrough
 
-    def _write_audit(
-        self,
-        *,
-        current_user: Optional[TokenData],
-        action: str,
-        resource_id: str,
-        details: dict,
-    ) -> None:
-        with get_db_session() as db:
-            db.add(
-                AuditLog(
-                    tenant_id=getattr(current_user, "tenant_id", None),
-                    user_id=getattr(current_user, "user_id", None),
-                    action=action,
-                    resource_type="alertmanager_proxy",
-                    resource_id=resource_id,
-                    details=details,
-                )
-            )
-            
     @with_retry(retries=2, backoff_factor=0.5, retry_on=(httpx.RequestError,))
     @with_timeout(timeout_seconds=30)
     async def forward(
@@ -125,7 +97,10 @@ class BeNotifiedProxyService:
     ) -> Response:
         service_token = config.get_secret("BENOTIFIED_SERVICE_TOKEN")
         if not service_token:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="BeNotified service token not configured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="BeNotified service token not configured",
+            )
 
         api_key_id: Optional[str] = None
         context_token: Optional[str] = None
@@ -136,7 +111,9 @@ class BeNotifiedProxyService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="No active API key available for this operation",
                 )
-            context_token = self._sign_context_token(current_user=current_user, api_key_id=api_key_id)
+            context_token = self._sign_context_token(
+                current_user=current_user, api_key_id=api_key_id
+            )
 
         target = f"{self.base_url}{upstream_path}"
         body = await request.body()
@@ -168,24 +145,30 @@ class BeNotifiedProxyService:
                 headers=headers,
             )
         except httpx.TimeoutException as exc:
-            self._write_audit(
+            self.write_audit(
                 current_user=current_user,
                 action=f"{audit_action}.timeout",
                 resource_id=upstream_path,
                 details={"correlation_id": corr, "timeout": self.timeout},
             )
-            raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="BeNotified request timed out") from exc
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="BeNotified request timed out",
+            ) from exc
         except httpx.HTTPError as exc:
-            self._write_audit(
+            self.write_audit(
                 current_user=current_user,
                 action=f"{audit_action}.error",
                 resource_id=upstream_path,
                 details={"correlation_id": corr, "error": type(exc).__name__},
             )
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to contact BeNotified") from exc
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to contact BeNotified",
+            ) from exc
 
         elapsed_ms = int((time.time() - start) * 1000)
-        self._write_audit(
+        self.write_audit(
             current_user=current_user,
             action=f"{audit_action}.complete",
             resource_id=upstream_path,
@@ -198,10 +181,8 @@ class BeNotifiedProxyService:
             },
         )
 
-        content = upstream.content
         return Response(
-            content=content,
+            content=upstream.content,
             status_code=upstream.status_code,
             headers=self._forwardable_response_headers(upstream.headers),
         )
-

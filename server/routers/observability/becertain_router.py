@@ -5,7 +5,8 @@ Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0"""
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
 
 from __future__ import annotations
 
@@ -32,6 +33,7 @@ from services.becertain_proxy_service import BeCertainProxyService
 router = APIRouter(prefix="/api/becertain", tags=["becertain"])
 
 becertain_proxy_service = BeCertainProxyService()
+
 
 def _inject_tenant(payload: Optional[Dict[str, Any]], tenant_id: str) -> Dict[str, Any]:
     data: Dict[str, Any] = dict(payload or {})
