@@ -98,22 +98,15 @@ from services.database_auth import (
 
 logger = logging.getLogger(__name__)
 
-_MFA_SETUP_RESPONSE = "mfa_setup_required"
-_MFA_REQUIRED_RESPONSE = "mfa_required"
-
 
 class DatabaseAuthService:
-    _MFA_SETUP_RESPONSE = "mfa_setup_required"
-    _MFA_REQUIRED_RESPONSE = "mfa_required"
-    """Enterprise authentication service backed by PostgreSQL."""
-
     def __init__(self):
         super().__init__()
         self._initialized = False
         self.logger = logger
         self.oidc_service = OIDCService()
         self._password_op_semaphore = threading.Semaphore(1)
-        self._secret_provider: Optional["SecretProvider"] = None 
+        self._secret_provider: Optional[Any] = None 
 
     def is_external_auth_enabled(self) -> bool:
         return config.AUTH_PROVIDER in {"oidc", "keycloak"} and self.oidc_service.is_enabled()

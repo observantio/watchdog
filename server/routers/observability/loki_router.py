@@ -21,8 +21,8 @@ START_TIME_DESC = "Start time in nanoseconds"
 END_TIME_DESC = "End time in nanoseconds"
 
 router = APIRouter(prefix="/api/loki", tags=["loki"])
-loki_service = LokiService()
 
+loki_service = LokiService()
 
 @router.get("/query", response_model=LogResponse)
 async def query_logs(

@@ -60,11 +60,6 @@ def extract_metrics_count(payload: Dict[str, Any]) -> int:
 
 
 async def query_key_activity(key_value: str, mimir_client: httpx.AsyncClient) -> Dict[str, Any]:
-    """Ask Mimir whether a given API key has produced metrics recently.
-
-    The query covers the last hour. Results include a boolean flag and the
-    raw sample count. Errors are caught and treated as inactive.
-    """
     now = datetime.now(timezone.utc)
     start_ns = int((now - timedelta(hours=1)).timestamp() * 1_000_000_000)
     end_ns = int(now.timestamp() * 1_000_000_000)

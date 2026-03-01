@@ -30,13 +30,17 @@ from middleware.dependencies import (
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 agent_service = AgentService()
-_mimir_client = httpx.AsyncClient(
+
+mimir_client = httpx.AsyncClient(
     timeout=httpx.Timeout(config.DEFAULT_TIMEOUT),
     limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
 )
 
+rtp = run_in_threadpool
+
+
 async def close_mimir_client() -> None:
-    await _mimir_client.aclose()
+    await mimir_client.aclose()
 
 
 @router.get("/")
@@ -46,11 +50,11 @@ async def list_agents(current_user: TokenData = Depends(require_permission_with_
 
 @router.get("/active")
 async def list_active_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))):
-    api_keys = await run_in_threadpool(auth_service.list_api_keys, current_user.user_id)
+    api_keys = await rtp(auth_service.list_api_keys, current_user.user_id)
 
     tasks: List[asyncio.Task] = []
     for key in api_keys:
-        tasks.append(asyncio.create_task(agent_service.key_activity(key.key, _mimir_client)))
+        tasks.append(asyncio.create_task(agent_service.key_activity(key.key, mimir_client)))
 
     results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
 

@@ -30,7 +30,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 router = APIRouter(prefix="/api/tempo", tags=["tempo"])
 
-
 @router.get("/traces/search", response_model=TraceResponse)
 async def search_traces(
     request: Request,

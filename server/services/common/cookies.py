@@ -13,6 +13,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
+from logging import config
 from typing import Sequence
 
 Network = IPv4Network | IPv6Network
@@ -51,3 +52,11 @@ def is_secure_cookie_request(
 
     proto = request.headers.get("x-forwarded-proto", "")
     return proto.split(",")[0].strip().lower() == "https"
+
+
+def cookie_secure(request: Request) -> bool:
+    return is_secure_cookie_request(
+        request,
+        trust_proxy_headers=bool(config.TRUST_PROXY_HEADERS),
+        trusted_proxy_cidrs=getattr(config, "TRUSTED_PROXY_CIDRS", []) or [],
+    )

@@ -15,8 +15,7 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
-_BOOL_TRUE = {"1", "true", "yes", "on"}
-
+BOOL_TRUE = {"1", "true", "yes", "on"}
 
 def _as_bool(value) -> bool:
     if isinstance(value, bool):
@@ -24,7 +23,7 @@ def _as_bool(value) -> bool:
     if isinstance(value, (int, float)):
         return value != 0
     if isinstance(value, str):
-        return value.strip().lower() in _BOOL_TRUE
+        return value.strip().lower() in BOOL_TRUE
     return False
 
 
@@ -38,7 +37,7 @@ def _first_secret(*keys: str) -> Optional[str]:
 
 def _is_enabled(*keys: str) -> bool:
     v = _first_secret(*keys)
-    return str(v or "false").strip().lower() in _BOOL_TRUE
+    return str(v or "false").strip().lower() in BOOL_TRUE
 
 
 def _smtp_config(*prefixes: str) -> dict:

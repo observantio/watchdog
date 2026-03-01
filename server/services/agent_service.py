@@ -6,7 +6,6 @@ Copyright (c) 2026 Stefan Kumarasinghe
 Licensed under the Apache License, Version 2.0 (the "License");
 """
 
-import logging
 from typing import Dict, List, Any
 
 import httpx
@@ -20,12 +19,7 @@ from services.agent.helpers import (
     query_key_activity,
 )
 
-logger = logging.getLogger(__name__)
-
 class AgentService:
-    ATTR_HOST_NAME = "host.name"
-    ATTR_HOST_HOSTNAME = "host.hostname"
-
     def __init__(self):
         self._agents: Dict[str, AgentInfo] = {}
 

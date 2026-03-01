@@ -19,7 +19,10 @@ class DummyAuthService:
 
 @pytest.fixture(autouse=True)
 def patch_auth_service(monkeypatch):
+    # the router now delegates to an InternalService instance, so make sure
+    # its auth service is replaced with our dummy implementation.
     monkeypatch.setattr(internal_router, "_auth_service", DummyAuthService())
+    internal_router._internal_service._auth_service = internal_router._auth_service
 
 
 def test_missing_header(monkeypatch):
@@ -27,6 +30,18 @@ def test_missing_header(monkeypatch):
     client = TestClient(app)
     resp = client.get("/api/internal/otlp/validate?token=good")
     assert resp.status_code == 422
+
+
+def test_service_token_not_configured(monkeypatch):
+    # if the gateway internal token is not set we surface a 500 error
+    monkeypatch.setattr(config, "GATEWAY_INTERNAL_SERVICE_TOKEN", None)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/internal/otlp/validate",
+        headers={"X-Internal-Token": "whatever"},
+        json={"token": "good"},
+    )
+    assert resp.status_code == 500
 
 
 def test_bad_header(monkeypatch):
@@ -100,6 +115,8 @@ def test_post_db_error_maps_to_503(monkeypatch):
             raise RuntimeError("db down")
 
     monkeypatch.setattr(internal_router, "_auth_service", FailingAuthService())
+    # update internal_service reference as well
+    internal_router._internal_service._auth_service = internal_router._auth_service
     monkeypatch.setattr(config, "GATEWAY_INTERNAL_SERVICE_TOKEN", "secret")
     client = TestClient(app)
     resp = client.post(
