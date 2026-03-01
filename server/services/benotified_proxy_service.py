@@ -25,6 +25,7 @@ from database import get_db_session
 from db_models import AuditLog
 from middleware.dependencies import auth_service
 from models.access.auth_models import TokenData
+from middleware.resilience import with_retry, with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,9 @@ class BeNotifiedProxyService:
                     details=details,
                 )
             )
-
+            
+    @with_retry(retries=2, backoff_factor=0.5, retry_on=(httpx.RequestError,))
+    @with_timeout(timeout_seconds=30)
     async def forward(
         self,
         *,
@@ -202,5 +205,3 @@ class BeNotifiedProxyService:
             headers=self._forwardable_response_headers(upstream.headers),
         )
 
-
-benotified_proxy_service = BeNotifiedProxyService()

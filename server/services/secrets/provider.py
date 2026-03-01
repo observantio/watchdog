@@ -8,7 +8,6 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-
 from __future__ import annotations
 
 import os
@@ -17,19 +16,12 @@ from typing import Dict, List, Optional, Protocol
 
 class SecretProvider(Protocol):
     def get(self, key: str) -> Optional[str]: ...
-
     def get_many(self, keys: List[str]) -> Dict[str, Optional[str]]: ...
 
 
 class EnvSecretProvider:
-    """Simple provider that reads from process environment.
-
-    Treats explicitly-set empty strings as absent (returns None).
-    """
-
     def get(self, key: str) -> Optional[str]:
-        val = os.environ.get(key)
-        return val if val else None
+        return os.environ.get(key) or None
 
     def get_many(self, keys: List[str]) -> Dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}

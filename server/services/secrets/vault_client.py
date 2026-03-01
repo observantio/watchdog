@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable, Dict, Optional, Any
+from typing import Callable, Dict, Optional
 
 try:
     import hvac 
@@ -29,7 +29,7 @@ class VaultClientError(RuntimeError):
     pass
 
 
-_SENTINEL = object()
+SENTINEL = object()
 
 
 class VaultSecretProvider:
@@ -45,7 +45,6 @@ class VaultSecretProvider:
         cacert: Optional[str] = None,
         cache_ttl: float = 30.0,
     ) -> None:
-        # imports moved to module top; hvac may be None if not installed
         if hvac is None:
             raise VaultClientError("hvac library is required for VaultSecretProvider")
 
@@ -101,16 +100,16 @@ class VaultSecretProvider:
 
     def _from_cache(self, key: str) -> object:
         with self._lock:
-            entry = self._cache.get(key, _SENTINEL)
-            if entry is _SENTINEL:
-                return _SENTINEL
+            entry = self._cache.get(key, SENTINEL)
+            if entry is SENTINEL:
+                return SENTINEL
             if not isinstance(entry, tuple) or len(entry) != 2:
                 self._cache.pop(key, None)
-                return _SENTINEL
-            ts, value = entry  # type: float, Any
+                return SENTINEL
+            ts, value = entry 
             if time.monotonic() - ts > self._cache_ttl:
                 del self._cache[key]
-                return _SENTINEL
+                return SENTINEL
             return value
 
     def _to_cache(self, key: str, value: Optional[str]) -> None:
@@ -119,8 +118,8 @@ class VaultSecretProvider:
 
     def get(self, key: str) -> Optional[str]:
         cached = self._from_cache(key)
-        if cached is not _SENTINEL:
-            return cached  # type: ignore[return-value]
+        if cached is not SENTINEL:
+            return cached 
 
         self._ensure_authenticated()
 

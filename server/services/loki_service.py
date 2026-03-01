@@ -1,4 +1,6 @@
 """
+Loki Service for querying logs, fetching labels, and calculating log volume with caching, fallback mechanisms, and multi-tenant support.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");

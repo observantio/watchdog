@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -27,9 +26,7 @@ from database import get_db_session
 from db_models import AuditLog
 from models.access.auth_models import TokenData
 from services.common.ttl_cache import TTLCache
-
-logger = logging.getLogger(__name__)
-
+from middleware.resilience import with_retry, with_timeout
 
 class BeCertainProxyService:
     def __init__(self) -> None:
@@ -126,7 +123,8 @@ class BeCertainProxyService:
                     details=details,
                 )
             )
-
+    @with_retry(retries=2, backoff_factor=0.5, retry_on=(httpx.RequestError,))
+    @with_timeout(timeout_seconds=30)
     async def request_json(
         self,
         *,

@@ -8,7 +8,6 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-import logging
 import asyncio
 from typing import Dict, List
 
@@ -17,7 +16,7 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.concurrency import run_in_threadpool
 
 from models.observability.agent_models import AgentHeartbeat
-from services.agent_service import AgentService
+from services.agent import AgentService
 from models.access.auth_models import Permission, TokenData
 from config import config
 
@@ -28,8 +27,6 @@ from middleware.dependencies import (
     enforce_header_token,
 )
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 agent_service = AgentService()
@@ -37,7 +34,6 @@ _mimir_client = httpx.AsyncClient(
     timeout=httpx.Timeout(config.DEFAULT_TIMEOUT),
     limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
 )
-
 
 async def close_mimir_client() -> None:
     await _mimir_client.aclose()

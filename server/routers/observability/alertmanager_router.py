@@ -21,7 +21,7 @@ from middleware.dependencies import (
     apply_scoped_rate_limit,
     enforce_header_token,
     enforce_public_endpoint_security,
-    get_current_user_or_mfa_setup
+    get_current_user_or_mfa_setup,
 )
 from models.access.auth_models import Permission, TokenData
 from services.benotified_proxy_service import BeNotifiedProxyService
@@ -30,7 +30,6 @@ router = APIRouter(prefix="/api/alertmanager", tags=["alertmanager"])
 webhook_router = APIRouter(tags=["alertmanager-webhooks"])
 
 benotified_proxy_service = BeNotifiedProxyService()
-
 notification_service = None
 SILENCE_META_KEY = "beobservant_meta"
 
@@ -47,9 +46,7 @@ def _required_permissions(path: str, method: str) -> Optional[Set[str]]:
         return {Permission.DELETE_ALERTS.value}
 
     if p.startswith("/incidents"):
-        if m == "GET":
-            return {Permission.READ_INCIDENTS.value}
-        return {Permission.UPDATE_INCIDENTS.value}
+        return {Permission.READ_INCIDENTS.value} if m == "GET" else {Permission.UPDATE_INCIDENTS.value}
 
     if p.startswith("/silences"):
         if m == "GET":
@@ -91,12 +88,7 @@ def _required_permissions(path: str, method: str) -> Optional[Set[str]]:
         return {Permission.UPDATE_INCIDENTS.value}
 
     if p == "/metrics/names":
-        return {
-            Permission.READ_METRICS.value,
-            Permission.CREATE_RULES.value,
-            Permission.UPDATE_RULES.value,
-            Permission.WRITE_ALERTS.value,
-        }
+        return {Permission.READ_METRICS.value, Permission.CREATE_RULES.value, Permission.UPDATE_RULES.value, Permission.WRITE_ALERTS.value}
 
     if p == "/public/rules":
         return set()
@@ -105,14 +97,10 @@ def _required_permissions(path: str, method: str) -> Optional[Set[str]]:
 
 
 def _check_permissions(current_user: TokenData, required: Set[str]) -> None:
-    if not required:
+    if not required or current_user.is_superuser:
         return
-    if current_user.is_superuser:
-        return
-    perms = set(current_user.permissions or [])
-    if perms.intersection(required):
-        return
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to communicate with Be Notified. Required permissions: {', '.join(required)}")
+    if not set(current_user.permissions or []).intersection(required):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to communicate with Be Notified. Required permissions: {', '.join(required)}")
 
 
 def _is_mutating(method: str) -> bool:
@@ -120,41 +108,36 @@ def _is_mutating(method: str) -> bool:
 
 
 def _normalize_group_ids(raw: Any) -> List[str]:
-    values = raw if isinstance(raw, list) else []
-    normalized: List[str] = []
     seen: Set[str] = set()
-    for gid in values:
+    result: List[str] = []
+    for gid in (raw if isinstance(raw, list) else []):
         if gid is None:
             continue
         s = str(gid).strip()
-        if not s or s in seen:
-            continue
-        seen.add(s)
-        normalized.append(s)
-    return normalized
+        if s and s not in seen:
+            seen.add(s)
+            result.append(s)
+    return result
 
 
 def _extract_silence_meta(silence: Dict[str, Any]) -> Dict[str, Any]:
-    meta = silence.get(SILENCE_META_KEY)
-    if isinstance(meta, dict):
-        return meta
-    if isinstance(meta, str):
-        try:
-            parsed = json.loads(meta)
-        except JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    annotations = silence.get("annotations")
-    if isinstance(annotations, dict):
-        raw = annotations.get(SILENCE_META_KEY)
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, str):
+    def _try_parse(v) -> Dict[str, Any]:
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
             try:
-                parsed = json.loads(raw)
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, dict) else {}
             except JSONDecodeError:
                 return {}
-            return parsed if isinstance(parsed, dict) else {}
+        return {}
+
+    meta = _try_parse(silence.get(SILENCE_META_KEY))
+    if meta:
+        return meta
+    annotations = silence.get("annotations")
+    if isinstance(annotations, dict):
+        return _try_parse(annotations.get(SILENCE_META_KEY))
     return {}
 
 
@@ -168,24 +151,16 @@ def _validate_and_normalize_silence_payload(payload: Dict[str, Any], current_use
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid silence visibility")
     normalized["visibility"] = visibility
 
-    shared_group_ids = _normalize_group_ids(
-        normalized.get("sharedGroupIds", normalized.get("shared_group_ids"))
-    )
+    shared_group_ids = _normalize_group_ids(normalized.get("sharedGroupIds", normalized.get("shared_group_ids")))
 
     if visibility == "group":
         if not shared_group_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one group is required when visibility is 'group'",
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one group is required when visibility is 'group'")
         if not current_user.is_superuser:
             actor_groups = set(_normalize_group_ids(getattr(current_user, "group_ids", [])))
             unauthorized = [gid for gid in shared_group_ids if gid not in actor_groups]
             if unauthorized:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User is not a member of one or more specified groups",
-                )
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is not a member of one or more specified groups")
     else:
         shared_group_ids = []
 
@@ -199,22 +174,14 @@ def _assert_silence_owner(current_user: TokenData, silence: Dict[str, Any]) -> N
         return
     meta = _extract_silence_meta(silence)
     creator = (
-        silence.get("created_by")
-        or silence.get("createdBy")
-        or meta.get("created_by")
-        or meta.get("createdBy")
+        silence.get("created_by") or silence.get("createdBy")
+        or meta.get("created_by") or meta.get("createdBy")
     )
     creator_id = str(creator).strip() if creator is not None else ""
     if not creator_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Silence ownership metadata is missing; update/delete is denied",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Silence ownership metadata is missing; update/delete is denied")
     if creator_id != str(current_user.user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update or delete silences that you created",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only update or delete silences that you created")
 
 
 def _extract_silence_id(path: str, payload: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -230,12 +197,7 @@ def _extract_silence_id(path: str, payload: Optional[Dict[str, Any]]) -> Optiona
     return None
 
 
-async def _find_silence_for_mutation(
-    *,
-    request: Request,
-    current_user: TokenData,
-    silence_id: str,
-) -> Dict[str, Any]:
+async def _find_silence_for_mutation(*, request: Request, current_user: TokenData, silence_id: str) -> Dict[str, Any]:
     service_token = config.get_secret("BENOTIFIED_SERVICE_TOKEN")
     if not service_token:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="BeNotified service token not configured")
@@ -267,92 +229,44 @@ async def _find_silence_for_mutation(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Invalid silence response from BeNotified") from exc
 
-    silences = data if isinstance(data, list) else []
-    for item in silences:
+    for item in (data if isinstance(data, list) else []):
         if isinstance(item, dict) and str(item.get("id", "")).strip() == silence_id:
             return item
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Silence not found")
 
 
-@webhook_router.post("/alerts/webhook")
-async def alert_webhook(request: Request):
-    enforce_public_endpoint_security(
-        request,
-        scope="alertmanager_webhook",
-        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
-        window_seconds=60,
-        allowlist=config.WEBHOOK_IP_ALLOWLIST,
-    )
-    enforce_header_token(
-        request,
-        header_name="x-beobservant-webhook-token",
-        expected_token=config.INBOUND_WEBHOOK_TOKEN,
-        unauthorized_detail="Invalid webhook token",
-    )
-    return await benotified_proxy_service.forward(
-        request=request,
-        upstream_path="/internal/v1/alertmanager/alerts/webhook",
-        current_user=None,
-        require_api_key=False,
-        audit_action="alertmanager.webhook",
-    )
+def _webhook_route(upstream_suffix: str, audit_action: str, scope: str):
+    async def handler(request: Request):
+        enforce_public_endpoint_security(
+            request, scope=scope,
+            limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE, window_seconds=60,
+            allowlist=config.WEBHOOK_IP_ALLOWLIST,
+        )
+        enforce_header_token(
+            request, header_name="x-beobservant-webhook-token",
+            expected_token=config.INBOUND_WEBHOOK_TOKEN,
+            unauthorized_detail="Invalid webhook token",
+        )
+        return await benotified_proxy_service.forward(
+            request=request,
+            upstream_path=f"/internal/v1/alertmanager/alerts/{upstream_suffix}",
+            current_user=None,
+            require_api_key=False,
+            audit_action=audit_action,
+        )
+    return handler
 
 
-@webhook_router.post("/alerts/critical")
-async def alert_critical(request: Request):
-    enforce_public_endpoint_security(
-        request,
-        scope="alertmanager_critical",
-        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
-        window_seconds=60,
-        allowlist=config.WEBHOOK_IP_ALLOWLIST,
-    )
-    enforce_header_token(
-        request,
-        header_name="x-beobservant-webhook-token",
-        expected_token=config.INBOUND_WEBHOOK_TOKEN,
-        unauthorized_detail="Invalid webhook token",
-    )
-    return await benotified_proxy_service.forward(
-        request=request,
-        upstream_path="/internal/v1/alertmanager/alerts/critical",
-        current_user=None,
-        require_api_key=False,
-        audit_action="alertmanager.webhook.critical",
-    )
-
-
-@webhook_router.post("/alerts/warning")
-async def alert_warning(request: Request):
-    enforce_public_endpoint_security(
-        request,
-        scope="alertmanager_warning",
-        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
-        window_seconds=60,
-        allowlist=config.WEBHOOK_IP_ALLOWLIST,
-    )
-    enforce_header_token(
-        request,
-        header_name="x-beobservant-webhook-token",
-        expected_token=config.INBOUND_WEBHOOK_TOKEN,
-        unauthorized_detail="Invalid webhook token",
-    )
-    return await benotified_proxy_service.forward(
-        request=request,
-        upstream_path="/internal/v1/alertmanager/alerts/warning",
-        current_user=None,
-        require_api_key=False,
-        audit_action="alertmanager.webhook.warning",
-    )
+webhook_router.add_api_route("/alerts/webhook", _webhook_route("webhook", "alertmanager.webhook", "alertmanager_webhook"), methods=["POST"])
+webhook_router.add_api_route("/alerts/critical", _webhook_route("critical", "alertmanager.webhook.critical", "alertmanager_critical"), methods=["POST"])
+webhook_router.add_api_route("/alerts/warning", _webhook_route("warning", "alertmanager.webhook.warning", "alertmanager_warning"), methods=["POST"])
 
 
 @router.get("/public/rules")
 async def public_rules_proxy(request: Request):
     enforce_public_endpoint_security(
-        request,
-        scope="alertmanager_public_rules",
-        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE,
-        window_seconds=60,
+        request, scope="alertmanager_public_rules",
+        limit=config.RATE_LIMIT_PUBLIC_PER_MINUTE, window_seconds=60,
         allowlist=config.AUTH_PUBLIC_IP_ALLOWLIST,
     )
     return await benotified_proxy_service.forward(
@@ -374,6 +288,7 @@ async def alertmanager_proxy(
     if required is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Route is not authorized")
     _check_permissions(current_user, required)
+
     method = request.method.upper()
     payload: Optional[Dict[str, Any]] = None
 
@@ -389,11 +304,7 @@ async def alertmanager_proxy(
         silence_id = _extract_silence_id(path, payload)
         if not silence_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Silence id is required")
-        existing_silence = await _find_silence_for_mutation(
-            request=request,
-            current_user=current_user,
-            silence_id=silence_id,
-        )
+        existing_silence = await _find_silence_for_mutation(request=request, current_user=current_user, silence_id=silence_id)
         _assert_silence_owner(current_user, existing_silence)
 
     apply_scoped_rate_limit(current_user, "alertmanager")
@@ -407,4 +318,4 @@ async def alertmanager_proxy(
     )
 
 
-__all__ = ["router", "webhook_router", "alertmanager_service", "notification_service"]
+__all__ = ["router", "webhook_router", "notification_service"]
