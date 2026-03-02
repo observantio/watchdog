@@ -1,4 +1,4 @@
-name: Publish BeObservant Image
+name: Publish BEOBSERVANT Image
 
 on:
   workflow_run:
@@ -12,12 +12,22 @@ jobs:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: read
       packages: write
     environment: docker-public
     steps:
+      - name: Debug workflow_run payload
+        run: |
+          echo "conclusion=${{ github.event.workflow_run.conclusion }}"
+          echo "event=${{ github.event.workflow_run.event }}"
+          echo "head_branch=${{ github.event.workflow_run.head_branch }}"
+          echo "actor=${{ github.event.workflow_run.actor.login }}"
+          echo "head_sha=${{ github.event.workflow_run.head_sha }}"
+          echo "repo=${{ github.repository }}"
+          echo "owner=${{ github.repository_owner }}"
+
       - name: Checkout workflow commit
         uses: actions/checkout@v4
         with:
@@ -31,15 +41,9 @@ jobs:
             const repo = context.payload.workflow_run.repository.name;
             const username = context.payload.workflow_run.actor.login;
             const allowed = new Set(["admin", "maintain", "write"]);
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner,
-              repo,
-              username,
-            });
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username });
             core.info(`Actor ${username} permission: ${data.permission}`);
-            if (!allowed.has(data.permission)) {
-              core.setFailed(`Publishing blocked: actor ${username} must have admin/maintain/write permission.`);
-            }
+            if (!allowed.has(data.permission)) core.setFailed(`Publishing blocked: actor ${username} must have admin/maintain/write permission.`);
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -58,8 +62,8 @@ jobs:
           file: ./BeObservant/Dockerfile
           push: true
           tags: |
-            ghcr.io/observantio/beobservant:stable
-            ghcr.io/observantio/beobservant:${{ github.event.workflow_run.id }}
+            ghcr.io/${{ github.repository_owner }}/beobservant:stable
+            ghcr.io/${{ github.repository_owner }}/beobservant:${{ github.event.workflow_run.id }}
 
       - name: Build and push begateway
         uses: docker/build-push-action@v6
@@ -68,5 +72,5 @@ jobs:
           file: ./BeGateway/Dockerfile
           push: true
           tags: |
-            ghcr.io/observantio/begateway:stable
-            ghcr.io/observantio/begateway:${{ github.event.workflow_run.id }}
+            ghcr.io/${{ github.repository_owner }}/begateway:stable
+            ghcr.io/${{ github.repository_owner }}/begateway:${{ github.event.workflow_run.id }}
