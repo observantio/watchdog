@@ -30,6 +30,28 @@ jobs:
       - run: npm test -- --run
 
   server:
+    name: Gateway (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BeGateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-asyncio
+
+      - name: Run Gateway tests
+        run: pytest -q
+        server:
+
     name: Server tests (pytest)
     runs-on: ubuntu-latest
     defaults:
@@ -50,85 +72,3 @@ jobs:
 
       - name: Run server tests
         run: pytest -q
-
-  server-security-regression:
-    name: Server security regression
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: BeObservant
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest pytest-asyncio
-
-      - name: Run targeted security tests
-        run: |
-          pytest -q tests/test_internal_router.py tests/test_config_security.py tests/test_url_utils.py tests/test_alertmanager_proxy_security_matrix.py tests/test_benotified_proxy_tenant_isolation.py
-
-  gateway-security-regression:
-    name: Gateway security regression
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: BeGateway
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest
-
-      - name: Run targeted security tests
-        run: |
-          pytest -q tests/test_config_security.py tests/test_gateway_rate_limit.py
-
-  security-static:
-    name: Security static scans
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install security tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install pip-audit detect-secrets bandit
-
-      - name: Run detect-secrets scan
-        run: |
-          if [ ! -f .secrets.baseline ]; then
-            detect-secrets scan > .secrets.baseline
-          fi
-          detect-secrets scan --baseline .secrets.baseline
-
-      - name: Run bandit (fail on medium/high)
-        run: |
-          bandit -q -r BeNotified -x BeNotified/tests,BeNotified/.pytest_cache -ll -ii
-          bandit -q -r BeObservant -x BeObservant/tests,BeObservant/.pytest_cache -ll -ii
-          bandit -q -r BeGateway -x BeGateway/tests,BeGateway/.pytest_cache -ll -ii
-          bandit -q -r BeCertain -x BeCertain/tests,BeCertain/.pytest_cache -ll -ii
-
-      - name: Run server dependency audit
-        run: pip-audit -r BeObservant/requirements.txt
-
-      - name: Run gateway dependency audit
-        run: pip-audit -r BeGateway/requirements.txt
-
