@@ -11,17 +11,17 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Protocol
-
+from typing import Dict, Optional, Protocol, Sequence
 
 class SecretProvider(Protocol):
     def get(self, key: str) -> Optional[str]: ...
-    def get_many(self, keys: List[str]) -> Dict[str, Optional[str]]: ...
+    def get_many(self, keys: Sequence[str]) -> Dict[str, Optional[str]]: ...
 
 
 class EnvSecretProvider:
     def get(self, key: str) -> Optional[str]:
-        return os.environ.get(key) or None
+        val = os.environ.get(key)
+        return val if val else None
 
-    def get_many(self, keys: List[str]) -> Dict[str, Optional[str]]:
+    def get_many(self, keys: Sequence[str]) -> Dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}

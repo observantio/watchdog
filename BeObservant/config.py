@@ -1,5 +1,5 @@
 """
-Configuration management for the application, loading settings from environment variables with support for defaults, type conversion, and validation. This module defines a `Config` class that encapsulates all configuration options for the application, including server settings, service URLs, authentication parameters, rate limiting controls, and security hardening features. The configuration is designed to be flexible and secure by default, with special considerations for production environments. It also includes integration with Vault for secret management when enabled.
+Configuration management for Be Observant server application.
 
 Copyright (c) 2026 Stefan Kumarasinghe
 
@@ -11,15 +11,14 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import logging
 import os
 import secrets
-from typing import Optional, List
+from typing import List, Optional
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.asymmetric import ec
-
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 logger = logging.getLogger(__name__)
+
 
 def _to_bool(value: Optional[str], default: bool = False) -> bool:
     if value is None:
@@ -49,14 +48,7 @@ def _is_weak_secret(value: Optional[str]) -> bool:
     normalized = _normalized_secret(value)
     if not normalized:
         return True
-    weak_markers = (
-        "changeme",
-        "replace_with",
-        "example",
-        "default",
-        "secret",
-        "password",
-    )
+    weak_markers = ("changeme", "replace_with", "example", "default", "secret", "password")
     return any(marker in normalized for marker in weak_markers)
 
 
@@ -95,9 +87,8 @@ def _env_name() -> str:
 def _is_production_env() -> bool:
     return _env_name() in {"prod", "production"}
 
-class Config:
-    """Application configuration from environment variables."""
 
+class Config:
     ALLOWED_JWT_ALGORITHMS = {"RS256", "ES256"}
     ALLOWED_CONTEXT_ALGORITHMS = {"HS256", "HS384", "HS512"}
     EXAMPLE_DATABASE_URL = "postgresql://beobservant:changeme123@localhost:5432/beobservant"
@@ -106,14 +97,12 @@ class Config:
         self.APP_ENV: str = _env_name()
         self.IS_PRODUCTION: bool = _is_production_env()
 
-        # Server configuration
         self.HOST: str = os.getenv("HOST", "127.0.0.1")
         self.PORT: int = int(os.getenv("PORT", "4319"))
         self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
         self.ENABLE_API_DOCS: bool = _to_bool(os.getenv("ENABLE_API_DOCS"), default=not self.IS_PRODUCTION)
         self.SKIP_STARTUP_DB_INIT: bool = _to_bool(os.getenv("SKIP_STARTUP_DB_INIT"), default=False)
 
-        # Service URLs
         self.TEMPO_URL: str = os.getenv("TEMPO_URL", "http://tempo:3200")
         self.LOKI_URL: str = os.getenv("LOKI_URL", "http://loki:3100")
         self.ALERTMANAGER_URL: str = os.getenv("ALERTMANAGER_URL", "http://alertmanager:9093")
@@ -122,18 +111,14 @@ class Config:
         self.GRAFANA_URL: str = os.getenv("GRAFANA_URL", "http://grafana:3000")
         self.MIMIR_URL: str = os.getenv("MIMIR_URL", "http://mimir:9009")
 
-        # Grafana credentials
         self.GRAFANA_USERNAME: str = os.getenv("GRAFANA_USERNAME", "admin")
         self.GRAFANA_PASSWORD: str = os.getenv("GRAFANA_PASSWORD", "admin")
         self.GRAFANA_API_KEY: Optional[str] = os.getenv("GRAFANA_API_KEY")
 
-        # Encryption key for sensitive data at rest (channel config in DB)
         self.DATA_ENCRYPTION_KEY: Optional[str] = os.getenv("DATA_ENCRYPTION_KEY")
 
-        # Database
         self.DATABASE_URL: str = os.getenv("DATABASE_URL", self.EXAMPLE_DATABASE_URL)
 
-        # Request settings
         self.DEFAULT_TIMEOUT: float = float(os.getenv("DEFAULT_TIMEOUT", "30.0"))
         self.BENOTIFIED_TIMEOUT_SECONDS: float = float(os.getenv("BENOTIFIED_TIMEOUT_SECONDS", "15.0"))
         self.BECERTAIN_TIMEOUT_SECONDS: float = float(os.getenv("BECERTAIN_TIMEOUT_SECONDS", "20.0"))
@@ -142,38 +127,29 @@ class Config:
         self.RETRY_MAX_BACKOFF: float = float(os.getenv("RETRY_MAX_BACKOFF", "8.0"))
         self.RETRY_JITTER: float = float(os.getenv("RETRY_JITTER", "0.1"))
 
-        # Shared upstream HTTP client pool tuning
         self.HTTP_CLIENT_MAX_CONNECTIONS: int = int(os.getenv("HTTP_CLIENT_MAX_CONNECTIONS", "100"))
         self.HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS: int = int(os.getenv("HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS", "40"))
         self.HTTP_CLIENT_KEEPALIVE_EXPIRY: float = float(os.getenv("HTTP_CLIENT_KEEPALIVE_EXPIRY", "30"))
 
-        # Query optimizations
         self.LOKI_FALLBACK_CONCURRENCY: int = int(os.getenv("LOKI_FALLBACK_CONCURRENCY", "4"))
         self.LOKI_MAX_FALLBACK_QUERIES: int = int(os.getenv("LOKI_MAX_FALLBACK_QUERIES", "4"))
         self.LOKI_VOLUME_CACHE_TTL_SECONDS: int = int(os.getenv("LOKI_VOLUME_CACHE_TTL_SECONDS", "30"))
         self.TEMPO_TRACE_FETCH_CONCURRENCY: int = int(os.getenv("TEMPO_TRACE_FETCH_CONCURRENCY", "8"))
         self.TEMPO_VOLUME_BUCKET_CONCURRENCY: int = int(os.getenv("TEMPO_VOLUME_BUCKET_CONCURRENCY", "8"))
         self.TEMPO_COUNT_QUERY_CONCURRENCY: int = int(os.getenv("TEMPO_COUNT_QUERY_CONCURRENCY", "4"))
-        # When true, use Tempo/Mimir metrics API for trace count/volume queries where possible.
-        # Operators can opt out by setting TEMPO_USE_METRICS_FOR_COUNT=false
         self.TEMPO_USE_METRICS_FOR_COUNT: bool = _to_bool(os.getenv("TEMPO_USE_METRICS_FOR_COUNT"), default=True)
         self.SERVICE_CACHE_TTL_SECONDS: int = int(os.getenv("SERVICE_CACHE_TTL_SECONDS", "30"))
 
-        # CORS settings
         self.CORS_ORIGINS: List[str] = _to_list(os.getenv("CORS_ORIGINS"), default=["*"])
         self.CORS_ALLOW_CREDENTIALS: bool = _to_bool(os.getenv("CORS_ALLOW_CREDENTIALS"), default=True)
 
-        # API limits
         self.MAX_QUERY_LIMIT: int = int(os.getenv("MAX_QUERY_LIMIT", "1000"))
-        # Default number of items returned by list endpoints (can be overridden by client)
         self.DEFAULT_QUERY_LIMIT: int = int(os.getenv("DEFAULT_QUERY_LIMIT", "20"))
 
-        # Request protection / backpressure
         self.MAX_REQUEST_BYTES: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
         self.MAX_CONCURRENT_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "200"))
         self.CONCURRENCY_ACQUIRE_TIMEOUT: float = float(os.getenv("CONCURRENCY_ACQUIRE_TIMEOUT", "1.0"))
 
-        # Rate limiting / spam protection (per-process; use an API gateway for global limits)
         self.RATE_LIMIT_USER_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_USER_PER_MINUTE", "600"))
         self.RATE_LIMIT_PUBLIC_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PUBLIC_PER_MINUTE", "120"))
         self.RATE_LIMIT_LOGIN_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_LOGIN_PER_MINUTE", "10"))
@@ -184,7 +160,6 @@ class Config:
         self.TTL_CACHE_REDIS_URL: str = os.getenv("TTL_CACHE_REDIS_URL", "").strip()
         self.TTL_CACHE_KEY_PREFIX: str = os.getenv("TTL_CACHE_KEY_PREFIX", "beobs:ttl").strip()
 
-        # Client IP and network boundary controls
         self.TRUST_PROXY_HEADERS: bool = _to_bool(os.getenv("TRUST_PROXY_HEADERS"), default=False)
         self.AUTH_PUBLIC_IP_ALLOWLIST: Optional[str] = os.getenv("AUTH_PUBLIC_IP_ALLOWLIST")
         self.GATEWAY_IP_ALLOWLIST: Optional[str] = os.getenv("GATEWAY_IP_ALLOWLIST")
@@ -193,7 +168,6 @@ class Config:
         self.GRAFANA_PROXY_IP_ALLOWLIST: Optional[str] = os.getenv("GRAFANA_PROXY_IP_ALLOWLIST")
         self.AGENT_HEARTBEAT_TOKEN: Optional[str] = os.getenv("AGENT_HEARTBEAT_TOKEN")
 
-        # Optional shared secrets for inbound endpoints
         self.INBOUND_WEBHOOK_TOKEN: Optional[str] = os.getenv("INBOUND_WEBHOOK_TOKEN")
         self.OTLP_INGEST_TOKEN: Optional[str] = os.getenv("OTLP_INGEST_TOKEN")
 
@@ -206,6 +180,7 @@ class Config:
         self.BENOTIFIED_CONTEXT_TTL_SECONDS: int = int(os.getenv("BENOTIFIED_CONTEXT_TTL_SECONDS", "90"))
         self.BENOTIFIED_TLS_ENABLED: bool = _to_bool(os.getenv("BENOTIFIED_TLS_ENABLED"), default=False)
         self.BENOTIFIED_CA_CERT_PATH: Optional[str] = os.getenv("BENOTIFIED_CA_CERT_PATH")
+
         self.BECERTAIN_SERVICE_TOKEN: Optional[str] = os.getenv("BECERTAIN_SERVICE_TOKEN")
         self.BECERTAIN_CONTEXT_SIGNING_KEY: Optional[str] = os.getenv("BECERTAIN_CONTEXT_SIGNING_KEY")
         self.BECERTAIN_CONTEXT_ISSUER: str = os.getenv("BECERTAIN_CONTEXT_ISSUER", "beobservant-main")
@@ -215,18 +190,20 @@ class Config:
         self.BECERTAIN_PROXY_CACHE_TTL_SECONDS: int = int(os.getenv("BECERTAIN_PROXY_CACHE_TTL_SECONDS", "15"))
         self.BECERTAIN_TLS_ENABLED: bool = _to_bool(os.getenv("BECERTAIN_TLS_ENABLED"), default=False)
         self.BECERTAIN_CA_CERT_PATH: Optional[str] = os.getenv("BECERTAIN_CA_CERT_PATH")
-       # Authentication
+
+        self.BECERTAIN_ANALYZE_MAX_CONCURRENCY: int = int(os.getenv("BECERTAIN_ANALYZE_MAX_CONCURRENCY", "4"))
+        self.BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER: int = int(
+            os.getenv("BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER", "50")
+        )
+        self.BECERTAIN_ANALYZE_JOB_TTL_SECONDS: int = int(os.getenv("BECERTAIN_ANALYZE_JOB_TTL_SECONDS", "900"))
+
         self.JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "RS256").strip().upper()
         self.JWT_EXPIRATION_MINUTES: int = int(os.getenv("JWT_EXPIRATION_MINUTES", "1440"))
         self.JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
         self.JWT_PRIVATE_KEY: Optional[str] = os.getenv("JWT_PRIVATE_KEY")
         self.JWT_PUBLIC_KEY: Optional[str] = os.getenv("JWT_PUBLIC_KEY")
-        self.JWT_AUTO_GENERATE_KEYS: bool = _to_bool(
-            os.getenv("JWT_AUTO_GENERATE_KEYS"),
-            default=not self.IS_PRODUCTION,
-        )
+        self.JWT_AUTO_GENERATE_KEYS: bool = _to_bool(os.getenv("JWT_AUTO_GENERATE_KEYS"), default=not self.IS_PRODUCTION)
 
-        # Identity provider / OIDC (Keycloak recommended)
         self.AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "local").strip().lower()
         self.AUTH_PASSWORD_FLOW_ENABLED: bool = _to_bool(os.getenv("AUTH_PASSWORD_FLOW_ENABLED"), default=False)
         self.OIDC_ISSUER_URL: Optional[str] = os.getenv("OIDC_ISSUER_URL")
@@ -237,13 +214,12 @@ class Config:
         self.OIDC_SCOPES: str = os.getenv("OIDC_SCOPES", "openid profile email")
         self.OIDC_AUTO_PROVISION_USERS: bool = _to_bool(os.getenv("OIDC_AUTO_PROVISION_USERS"), default=True)
         self.OIDC_AUTO_LINK_BY_EMAIL: bool = _to_bool(os.getenv("OIDC_AUTO_LINK_BY_EMAIL"), default=True)
-        self.OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK: bool = _to_bool(os.getenv("OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK"), default=True )
-        # when true, skip enforcing local TOTP/\nMFA for accounts that are backed by an external\nauth provider (OIDC/Keycloak). disabling this\nflag will force the usual database-side MFA\nchecks even for non-local users.
-        self.SKIP_LOCAL_MFA_FOR_EXTERNAL: bool = _to_bool(
-            os.getenv("SKIP_LOCAL_MFA_FOR_EXTERNAL"), default=True
+        self.OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK: bool = _to_bool(
+            os.getenv("OIDC_REQUIRE_VERIFIED_EMAIL_FOR_LINK"), default=True
         )
 
-        # Keycloak admin API (optional, for app-driven user provisioning)
+        self.SKIP_LOCAL_MFA_FOR_EXTERNAL: bool = _to_bool(os.getenv("SKIP_LOCAL_MFA_FOR_EXTERNAL"), default=True)
+
         self.KEYCLOAK_ADMIN_URL: Optional[str] = os.getenv("KEYCLOAK_ADMIN_URL")
         self.KEYCLOAK_ADMIN_REALM: Optional[str] = os.getenv("KEYCLOAK_ADMIN_REALM")
         self.KEYCLOAK_ADMIN_CLIENT_ID: Optional[str] = os.getenv("KEYCLOAK_ADMIN_CLIENT_ID")
@@ -253,7 +229,6 @@ class Config:
             default=False,
         )
 
-        # Production hardening controls
         self.DEFAULT_ADMIN_BOOTSTRAP_ENABLED: bool = _to_bool(
             os.getenv("DEFAULT_ADMIN_BOOTSTRAP_ENABLED"),
             default=not self.IS_PRODUCTION,
@@ -268,9 +243,7 @@ class Config:
             default=self.IS_PRODUCTION,
         )
 
-        # Cookie / allowlist hardening
         self.FORCE_SECURE_COOKIES: bool = _to_bool(os.getenv("FORCE_SECURE_COOKIES"), default=self.IS_PRODUCTION)
-        # When true, an explicit-but-empty allowlist will be treated as permissive. Default is false (fail-closed).
         self.ALLOWLIST_FAIL_OPEN: bool = _to_bool(os.getenv("ALLOWLIST_FAIL_OPEN"), default=False)
 
         self.RATE_LIMIT_GC_EVERY: int = int(os.getenv("RATE_LIMIT_GC_EVERY", "1024"))
@@ -278,22 +251,18 @@ class Config:
         self.RATE_LIMIT_MAX_STATES: int = int(os.getenv("RATE_LIMIT_MAX_STATES", "200000"))
         self.RATE_LIMIT_FALLBACK_MODE: str = os.getenv("RATE_LIMIT_FALLBACK_MODE", "memory").strip().lower()
         self.PASSWORD_HASH_MAX_CONCURRENCY: int = int(os.getenv("PASSWORD_HASH_MAX_CONCURRENCY", "8"))
-        # Local account password lifecycle controls (0 disables periodic expiry)
         self.PASSWORD_RESET_INTERVAL_DAYS: int = int(os.getenv("PASSWORD_RESET_INTERVAL_DAYS", "0"))
         self.TEMP_PASSWORD_LENGTH: int = int(os.getenv("TEMP_PASSWORD_LENGTH", "20"))
 
-        # Default admin bootstrap (can be overridden via environment)
         self.DEFAULT_ADMIN_USERNAME: str = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
         self.DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
         self.DEFAULT_ADMIN_EMAIL: str = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com")
         self.DEFAULT_ADMIN_TENANT: str = os.getenv("DEFAULT_ADMIN_TENANT", "default")
 
-        # Multi-tenancy
         self.DEFAULT_ORG_ID: str = os.getenv("DEFAULT_ORG_ID", "default")
         self.OTLP_GATEWAY_URL: str = os.getenv("OTLP_GATEWAY_URL", "http://otlp-gateway:4320")
         self.DEFAULT_OTLP_TOKEN: Optional[str] = os.getenv("DEFAULT_OTLP_TOKEN")
 
-        # Vault / secret-store integration (opt-in)
         self.VAULT_ENABLED: bool = _to_bool(os.getenv("VAULT_ENABLED"), default=False)
         self.VAULT_ADDR: Optional[str] = os.getenv("VAULT_ADDR")
         self.VAULT_TOKEN: Optional[str] = os.getenv("VAULT_TOKEN")
@@ -304,18 +273,19 @@ class Config:
         self.VAULT_KV_VERSION: int = int(os.getenv("VAULT_KV_VERSION", "2"))
         self.VAULT_TIMEOUT: float = float(os.getenv("VAULT_TIMEOUT", "2.0"))
         self.VAULT_FAIL_ON_MISSING: bool = _to_bool(os.getenv("VAULT_FAIL_ON_MISSING"), default=self.IS_PRODUCTION)
+
         try:
             self._load_vault_secrets()
-        except Exception as exc: 
+        except Exception as exc:
             if self.VAULT_ENABLED and (self.IS_PRODUCTION or self.VAULT_FAIL_ON_MISSING):
                 raise
             logger.warning("Vault not available or misconfigured; continuing with environment variables: %s", exc)
+
         if not hasattr(self, "_secret_provider") or self._secret_provider is None:
             from services.secrets.provider import EnvSecretProvider, SecretProvider
 
             self._secret_provider: SecretProvider = EnvSecretProvider()
 
-        # Alerting and notifications defaults
         self.DEFAULT_RULE_GROUP: str = os.getenv("DEFAULT_RULE_GROUP", "default")
         self.DEFAULT_SLACK_CHANNEL: str = os.getenv("DEFAULT_SLACK_CHANNEL", "default")
         self.ENABLED_NOTIFICATION_CHANNEL_TYPES: list = [
@@ -333,15 +303,16 @@ class Config:
     def _load_vault_secrets(self) -> None:
         if not self.VAULT_ENABLED:
             return
-        from services.secrets.provider import EnvSecretProvider, SecretProvider
-        from services.secrets.vault_client import VaultClientError, VaultSecretProvider
+
+        from services.secrets.provider import SecretProvider
+        from services.secrets.vault_client import VaultSecretProvider
 
         if not self.VAULT_ADDR:
             raise ValueError("VAULT_ADDR must be set when VAULT_ENABLED=true")
 
         secret_id_fn = (lambda: self.VAULT_SECRET_ID) if self.VAULT_SECRET_ID else None
 
-        provider = VaultSecretProvider(
+        provider: SecretProvider = VaultSecretProvider(
             address=self.VAULT_ADDR,
             token=self.VAULT_TOKEN,
             role_id=self.VAULT_ROLE_ID,
@@ -349,9 +320,11 @@ class Config:
             prefix=self.VAULT_SECRETS_PREFIX,
             kv_version=self.VAULT_KV_VERSION,
             timeout=self.VAULT_TIMEOUT,
+            cacert=self.VAULT_CACERT,
         )
 
-        # keys we want to fetch from Vault if present
+        self._secret_provider = provider
+
         secret_keys = [
             "DATABASE_URL",
             "JWT_PRIVATE_KEY",
@@ -380,7 +353,6 @@ class Config:
                 val = provider.get(sk)
             except Exception:
                 val = None
-
             if val:
                 setattr(self, sk, val)
                 logger.info("Loaded secret %s from Vault", sk)
@@ -389,35 +361,25 @@ class Config:
         val = getattr(self, key, None)
         if val:
             return val
-
         try:
             return self._secret_provider.get(key)
         except Exception:
             return None
 
     def _apply_security_defaults(self) -> None:
-        if _is_placeholder(
-            self.DEFAULT_ADMIN_PASSWORD,
-            placeholders=["admin123", "admin", "password", "changeme"],
-        ):
-
+        if _is_placeholder(self.DEFAULT_ADMIN_PASSWORD, placeholders=["admin123", "admin", "password", "changeme"]):
             if not self.IS_PRODUCTION and self.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
                 self.DEFAULT_ADMIN_PASSWORD = secrets.token_urlsafe(18)
                 logger.warning(
                     "Generated runtime DEFAULT_ADMIN_PASSWORD for non-production startup. Persist via secret manager before deployment.",
                 )
 
-        if _is_placeholder(
-            self.JWT_SECRET_KEY,
-            placeholders=["change-this-secret-key-in-production", "changeme", "secret", ""],
-        ):
+        if _is_placeholder(self.JWT_SECRET_KEY, placeholders=["change-this-secret-key-in-production", "changeme", "secret", ""]):
             if not self.IS_PRODUCTION:
                 self.JWT_SECRET_KEY = secrets.token_urlsafe(32)
                 logger.info("Generated runtime JWT_SECRET_KEY for local compatibility.")
 
-        if self.JWT_ALGORITHM in self.ALLOWED_JWT_ALGORITHMS and (
-            not self.JWT_PRIVATE_KEY or not self.JWT_PUBLIC_KEY
-        ):
+        if self.JWT_ALGORITHM in self.ALLOWED_JWT_ALGORITHMS and (not self.JWT_PRIVATE_KEY or not self.JWT_PUBLIC_KEY):
             if self.JWT_AUTO_GENERATE_KEYS and not self.IS_PRODUCTION:
                 if self.JWT_ALGORITHM == "RS256":
                     private_key, public_key = _generate_rsa_keypair()
@@ -435,14 +397,10 @@ class Config:
 
     def validate(self) -> None:
         if self.DATABASE_URL == self.EXAMPLE_DATABASE_URL or "changeme123" in self.DATABASE_URL:
-            raise ValueError(
-                "Unsafe DATABASE_URL detected. Set DATABASE_URL to a non-example credentialed connection string."
-            )
+            raise ValueError("Unsafe DATABASE_URL detected. Set DATABASE_URL to a non-example credentialed connection string.")
 
         if self.JWT_ALGORITHM not in self.ALLOWED_JWT_ALGORITHMS:
-            raise ValueError(
-                f"Unsupported JWT_ALGORITHM '{self.JWT_ALGORITHM}'. Allowed values: {sorted(self.ALLOWED_JWT_ALGORITHMS)}"
-            )
+            raise ValueError(f"Unsupported JWT_ALGORITHM '{self.JWT_ALGORITHM}'. Allowed values: {sorted(self.ALLOWED_JWT_ALGORITHMS)}")
 
         if self.JWT_SECRET_KEY:
             logger.warning(
@@ -450,18 +408,13 @@ class Config:
                 self.JWT_ALGORITHM,
             )
 
-        if self.JWT_ALGORITHM in self.ALLOWED_JWT_ALGORITHMS and (
-            not self.JWT_PRIVATE_KEY or not self.JWT_PUBLIC_KEY
-        ):
+        if self.JWT_ALGORITHM in self.ALLOWED_JWT_ALGORITHMS and (not self.JWT_PRIVATE_KEY or not self.JWT_PUBLIC_KEY):
             raise ValueError("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY must be configured for RS256/ES256 tokens")
 
         if self.IS_PRODUCTION and self.JWT_AUTO_GENERATE_KEYS:
             raise ValueError("JWT_AUTO_GENERATE_KEYS must be disabled in production")
 
-        if self.IS_PRODUCTION and _is_placeholder(
-            self.DEFAULT_ADMIN_PASSWORD,
-            placeholders=["admin123", "admin", "password", "changeme", ""],
-        ):
+        if self.IS_PRODUCTION and _is_placeholder(self.DEFAULT_ADMIN_PASSWORD, placeholders=["admin123", "admin", "password", "changeme", ""]):
             raise ValueError("DEFAULT_ADMIN_PASSWORD must be set to a strong value in production")
 
         if self.IS_PRODUCTION and self.DEFAULT_ADMIN_BOOTSTRAP_ENABLED:
@@ -479,9 +432,7 @@ class Config:
 
         wildcard_enabled = any(origin.strip() == "*" for origin in self.CORS_ORIGINS)
         if wildcard_enabled and self.CORS_ALLOW_CREDENTIALS:
-            raise ValueError(
-                "CORS_ORIGINS cannot contain '*' when CORS_ALLOW_CREDENTIALS is enabled."
-            )
+            raise ValueError("CORS_ORIGINS cannot contain '*' when CORS_ALLOW_CREDENTIALS is enabled.")
 
         if self.BENOTIFIED_CONTEXT_ALGORITHM not in self.ALLOWED_CONTEXT_ALGORITHMS:
             raise ValueError(
@@ -519,26 +470,31 @@ class Config:
             raise ValueError("DEFAULT_QUERY_LIMIT must be greater than 0")
         if self.DEFAULT_QUERY_LIMIT > self.MAX_QUERY_LIMIT:
             raise ValueError("DEFAULT_QUERY_LIMIT cannot exceed MAX_QUERY_LIMIT")
+
         if self.LOKI_FALLBACK_CONCURRENCY <= 0:
             raise ValueError("LOKI_FALLBACK_CONCURRENCY must be greater than 0")
         if self.LOKI_MAX_FALLBACK_QUERIES < 0:
             raise ValueError("LOKI_MAX_FALLBACK_QUERIES must be greater than or equal to 0")
         if self.LOKI_VOLUME_CACHE_TTL_SECONDS < 0:
             raise ValueError("LOKI_VOLUME_CACHE_TTL_SECONDS must be greater than or equal to 0")
+
         if self.TEMPO_TRACE_FETCH_CONCURRENCY <= 0:
             raise ValueError("TEMPO_TRACE_FETCH_CONCURRENCY must be greater than 0")
         if self.TEMPO_VOLUME_BUCKET_CONCURRENCY <= 0:
             raise ValueError("TEMPO_VOLUME_BUCKET_CONCURRENCY must be greater than 0")
         if self.TEMPO_COUNT_QUERY_CONCURRENCY <= 0:
             raise ValueError("TEMPO_COUNT_QUERY_CONCURRENCY must be greater than 0")
+
         if self.BECERTAIN_PROXY_CACHE_TTL_SECONDS < 0:
             raise ValueError("BECERTAIN_PROXY_CACHE_TTL_SECONDS must be greater than or equal to 0")
+
         if self.BECERTAIN_ANALYZE_MAX_CONCURRENCY <= 0:
             raise ValueError("BECERTAIN_ANALYZE_MAX_CONCURRENCY must be greater than 0")
         if self.BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER <= 0:
             raise ValueError("BECERTAIN_ANALYZE_MAX_RETAINED_PER_USER must be greater than 0")
         if self.BECERTAIN_ANALYZE_JOB_TTL_SECONDS <= 0:
             raise ValueError("BECERTAIN_ANALYZE_JOB_TTL_SECONDS must be greater than 0")
+
         if self.PASSWORD_RESET_INTERVAL_DAYS < 0:
             raise ValueError("PASSWORD_RESET_INTERVAL_DAYS must be >= 0")
         if self.TEMP_PASSWORD_LENGTH < 12:
@@ -548,22 +504,18 @@ class Config:
 class Constants:
     APP_NAME: str = "Be Observant with Your Infrastructure"
     APP_VERSION: str = "1.0.0"
-    APP_DESCRIPTION: str = (
-        "Unified API for managing Tempo, Loki, AlertManager, Grafana, and BeCertain"
-    )
+    APP_DESCRIPTION: str = "Unified API for managing Tempo, Loki, AlertManager, Grafana, and BeCertain"
 
-    # HTTP status messages
     STATUS_HEALTHY: str = "Healthy"
     STATUS_SUCCESS: str = "Success"
     STATUS_ERROR: str = "Error"
 
-
-    # Service names
     SERVICE_TEMPO: str = "Tempo"
     SERVICE_LOKI: str = "Loki"
     SERVICE_ALERTMANAGER: str = "AlertManager"
     SERVICE_GRAFANA: str = "Grafana"
     SERVICE_BECERTAIN: str = "BeCertain"
+
 
 config = Config()
 constants = Constants()

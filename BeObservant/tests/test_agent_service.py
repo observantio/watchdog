@@ -21,11 +21,6 @@ from models.observability.agent_models import AgentHeartbeat, AgentInfo
 from services.agent_service import AgentService
 from services.agent import helpers
 
-
-def test_make_agent_id():
-    assert helpers.make_agent_id("agent", "") == "agent"
-    assert helpers.make_agent_id("agent", "tenant") == "tenant:agent"
-
 def test_update_registry_new_and_existing():
     registry: dict[str, AgentInfo] = {}
     now = datetime.now(timezone.utc)

@@ -1,5 +1,5 @@
 """
-This module initializes the FastAPI application, sets up middleware, and includes all the API routers for the BeObservant server.
+This module initializes the FastAPI application, sets up middleware, and includes all the API routers for the Be Observant server.
 
 Copyright (c) 2026 Stefan Kumarasinghe
 

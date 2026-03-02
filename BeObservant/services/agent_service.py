@@ -23,9 +23,6 @@ class AgentService:
     def __init__(self):
         self._agents: Dict[str, AgentInfo] = {}
 
-    def _make_agent_id(self, name: str, tenant_id: str) -> str:
-        return make_agent_id(name, tenant_id)
-
     def update_from_heartbeat(self, heartbeat: AgentHeartbeat) -> None:
         update_agent_registry(self._agents, heartbeat)
 

@@ -17,7 +17,7 @@ from .rate_limits.token_rate_limiter import TokenRateLimiter
 from .rate_limits.redis_token_rate_limiter import RedisTokenRateLimiter
 from .rate_limits.hybrid_token_rate_limiter import HybridTokenRateLimiter
 
-from services import config as gw_config
+import config as gw_config
 
 try:
     redis: object

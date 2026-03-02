@@ -102,8 +102,8 @@ for name in (
     setattr(ds_mod, name, lambda *a, **k: None)
 sys.modules["services.grafana.datasource_ops"] = ds_mod
 
-from server.services.grafana_proxy_service import GrafanaProxyService
-from server.db_models import Base, Group
+from services.grafana_proxy_service import GrafanaProxyService
+from db_models import Base, Group
 from fastapi import HTTPException
 GrafanaAPIError = gf_mod.GrafanaAPIError
 

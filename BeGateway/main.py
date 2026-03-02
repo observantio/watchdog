@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from services import config as gw_config
+import config as gw_config
 from routers import router as gateway_router
 from services.gateway_service import GatewayAuthService
 

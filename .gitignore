@@ -26,6 +26,7 @@ coverage/
 *.tar.gz
 *.log
 .mypy_cache/
+.ruff_cache/
 BeCertain/
 BeNotified/
 showcase/

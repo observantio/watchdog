@@ -95,6 +95,7 @@ from services.database_auth import (
     schema_converters as db_schema,
     token as db_token,
 )
+from services.secrets.provider import SecretProvider
 
 logger = logging.getLogger(__name__)
 

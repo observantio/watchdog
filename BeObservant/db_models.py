@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Index, Integer,
-    String, Table, Text, JSON, UniqueConstraint, event, text,
+    String, Table, Text, JSON, UniqueConstraint, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 

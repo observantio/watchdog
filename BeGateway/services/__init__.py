@@ -9,6 +9,5 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 from .gateway_service import GatewayAuthService
-from . import config
 
-__all__ = ["GatewayAuthService", "config"]
+__all__ = ["GatewayAuthService"]

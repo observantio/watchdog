@@ -19,7 +19,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException, Request, status
 
-from . import config as gw_config
+import config as gw_config
 from .rate_limit import make_default_rate_limiter
 from .token_cache import make_token_cache
 from models.exceptions import DatabaseUnavailable
