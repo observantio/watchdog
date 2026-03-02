@@ -1,5 +1,5 @@
-import PropTypes from 'prop-types'
-import { Select, Checkbox } from '../../components/ui'
+import PropTypes from "prop-types";
+import { Select, Checkbox } from "../../components/ui";
 
 export default function DatasourceSelector({
   datasourceUid,
@@ -7,16 +7,23 @@ export default function DatasourceSelector({
   useTemplating,
   onUseTemplatingChange,
   datasources,
-  label = 'Default Datasource',
+  label = "Default Datasource",
   helperText = "It uses the default datasource when selected.",
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-sre-text mb-2">{label}</label>
-      <Select value={datasourceUid} onChange={(e) => onDatasourceChange(e.target.value)}>
+      <label className="block text-sm font-medium text-sre-text mb-2">
+        {label}
+      </label>
+      <Select
+        value={datasourceUid}
+        onChange={(e) => onDatasourceChange(e.target.value)}
+      >
         <option value="">-- None --</option>
         {datasources.map((ds) => (
-          <option key={ds.uid} value={ds.uid}>{ds.name} ({ds.type})</option>
+          <option key={ds.uid} value={ds.uid}>
+            {ds.name} ({ds.type})
+          </option>
         ))}
       </Select>
 
@@ -29,7 +36,7 @@ export default function DatasourceSelector({
         />
       </div>
     </div>
-  )
+  );
 }
 
 DatasourceSelector.propTypes = {
@@ -40,4 +47,4 @@ DatasourceSelector.propTypes = {
   datasources: PropTypes.array,
   label: PropTypes.string,
   helperText: PropTypes.string,
-}
+};

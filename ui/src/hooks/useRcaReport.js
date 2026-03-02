@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getRcaReportById,
   getRcaJobResult,
@@ -9,27 +9,37 @@ import {
   fetchRcaTopology,
   getRcaDeployments,
   getRcaMlWeights,
-} from '../api'
+} from "../api";
 
 function deriveRootService(report) {
-  if (Array.isArray(report?.service_latency) && report.service_latency.length > 0) {
-    return report.service_latency[0].service
+  if (
+    Array.isArray(report?.service_latency) &&
+    report.service_latency.length > 0
+  ) {
+    return report.service_latency[0].service;
   }
-  if (Array.isArray(report?.error_propagation) && report.error_propagation.length > 0) {
-    return report.error_propagation[0].source_service
+  if (
+    Array.isArray(report?.error_propagation) &&
+    report.error_propagation.length > 0
+  ) {
+    return report.error_propagation[0].source_service;
   }
-  return ''
+  return "";
 }
 
 function basePayloadFromReport(report) {
   return {
     start: report?.start,
     end: report?.end,
-    step: '15s',
-    services: Array.from(new Set((report?.service_latency || []).map((s) => s.service).filter(Boolean))).slice(0, 5),
+    step: "15s",
+    services: Array.from(
+      new Set(
+        (report?.service_latency || []).map((s) => s.service).filter(Boolean),
+      ),
+    ).slice(0, 5),
     metric_queries: [],
     log_query: null,
-  }
+  };
 }
 
 const EMPTY_INSIGHTS = {
@@ -41,7 +51,7 @@ const EMPTY_INSIGHTS = {
   bayesian: null,
   mlWeights: null,
   deployments: null,
-}
+};
 
 const EMPTY_INSIGHT_ERRORS = {
   correlate: null,
@@ -52,15 +62,20 @@ const EMPTY_INSIGHT_ERRORS = {
   bayesian: null,
   mlWeights: null,
   deployments: null,
-}
+};
 
-const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'deleted'])
+const TERMINAL_JOB_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "deleted",
+]);
 
 const TAB_INSIGHT_KEYS = {
-  topology: ['topology'],
-  causal: ['granger', 'bayesian', 'mlWeights', 'deployments'],
-  'forecast-slo': ['forecast', 'slo'],
-}
+  topology: ["topology"],
+  causal: ["granger", "bayesian", "mlWeights", "deployments"],
+  "forecast-slo": ["forecast", "slo"],
+};
 
 function normalizeEmbeddedInsights(reportData) {
   return {
@@ -72,56 +87,73 @@ function normalizeEmbeddedInsights(reportData) {
     bayesian: reportData?.bayesian || null,
     mlWeights: reportData?.ml_weights || reportData?.mlWeights || null,
     deployments: reportData?.deployments || null,
-  }
+  };
 }
 
-export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null, options = {}) {
-  const { enableInsights = false, activeInsightTab = 'summary' } = options
-  const requestSeq = useRef(0)
-  const insightRequestRef = useRef(0)
-  const [loadingPrimaryReport, setLoadingPrimaryReport] = useState(false)
-  const [loadingInsights, setLoadingInsights] = useState(false)
-  const [reportError, setReportError] = useState(null)
+export function useRcaReport(
+  selectedJobId,
+  selectedJob,
+  reportIdOverride = null,
+  options = {},
+) {
+  const { enableInsights = false, activeInsightTab = "summary" } = options;
+  const requestSeq = useRef(0);
+  const insightRequestRef = useRef(0);
+  const [loadingPrimaryReport, setLoadingPrimaryReport] = useState(false);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [reportError, setReportError] = useState(null);
   // track HTTP status for convenience (e.g. 404 not found)
-  const [reportErrorStatus, setReportErrorStatus] = useState(null)
-  const [report, setReport] = useState(null)
-  const [reportMeta, setReportMeta] = useState(null)
-  const [insights, setInsights] = useState(EMPTY_INSIGHTS)
-  const [insightErrors, setInsightErrors] = useState(EMPTY_INSIGHT_ERRORS)
-  const insightsRef = useRef(EMPTY_INSIGHTS)
-  const insightErrorsRef = useRef(EMPTY_INSIGHT_ERRORS)
+  const [reportErrorStatus, setReportErrorStatus] = useState(null);
+  const [report, setReport] = useState(null);
+  const [reportMeta, setReportMeta] = useState(null);
+  const [insights, setInsights] = useState(EMPTY_INSIGHTS);
+  const [insightErrors, setInsightErrors] = useState(EMPTY_INSIGHT_ERRORS);
+  const insightsRef = useRef(EMPTY_INSIGHTS);
+  const insightErrorsRef = useRef(EMPTY_INSIGHT_ERRORS);
 
   useEffect(() => {
-    insightsRef.current = insights
-  }, [insights])
+    insightsRef.current = insights;
+  }, [insights]);
 
   useEffect(() => {
-    insightErrorsRef.current = insightErrors
-  }, [insightErrors])
+    insightErrorsRef.current = insightErrors;
+  }, [insightErrors]);
 
   const loadInsightsForTab = useCallback(async (reportData, seq, tab) => {
-    if (!reportData?.start || !reportData?.end) return
-    const needed = TAB_INSIGHT_KEYS[tab] || []
-    if (needed.length === 0) return
+    if (!reportData?.start || !reportData?.end) return;
+    const needed = TAB_INSIGHT_KEYS[tab] || [];
+    if (needed.length === 0) return;
 
-    const currentInsights = insightsRef.current
-    const currentErrors = insightErrorsRef.current
-    const missing = needed.filter((key) => !currentInsights[key] && !currentErrors[key])
-    if (missing.length === 0) return
+    const currentInsights = insightsRef.current;
+    const currentErrors = insightErrorsRef.current;
+    const missing = needed.filter(
+      (key) => !currentInsights[key] && !currentErrors[key],
+    );
+    if (missing.length === 0) return;
 
-    const basePayload = basePayloadFromReport(reportData)
-    const rootService = deriveRootService(reportData)
-    const calls = []
+    const basePayload = basePayloadFromReport(reportData);
+    const rootService = deriveRootService(reportData);
+    const calls = [];
 
-    if (missing.includes('forecast')) {
-      calls.push({ key: 'forecast', req: fetchRcaForecast(basePayload, { limit: 100 }) })
-    }
-    if (missing.includes('granger')) {
-      calls.push({ key: 'granger', req: fetchRcaGranger(basePayload, { limit: 100, min_strength: 0.05, max_series: 25 }) })
-    }
-    if (missing.includes('bayesian')) {
+    if (missing.includes("forecast")) {
       calls.push({
-        key: 'bayesian',
+        key: "forecast",
+        req: fetchRcaForecast(basePayload, { limit: 100 }),
+      });
+    }
+    if (missing.includes("granger")) {
+      calls.push({
+        key: "granger",
+        req: fetchRcaGranger(basePayload, {
+          limit: 100,
+          min_strength: 0.05,
+          max_series: 25,
+        }),
+      });
+    }
+    if (missing.includes("bayesian")) {
+      calls.push({
+        key: "bayesian",
         req: fetchRcaBayesian({
           ...basePayload,
           apdex_threshold_ms: 500,
@@ -129,100 +161,105 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
           correlation_window_seconds: 60,
           forecast_horizon_seconds: 1800,
         }),
-      })
+      });
     }
-    if (missing.includes('mlWeights')) {
-      calls.push({ key: 'mlWeights', req: getRcaMlWeights() })
+    if (missing.includes("mlWeights")) {
+      calls.push({ key: "mlWeights", req: getRcaMlWeights() });
     }
-    if (missing.includes('deployments')) {
-      calls.push({ key: 'deployments', req: getRcaDeployments() })
+    if (missing.includes("deployments")) {
+      calls.push({ key: "deployments", req: getRcaDeployments() });
     }
-    if (missing.includes('topology') && rootService) {
+    if (missing.includes("topology") && rootService) {
       calls.push({
-        key: 'topology',
+        key: "topology",
         req: fetchRcaTopology({
           start: reportData.start,
           end: reportData.end,
           root_service: rootService,
           max_depth: 6,
         }),
-      })
+      });
     }
-    if (missing.includes('slo') && rootService) {
+    if (missing.includes("slo") && rootService) {
       calls.push({
-        key: 'slo',
+        key: "slo",
         req: fetchRcaSloBurn({
           service: rootService,
           start: reportData.start,
           end: reportData.end,
-          step: '15s',
+          step: "15s",
           target_availability: 0.999,
         }),
-      })
+      });
     }
-    if (calls.length === 0) return
+    if (calls.length === 0) return;
 
-    const insightSeq = insightRequestRef.current + 1
-    insightRequestRef.current = insightSeq
-    setLoadingInsights(true)
+    const insightSeq = insightRequestRef.current + 1;
+    insightRequestRef.current = insightSeq;
+    setLoadingInsights(true);
 
-    const settled = await Promise.allSettled(calls.map((entry) => entry.req))
-    if (seq !== requestSeq.current || insightSeq !== insightRequestRef.current) return
+    const settled = await Promise.allSettled(calls.map((entry) => entry.req));
+    if (seq !== requestSeq.current || insightSeq !== insightRequestRef.current)
+      return;
 
-    const nextInsights = {}
-    const nextErrors = {}
+    const nextInsights = {};
+    const nextErrors = {};
     calls.forEach((entry, index) => {
-      const result = settled[index]
-      if (result.status === 'fulfilled') {
-        nextInsights[entry.key] = result.value
-        nextErrors[entry.key] = null
+      const result = settled[index];
+      if (result.status === "fulfilled") {
+        nextInsights[entry.key] = result.value;
+        nextErrors[entry.key] = null;
       } else {
-        nextErrors[entry.key] = result.reason?.message || `Failed to load ${entry.key}`
+        nextErrors[entry.key] =
+          result.reason?.message || `Failed to load ${entry.key}`;
       }
-    })
+    });
 
     setInsights((prev) => {
-      const merged = { ...prev, ...nextInsights }
-      insightsRef.current = merged
-      return merged
-    })
+      const merged = { ...prev, ...nextInsights };
+      insightsRef.current = merged;
+      return merged;
+    });
     setInsightErrors((prev) => {
-      const merged = { ...prev, ...nextErrors }
-      insightErrorsRef.current = merged
-      return merged
-    })
-    setLoadingInsights(false)
-  }, [])
+      const merged = { ...prev, ...nextErrors };
+      insightErrorsRef.current = merged;
+      return merged;
+    });
+    setLoadingInsights(false);
+  }, []);
 
   const reset = useCallback(() => {
-    setReport(null)
-    setReportMeta(null)
-    setInsights(EMPTY_INSIGHTS)
-    setInsightErrors(EMPTY_INSIGHT_ERRORS)
-    insightsRef.current = EMPTY_INSIGHTS
-    insightErrorsRef.current = EMPTY_INSIGHT_ERRORS
-    setLoadingInsights(false)
-  }, [])
+    setReport(null);
+    setReportMeta(null);
+    setInsights(EMPTY_INSIGHTS);
+    setInsightErrors(EMPTY_INSIGHT_ERRORS);
+    insightsRef.current = EMPTY_INSIGHTS;
+    insightErrorsRef.current = EMPTY_INSIGHT_ERRORS;
+    setLoadingInsights(false);
+  }, []);
 
   const loadReport = useCallback(async () => {
-    const seq = requestSeq.current + 1
-    requestSeq.current = seq
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
 
-    if (!reportIdOverride && (!selectedJobId || selectedJobId.startsWith('pending-'))) {
-      reset()
-      setReportError(null)
-      setLoadingPrimaryReport(false)
-      return
+    if (
+      !reportIdOverride &&
+      (!selectedJobId || selectedJobId.startsWith("pending-"))
+    ) {
+      reset();
+      setReportError(null);
+      setLoadingPrimaryReport(false);
+      return;
     }
 
-    setLoadingPrimaryReport(true)
-    setReportError(null)
-    setReportErrorStatus(null)
+    setLoadingPrimaryReport(true);
+    setReportError(null);
+    setReportErrorStatus(null);
     try {
       const res = reportIdOverride
         ? await getRcaReportById(reportIdOverride)
-        : await getRcaJobResult(selectedJobId)
-      if (seq !== requestSeq.current) return
+        : await getRcaJobResult(selectedJobId);
+      if (seq !== requestSeq.current) return;
 
       setReportMeta({
         job_id: res?.job_id,
@@ -230,70 +267,74 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
         status: res?.status,
         tenant_id: res?.tenant_id,
         requested_by: res?.requested_by,
-      })
-      if (res?.status !== 'completed' || !res?.result) {
-        setReport(null)
-        setInsights(EMPTY_INSIGHTS)
-        setInsightErrors(EMPTY_INSIGHT_ERRORS)
-        setLoadingInsights(false)
+      });
+      if (res?.status !== "completed" || !res?.result) {
+        setReport(null);
+        setInsights(EMPTY_INSIGHTS);
+        setInsightErrors(EMPTY_INSIGHT_ERRORS);
+        setLoadingInsights(false);
       } else {
-        setReport(res.result)
-        const initialInsights = normalizeEmbeddedInsights(res.result)
-        setInsights(initialInsights)
-        setInsightErrors(EMPTY_INSIGHT_ERRORS)
-        insightsRef.current = initialInsights
-        insightErrorsRef.current = EMPTY_INSIGHT_ERRORS
-        setLoadingInsights(false)
-        setLoadingPrimaryReport(false)
-        return
+        setReport(res.result);
+        const initialInsights = normalizeEmbeddedInsights(res.result);
+        setInsights(initialInsights);
+        setInsightErrors(EMPTY_INSIGHT_ERRORS);
+        insightsRef.current = initialInsights;
+        insightErrorsRef.current = EMPTY_INSIGHT_ERRORS;
+        setLoadingInsights(false);
+        setLoadingPrimaryReport(false);
+        return;
       }
     } catch (err) {
-      if (seq !== requestSeq.current) return
-      setReportError(err?.message || 'Failed to load RCA report')
-      setReportErrorStatus(err?.status || null)
-      reset()
+      if (seq !== requestSeq.current) return;
+      setReportError(err?.message || "Failed to load RCA report");
+      setReportErrorStatus(err?.status || null);
+      reset();
     } finally {
       if (seq === requestSeq.current) {
-        setLoadingPrimaryReport(false)
+        setLoadingPrimaryReport(false);
       }
     }
-  }, [reportIdOverride, reset, selectedJobId])
+  }, [reportIdOverride, reset, selectedJobId]);
 
   useEffect(() => {
     if (reportIdOverride) {
-      loadReport()
-      return
+      loadReport();
+      return;
     }
 
     if (!selectedJobId) {
-      requestSeq.current += 1
-      reset()
-      setReportError(null)
-      setReportErrorStatus(null)
-      return
+      requestSeq.current += 1;
+      reset();
+      setReportError(null);
+      setReportErrorStatus(null);
+      return;
     }
-    const normalizedStatus = String(selectedJob?.status || '').toLowerCase()
-    if (normalizedStatus === 'completed') {
-      loadReport()
-    } else if (normalizedStatus === 'failed' || normalizedStatus === 'cancelled' || normalizedStatus === 'deleted') {
-      requestSeq.current += 1
-      reset()
-      setReportError(selectedJob?.error || 'RCA job did not complete')
-      setReportErrorStatus(null)
+    const normalizedStatus = String(selectedJob?.status || "").toLowerCase();
+    if (normalizedStatus === "completed") {
+      loadReport();
+    } else if (
+      normalizedStatus === "failed" ||
+      normalizedStatus === "cancelled" ||
+      normalizedStatus === "deleted"
+    ) {
+      requestSeq.current += 1;
+      reset();
+      setReportError(selectedJob?.error || "RCA job did not complete");
+      setReportErrorStatus(null);
     } else if (!TERMINAL_JOB_STATUSES.has(normalizedStatus)) {
-      requestSeq.current += 1
-      reset()
-      setReportError(null)
-      setReportErrorStatus(null)
+      requestSeq.current += 1;
+      reset();
+      setReportError(null);
+      setReportErrorStatus(null);
     }
-  }, [loadReport, reportIdOverride, reset, selectedJob, selectedJobId])
+  }, [loadReport, reportIdOverride, reset, selectedJob, selectedJobId]);
 
   useEffect(() => {
-    if (!enableInsights || !report) return
-    void loadInsightsForTab(report, requestSeq.current, activeInsightTab)
-  }, [activeInsightTab, enableInsights, loadInsightsForTab, report])
+    if (!enableInsights || !report) return;
+    void loadInsightsForTab(report, requestSeq.current, activeInsightTab);
+  }, [activeInsightTab, enableInsights, loadInsightsForTab, report]);
 
-  const hasReport = useMemo(() => Boolean(report), [report])
+  const hasReport = useMemo(() => Boolean(report), [report]);
 
   return {
     loadingPrimaryReport,
@@ -307,5 +348,5 @@ export function useRcaReport(selectedJobId, selectedJob, reportIdOverride = null
     insightErrors,
     hasReport,
     reloadReport: loadReport,
-  }
+  };
 }

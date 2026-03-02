@@ -1,93 +1,104 @@
-import { useState, useRef, useEffect, useId } from 'react'
-import PropTypes from 'prop-types'
+import { useState, useRef, useEffect, useId } from "react";
+import PropTypes from "prop-types";
 
 export default function HelpTooltip({ text, autoShow = false }) {
   // optionally start visible (used in modals that open with context)
-  const [show, setShow] = useState(autoShow)
-  const wrapperRef = useRef(null)
-  const tooltipRef = useRef(null)
-  const [tooltipStyle, setTooltipStyle] = useState({})
-  const [arrowStyle, setArrowStyle] = useState({})
-  const tooltipId = useId()
+  const [show, setShow] = useState(autoShow);
+  const wrapperRef = useRef(null);
+  const tooltipRef = useRef(null);
+  const [tooltipStyle, setTooltipStyle] = useState({});
+  const [arrowStyle, setArrowStyle] = useState({});
+  const tooltipId = useId();
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      setShow((prev) => !prev)
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setShow((prev) => !prev);
     }
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      setShow(false)
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setShow(false);
     }
-  }
+  };
 
   useEffect(() => {
     if (autoShow) {
-      setShow(true)
+      setShow(true);
     }
-    if (!show) return
+    if (!show) return;
 
     const update = () => {
-      const wr = wrapperRef.current
-      const tp = tooltipRef.current
-      if (!wr || !tp) return
+      const wr = wrapperRef.current;
+      const tp = tooltipRef.current;
+      if (!wr || !tp) return;
 
-      const margin = 12
-      const viewportW = window.innerWidth
-      const viewportH = window.innerHeight
+      const margin = 12;
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
 
-      const maxWidth = Math.min(300, viewportW - margin * 2)
-      tp.style.maxWidth = `${maxWidth}px`
+      const maxWidth = Math.min(300, viewportW - margin * 2);
+      tp.style.maxWidth = `${maxWidth}px`;
 
       // measure after maxWidth applied
-      const tpRect = tp.getBoundingClientRect()
-      const tpWidth = tpRect.width
-      const tpHeight = tpRect.height
-      const wrRect = wr.getBoundingClientRect()
+      const tpRect = tp.getBoundingClientRect();
+      const tpWidth = tpRect.width;
+      const tpHeight = tpRect.height;
+      const wrRect = wr.getBoundingClientRect();
 
       // center tooltip on the wrapper, then clamp to viewport
-      let left = Math.round(wrRect.left + wrRect.width / 2 - tpWidth / 2)
-      if (left < margin) left = margin
-      if (left + tpWidth + margin > viewportW) left = viewportW - tpWidth - margin
+      let left = Math.round(wrRect.left + wrRect.width / 2 - tpWidth / 2);
+      if (left < margin) left = margin;
+      if (left + tpWidth + margin > viewportW)
+        left = viewportW - tpWidth - margin;
 
       // prefer placing tooltip above the element; if not enough space, place below
-      let top = Math.round(wrRect.top - tpHeight - 8)
-      let direction = 'top'
+      let top = Math.round(wrRect.top - tpHeight - 8);
+      let direction = "top";
       if (top < margin) {
-        top = Math.round(wrRect.bottom + 8)
-        direction = 'bottom'
+        top = Math.round(wrRect.bottom + 8);
+        direction = "bottom";
         if (top + tpHeight + margin > viewportH) {
           // clamp vertical position if still overflowing
-          top = Math.max(margin, viewportH - tpHeight - margin)
+          top = Math.max(margin, viewportH - tpHeight - margin);
         }
       }
 
-      setTooltipStyle({ left: `${left}px`, top: `${top}px`, position: 'fixed' })
+      setTooltipStyle({
+        left: `${left}px`,
+        top: `${top}px`,
+        position: "fixed",
+      });
 
       // compute arrow position inside tooltip (in px from left of tooltip)
-      const wrCenter = wrRect.left + wrRect.width / 2
-      let arrowLeft = Math.round(wrCenter - left - 8) // 8 = approx half arrow width
-      const maxArrowLeft = Math.max(8, tpWidth - 16)
-      if (arrowLeft < 8) arrowLeft = 8
-      if (arrowLeft > maxArrowLeft) arrowLeft = maxArrowLeft
+      const wrCenter = wrRect.left + wrRect.width / 2;
+      let arrowLeft = Math.round(wrCenter - left - 8); // 8 = approx half arrow width
+      const maxArrowLeft = Math.max(8, tpWidth - 16);
+      if (arrowLeft < 8) arrowLeft = 8;
+      if (arrowLeft > maxArrowLeft) arrowLeft = maxArrowLeft;
 
-      const arrowTop = direction === 'top' ? '100%' : '-8px'
-      const arrowTransform = direction === 'top' ? 'none' : 'rotate(180deg)'
-      setArrowStyle({ left: `${arrowLeft}px`, top: arrowTop, transform: arrowTransform })
-    }
+      const arrowTop = direction === "top" ? "100%" : "-8px";
+      const arrowTransform = direction === "top" ? "none" : "rotate(180deg)";
+      setArrowStyle({
+        left: `${arrowLeft}px`,
+        top: arrowTop,
+        transform: arrowTransform,
+      });
+    };
 
     // initial position and keep it updated on resize/scroll
-    update()
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-    const onKey = (e) => { if (e.key === 'Escape') setShow(false) }
-    window.addEventListener('keydown', onKey)
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    const onKey = (e) => {
+      if (e.key === "Escape") setShow(false);
+    };
+    window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [show, autoShow])
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [show, autoShow]);
 
   return (
     <div ref={wrapperRef} className="relative inline-block">
@@ -115,9 +126,12 @@ export default function HelpTooltip({ text, autoShow = false }) {
           className="px-4 py-3 bg-sre-bg-card text-sre-text text-sm rounded-lg shadow-lg border border-sre-border z-50 whitespace-normal"
         >
           {text}
-          <div style={arrowStyle} className="absolute w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-sre-bg-card" />
+          <div
+            style={arrowStyle}
+            className="absolute w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-sre-bg-card"
+          />
         </div>
       )}
     </div>
-  )
+  );
 }

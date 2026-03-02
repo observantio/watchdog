@@ -1,17 +1,52 @@
-import PropTypes from 'prop-types'
-import { Button } from '../ui'
+import PropTypes from "prop-types";
+import { Button } from "../ui";
 
-export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPrevious, onSubmit, canProceed, isSubmitting, hasErrors, showIndicator = true, showButtons = true, steps: customSteps }) {
+export default function RuleEditorWizard({
+  currentStep,
+  totalSteps,
+  onNext,
+  onPrevious,
+  onSubmit,
+  canProceed,
+  isSubmitting,
+  hasErrors,
+  showIndicator = true,
+  showButtons = true,
+  steps: customSteps,
+}) {
   const defaultSteps = [
-    { key: 'basic', label: 'Basic Setup', icon: 'settings', description: 'Name, severity & product' },
-    { key: 'condition', label: 'Alert Condition', icon: 'functions', description: 'Expression & timing' },
-    { key: 'details', label: 'Alert Details', icon: 'description', description: 'Summary & labels' },
-    { key: 'advanced', label: 'Advanced Settings', icon: 'tune', description: 'Channels & visibility' },
-  ]
-  const steps = Array.isArray(customSteps) && customSteps.length > 0 ? customSteps : defaultSteps
+    {
+      key: "basic",
+      label: "Basic Setup",
+      icon: "settings",
+      description: "Name, severity & product",
+    },
+    {
+      key: "condition",
+      label: "Alert Condition",
+      icon: "functions",
+      description: "Expression & timing",
+    },
+    {
+      key: "details",
+      label: "Alert Details",
+      icon: "description",
+      description: "Summary & labels",
+    },
+    {
+      key: "advanced",
+      label: "Advanced Settings",
+      icon: "tune",
+      description: "Channels & visibility",
+    },
+  ];
+  const steps =
+    Array.isArray(customSteps) && customSteps.length > 0
+      ? customSteps
+      : defaultSteps;
 
-  const isLastStep = currentStep === totalSteps - 1
-  const isFirstStep = currentStep === 0
+  const isLastStep = currentStep === totalSteps - 1;
+  const isFirstStep = currentStep === 0;
 
   return (
     <div className="space-y-6">
@@ -19,43 +54,52 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
       {showIndicator && (
         <div className="flex items-center justify-between">
           {steps.map((step, index) => {
-            const isActive = index === currentStep
-            const isCompleted = index < currentStep
+            const isActive = index === currentStep;
+            const isCompleted = index < currentStep;
 
             return (
-                <div key={step.key || step.label || index} className="flex flex-col items-center">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
-                      isCompleted
-                        ? 'bg-sre-success text-white shadow-lg'
-                        : isActive
-                        ? 'bg-sre-primary text-white shadow-lg ring-4 ring-sre-primary/20'
-                        : 'bg-sre-surface border-2 border-sre-border text-sre-text-muted'
-                    }`}
-                  >
-                    {isCompleted ? (
-                      <span className="material-icons text-lg">check</span>
-                    ) : (
-                      <span className="material-icons text-base">{step.icon}</span>
-                    )}
-                  </div>
-                  <div className="mt-2 text-center min-w-0 flex-1">
-                    <div className={`text-xs font-medium ${isActive ? 'text-sre-primary' : isCompleted ? 'text-sre-success' : 'text-sre-text-muted'}`}>
-                      {step.label}
-                    </div>
-                    <div className={`text-[10px] text-sre-text-muted mt-0.5 leading-tight ${isActive ? 'text-sre-primary/70' : ''}`}>
-                      {step.description}
-                    </div>
-                  </div>
-                  {index < steps.length - 1 && (
-                    <div
-                      className={`flex-1 h-0.5 mx-4 transition-colors duration-300 ${
-                        isCompleted ? 'bg-sre-success' : 'bg-sre-border'
-                      }`}
-                    />
+              <div
+                key={step.key || step.label || index}
+                className="flex flex-col items-center"
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
+                    isCompleted
+                      ? "bg-sre-success text-white shadow-lg"
+                      : isActive
+                        ? "bg-sre-primary text-white shadow-lg ring-4 ring-sre-primary/20"
+                        : "bg-sre-surface border-2 border-sre-border text-sre-text-muted"
+                  }`}
+                >
+                  {isCompleted ? (
+                    <span className="material-icons text-lg">check</span>
+                  ) : (
+                    <span className="material-icons text-base">
+                      {step.icon}
+                    </span>
                   )}
                 </div>
-            )
+                <div className="mt-2 text-center min-w-0 flex-1">
+                  <div
+                    className={`text-xs font-medium ${isActive ? "text-sre-primary" : isCompleted ? "text-sre-success" : "text-sre-text-muted"}`}
+                  >
+                    {step.label}
+                  </div>
+                  <div
+                    className={`text-[10px] text-sre-text-muted mt-0.5 leading-tight ${isActive ? "text-sre-primary/70" : ""}`}
+                  >
+                    {step.description}
+                  </div>
+                </div>
+                {index < steps.length - 1 && (
+                  <div
+                    className={`flex-1 h-0.5 mx-4 transition-colors duration-300 ${
+                      isCompleted ? "bg-sre-success" : "bg-sre-border"
+                    }`}
+                  />
+                )}
+              </div>
+            );
           })}
         </div>
       )}
@@ -88,7 +132,9 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
             >
               {isSubmitting ? (
                 <>
-                  <span className="material-icons text-sm animate-spin">refresh</span>
+                  <span className="material-icons text-sm animate-spin">
+                    refresh
+                  </span>
                   Creating Rule...
                 </>
               ) : (
@@ -113,7 +159,7 @@ export default function RuleEditorWizard({ currentStep, totalSteps, onNext, onPr
         </div>
       )}
     </div>
-  )
+  );
 }
 
 RuleEditorWizard.propTypes = {
@@ -128,4 +174,4 @@ RuleEditorWizard.propTypes = {
   showIndicator: PropTypes.bool,
   showButtons: PropTypes.bool,
   steps: PropTypes.array,
-}
+};

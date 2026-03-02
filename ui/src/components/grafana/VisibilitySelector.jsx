@@ -1,32 +1,52 @@
-import { Select, Checkbox } from '../../components/ui'
-import { VISIBILITY_OPTIONS } from '../../utils/constants'
+import { Select, Checkbox } from "../../components/ui";
+import { VISIBILITY_OPTIONS } from "../../utils/constants";
 
 export default function VisibilitySelector({
   visibility,
   onVisibilityChange,
   sharedGroupIds,
   onSharedGroupIdsChange,
-  groups
+  groups,
 }) {
   return (
     <>
-      <Select value={visibility} onChange={(e) => onVisibilityChange(e.target.value)}>
-        {VISIBILITY_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+      <Select
+        value={visibility}
+        onChange={(e) => onVisibilityChange(e.target.value)}
+      >
+        {VISIBILITY_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
       </Select>
-      {visibility === 'group' && (
+      {visibility === "group" && (
         <div className="mt-4">
-          <label className="block text-sm font-medium text-sre-text mb-2">Shared Groups</label>
+          <label className="block text-sm font-medium text-sre-text mb-2">
+            Shared Groups
+          </label>
           <div className="space-y-2 max-h-40 overflow-y-auto border border-sre-border rounded p-3">
-            {groups.map(group => (
-              <Checkbox key={group.id} label={group.name} checked={sharedGroupIds.includes(group.id)} onChange={(e) => {
-                if (e.target.checked) onSharedGroupIdsChange([...sharedGroupIds, group.id])
-                else onSharedGroupIdsChange(sharedGroupIds.filter(id => id !== group.id))
-              }} />
+            {groups.map((group) => (
+              <Checkbox
+                key={group.id}
+                label={group.name}
+                checked={sharedGroupIds.includes(group.id)}
+                onChange={(e) => {
+                  if (e.target.checked)
+                    onSharedGroupIdsChange([...sharedGroupIds, group.id]);
+                  else
+                    onSharedGroupIdsChange(
+                      sharedGroupIds.filter((id) => id !== group.id),
+                    );
+                }}
+              />
             ))}
-            {groups.length === 0 && <p className="text-sm text-sre-text-muted">No groups available</p>}
+            {groups.length === 0 && (
+              <p className="text-sm text-sre-text-muted">No groups available</p>
+            )}
           </div>
         </div>
       )}
     </>
-  )
+  );
 }

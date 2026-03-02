@@ -1,5 +1,5 @@
-import PropTypes from 'prop-types'
-import { Button, Input } from '../ui'
+import PropTypes from "prop-types";
+import { Button, Input } from "../ui";
 
 export default function PasswordLoginForm({
   username,
@@ -13,7 +13,10 @@ export default function PasswordLoginForm({
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label htmlFor="username" className="block text-sm font-medium text-sre-text mb-1">
+        <label
+          htmlFor="username"
+          className="block text-sm font-medium text-sre-text mb-1"
+        >
           Username
         </label>
         <Input
@@ -30,7 +33,10 @@ export default function PasswordLoginForm({
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-sre-text mb-1">
+        <label
+          htmlFor="password"
+          className="block text-sm font-medium text-sre-text mb-1"
+        >
           Password
         </label>
         <Input
@@ -52,10 +58,10 @@ export default function PasswordLoginForm({
         loading={loading}
         disabled={disabled}
       >
-        {loading ? 'Signing in...' : 'Sign In'}
+        {loading ? "Signing in..." : "Sign In"}
       </Button>
     </form>
-  )
+  );
 }
 
 PasswordLoginForm.propTypes = {
@@ -66,4 +72,4 @@ PasswordLoginForm.propTypes = {
   onSubmit: PropTypes.func.isRequired,
   loading: PropTypes.bool,
   disabled: PropTypes.bool,
-}
+};

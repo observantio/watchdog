@@ -3,104 +3,108 @@
  * @module components/tempo/TraceTimeline
  */
 
-import { useState, useMemo } from 'react'
-import PropTypes from 'prop-types'
-import { Badge, Button } from '../ui'
-import { formatDuration } from '../../utils/formatters'
-import { getServiceName, hasSpanError, getSpanColorClass } from '../../utils/helpers'
+import { useState, useMemo } from "react";
+import PropTypes from "prop-types";
+import { Badge, Button } from "../ui";
+import { formatDuration } from "../../utils/formatters";
+import {
+  getServiceName,
+  hasSpanError,
+  getSpanColorClass,
+} from "../../utils/helpers";
 
 function buildDepthMap(spans) {
-  const idToSpan = new Map()
-  spans.forEach(s => {
-    const id = s.spanId || s.spanID
-    if (id) idToSpan.set(id, s)
-  })
+  const idToSpan = new Map();
+  spans.forEach((s) => {
+    const id = s.spanId || s.spanID;
+    if (id) idToSpan.set(id, s);
+  });
 
-  const depthCache = new Map()
+  const depthCache = new Map();
 
   function getDepth(span) {
-    const id = span.spanId || span.spanID
-    if (depthCache.has(id)) return depthCache.get(id)
+    const id = span.spanId || span.spanID;
+    if (depthCache.has(id)) return depthCache.get(id);
 
-    const parentId = span.parentSpanId || span.parentSpanID
+    const parentId = span.parentSpanId || span.parentSpanID;
     if (!parentId || !idToSpan.has(parentId)) {
-      depthCache.set(id, 0)
-      return 0
+      depthCache.set(id, 0);
+      return 0;
     }
-    const depth = getDepth(idToSpan.get(parentId)) + 1
-    depthCache.set(id, depth)
-    return depth
+    const depth = getDepth(idToSpan.get(parentId)) + 1;
+    depthCache.set(id, depth);
+    return depth;
   }
 
-  spans.forEach(s => getDepth(s))
-  return depthCache
+  spans.forEach((s) => getDepth(s));
+  return depthCache;
 }
 
 export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
-  const [showAllTags, setShowAllTags] = useState({})
+  const [showAllTags, setShowAllTags] = useState({});
 
-  const traceId = trace?.traceId || trace?.traceID || trace?.id || ''
+  const traceId = trace?.traceId || trace?.traceID || trace?.id || "";
 
   const handleCopyTraceId = () => {
     if (onCopyTraceId) {
-      onCopyTraceId(traceId)
+      onCopyTraceId(traceId);
     } else if (navigator?.clipboard) {
-      navigator.clipboard.writeText(traceId)
+      navigator.clipboard.writeText(traceId);
     }
-  }
+  };
 
   const spansWithEndTime = useMemo(() => {
-    if (!trace?.spans) return []
-    const sorted = [...trace.spans].sort((a, b) => a.startTime - b.startTime)
-    return sorted.map(s => ({
+    if (!trace?.spans) return [];
+    const sorted = [...trace.spans].sort((a, b) => a.startTime - b.startTime);
+    return sorted.map((s) => ({
       ...s,
       endTime: s.startTime + (s.duration || 0),
-      serviceName: getServiceName(s)
-    }))
-  }, [trace?.spans])
+      serviceName: getServiceName(s),
+    }));
+  }, [trace?.spans]);
   const { minTime, totalDuration, depthMap } = useMemo(() => {
     if (spansWithEndTime.length === 0) {
-      return { minTime: 0, totalDuration: 0, depthMap: new Map() }
+      return { minTime: 0, totalDuration: 0, depthMap: new Map() };
     }
-    const min = Math.min(...spansWithEndTime.map(s => s.startTime))
-    const max = Math.max(...spansWithEndTime.map(s => s.endTime))
-    const depths = buildDepthMap(spansWithEndTime)
-    return { minTime: min, totalDuration: max - min, depthMap: depths }
-  }, [spansWithEndTime])
+    const min = Math.min(...spansWithEndTime.map((s) => s.startTime));
+    const max = Math.max(...spansWithEndTime.map((s) => s.endTime));
+    const depths = buildDepthMap(spansWithEndTime);
+    return { minTime: min, totalDuration: max - min, depthMap: depths };
+  }, [spansWithEndTime]);
 
   const traceHasError = useMemo(
     () => spansWithEndTime.some(hasSpanError),
-    [spansWithEndTime]
-  )
+    [spansWithEndTime],
+  );
 
   const serviceCount = useMemo(
-    () => new Set(spansWithEndTime.map(s => s.serviceName)).size,
-    [spansWithEndTime]
-  )
+    () => new Set(spansWithEndTime.map((s) => s.serviceName)).size,
+    [spansWithEndTime],
+  );
 
-  if (!trace || !trace.spans) return null
+  if (!trace || !trace.spans) return null;
 
   const getSpanPosition = (span) => {
-    if (!totalDuration) return { left: '0%', width: '100%' }
-    const start = ((span.startTime - minTime) / totalDuration) * 100
-    const width = ((span.endTime - span.startTime) / totalDuration) * 100
-    return { left: `${start}%`, width: `${Math.max(width, 0.5)}%` }
-  }
+    if (!totalDuration) return { left: "0%", width: "100%" };
+    const start = ((span.startTime - minTime) / totalDuration) * 100;
+    const width = ((span.endTime - span.startTime) / totalDuration) * 100;
+    return { left: `${start}%`, width: `${Math.max(width, 0.5)}%` };
+  };
 
   const toggleTags = (spanKey) => {
-    setShowAllTags(prev => ({ ...prev, [spanKey]: !prev[spanKey] }))
-  }
+    setShowAllTags((prev) => ({ ...prev, [spanKey]: !prev[spanKey] }));
+  };
 
   const getTagEntries = (span) => {
-    if (!span.tags) return []
+    if (!span.tags) return [];
     if (Array.isArray(span.tags)) {
       return span.tags.map((t, idx) => ({
         key: t?.key || t?.k || `tag${idx}`,
-        value: t?.value ?? t?.v ?? t?.val ?? t
-      }))
+        value: t?.value ?? t?.v ?? t?.val ?? t,
+      }));
     }
-    return Object.entries(span.tags).map(([key, value]) => ({ key, value }))
-  }
+    return Object.entries(span.tags).map(([key, value]) => ({ key, value }));
+  };
 
   return (
     <div
@@ -109,14 +113,21 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
       aria-modal="true"
       aria-labelledby={`trace-timeline-title-${traceId}`}
       tabIndex={-1}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
     >
       <div className="bg-sre-bg w-full max-w-6xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-sre-surface to-sre-surface/80 border-b border-sre-border px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 id={`trace-timeline-title-${traceId}`} className="text-xl font-bold text-sre-text flex items-center gap-2">
+            <h2
+              id={`trace-timeline-title-${traceId}`}
+              className="text-xl font-bold text-sre-text flex items-center gap-2"
+            >
               <span className="material-icons text-sre-primary">timeline</span>
               Trace Timeline
             </h2>
@@ -132,16 +143,27 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
                 className="p-1.5 hover:bg-sre-bg-alt rounded-lg transition-colors group"
                 title="Copy Trace ID"
               >
-                <span className="material-icons text-sm text-sre-text-muted group-hover:text-sre-primary">content_copy</span>
+                <span className="material-icons text-sm text-sre-text-muted group-hover:text-sre-primary">
+                  content_copy
+                </span>
               </button>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={traceHasError ? 'error' : 'success'} className="text-xs">
-              {traceHasError ? 'ERROR' : 'OK'}
+            <Badge
+              variant={traceHasError ? "error" : "success"}
+              className="text-xs"
+            >
+              {traceHasError ? "ERROR" : "OK"}
             </Badge>
-            <button onClick={onClose} aria-label="Close dialog" className="p-2 hover:bg-sre-bg-alt rounded-lg transition-colors">
-              <span className="material-icons text-sre-text-muted hover:text-sre-text">close</span>
+            <button
+              onClick={onClose}
+              aria-label="Close dialog"
+              className="p-2 hover:bg-sre-bg-alt rounded-lg transition-colors"
+            >
+              <span className="material-icons text-sre-text-muted hover:text-sre-text">
+                close
+              </span>
             </button>
           </div>
         </div>
@@ -155,29 +177,38 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
                 <span className="material-icons text-sm">schedule</span>
                 Total Duration
               </div>
-              <div className="text-xl font-bold text-sre-text">{formatDuration(totalDuration)}</div>
+              <div className="text-xl font-bold text-sre-text">
+                {formatDuration(totalDuration)}
+              </div>
             </div>
             <div className="p-4 bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 rounded-lg hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm">
               <div className="text-sre-text-muted text-xs mb-1 flex items-center gap-1">
                 <span className="material-icons text-sm">call_split</span>
                 Spans
               </div>
-              <div className="text-xl font-bold text-sre-text">{spansWithEndTime.length}</div>
+              <div className="text-xl font-bold text-sre-text">
+                {spansWithEndTime.length}
+              </div>
             </div>
             <div className="p-4 bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 rounded-lg hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm">
               <div className="text-sre-text-muted text-xs mb-1 flex items-center gap-1">
                 <span className="material-icons text-sm">hub</span>
                 Services
               </div>
-              <div className="text-xl font-bold text-sre-text">{serviceCount}</div>
+              <div className="text-xl font-bold text-sre-text">
+                {serviceCount}
+              </div>
             </div>
             <div className="p-4 bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 rounded-lg hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm">
               <div className="text-sre-text-muted text-xs mb-1 flex items-center gap-1">
                 <span className="material-icons text-sm">check_circle</span>
                 Status
               </div>
-              <Badge variant={traceHasError ? 'error' : 'success'} className="mt-1">
-                {traceHasError ? 'ERROR' : 'OK'}
+              <Badge
+                variant={traceHasError ? "error" : "success"}
+                className="mt-1"
+              >
+                {traceHasError ? "ERROR" : "OK"}
               </Badge>
             </div>
           </div>
@@ -186,7 +217,9 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
           <div className="bg-sre-surface/30 border border-sre-border rounded-lg p-4 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-sre-text flex items-center gap-2">
-                <span className="material-icons text-sre-primary">timeline</span>
+                <span className="material-icons text-sre-primary">
+                  timeline
+                </span>
                 Span Timeline
               </h3>
               <div className="text-xs text-sre-text-muted">
@@ -206,27 +239,40 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
             {/* Spans */}
             <div className="space-y-3">
               {spansWithEndTime.map((span, idx) => {
-                const position = getSpanPosition(span)
-                const duration = span.duration || 0
-                const spanId = span.spanId || span.spanID || idx
-                const depth = depthMap.get(spanId) || 0
-                const isError = hasSpanError(span)
-                const colorClass = getSpanColorClass(span.serviceName, isError)
-                const tagEntries = getTagEntries(span)
-                const showAll = showAllTags[spanId]
-                const visibleTags = showAll ? tagEntries : tagEntries.slice(0, 3)
+                const position = getSpanPosition(span);
+                const duration = span.duration || 0;
+                const spanId = span.spanId || span.spanID || idx;
+                const depth = depthMap.get(spanId) || 0;
+                const isError = hasSpanError(span);
+                const colorClass = getSpanColorClass(span.serviceName, isError);
+                const tagEntries = getTagEntries(span);
+                const showAll = showAllTags[spanId];
+                const visibleTags = showAll
+                  ? tagEntries
+                  : tagEntries.slice(0, 3);
 
                 return (
-                  <div key={spanId} className="group relative bg-sre-surface/50 rounded-lg p-3 border border-sre-border/50 hover:border-sre-primary/30 transition-all duration-200">
+                  <div
+                    key={spanId}
+                    className="group relative bg-sre-surface/50 rounded-lg p-3 border border-sre-border/50 hover:border-sre-primary/30 transition-all duration-200"
+                  >
                     {/* Span header */}
                     <div className="flex items-center gap-3 mb-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className={`w-3 h-3 rounded-full ${isError ? 'bg-red-500' : 'bg-green-500'} flex-shrink-0`}></div>
+                        <div
+                          className={`w-3 h-3 rounded-full ${isError ? "bg-red-500" : "bg-green-500"} flex-shrink-0`}
+                        ></div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-sre-text truncate" title={span.operationName}>
+                          <div
+                            className="text-sm font-semibold text-sre-text truncate"
+                            title={span.operationName}
+                          >
                             {span.operationName}
                           </div>
-                          <div className="text-xs text-sre-text-muted truncate flex items-center gap-1" title={span.serviceName}>
+                          <div
+                            className="text-xs text-sre-text-muted truncate flex items-center gap-1"
+                            title={span.serviceName}
+                          >
                             <span className="material-icons text-xs">dns</span>
                             {span.serviceName}
                           </div>
@@ -258,9 +304,14 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
                           <span
                             key={`${t.key}-${idx2}`}
                             className="text-xs px-2 py-1 bg-sre-surface border border-sre-border rounded text-sre-text-muted max-w-xs truncate hover:bg-sre-surface-light transition-colors"
-                            title={`${t.key}: ${typeof t.value === 'object' ? JSON.stringify(t.value) : String(t.value)}`}
+                            title={`${t.key}: ${typeof t.value === "object" ? JSON.stringify(t.value) : String(t.value)}`}
                           >
-                            <span className="font-medium text-sre-primary">{t.key}:</span> {typeof t.value === 'object' ? JSON.stringify(t.value) : String(t.value)}
+                            <span className="font-medium text-sre-primary">
+                              {t.key}:
+                            </span>{" "}
+                            {typeof t.value === "object"
+                              ? JSON.stringify(t.value)
+                              : String(t.value)}
                           </span>
                         ))}
                         {tagEntries.length > 3 && (
@@ -268,13 +319,15 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
                             onClick={() => toggleTags(spanId)}
                             className="text-xs text-sre-primary hover:underline px-2 py-1"
                           >
-                            {showAll ? 'Show less' : `+${tagEntries.length - 3} more`}
+                            {showAll
+                              ? "Show less"
+                              : `+${tagEntries.length - 3} more`}
                           </button>
                         )}
                       </div>
                     )}
                   </div>
-                )
+                );
               })}
             </div>
           </div>
@@ -297,15 +350,18 @@ export default function TraceTimeline({ trace, onClose, onCopyTraceId }) {
                 <span>Child span</span>
               </div>
               <div className="text-xs">
-                Span colors are assigned by service • Indent depth reflects parent-child relationships
+                Span colors are assigned by service • Indent depth reflects
+                parent-child relationships
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              Close
+            </Button>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 TraceTimeline.propTypes = {
@@ -317,4 +373,4 @@ TraceTimeline.propTypes = {
   }),
   onClose: PropTypes.func.isRequired,
   onCopyTraceId: PropTypes.func,
-}
+};

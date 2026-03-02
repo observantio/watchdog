@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from "react";
 
 /**
  * Hook for API calls with loading and error states
@@ -7,32 +7,35 @@ import { useState, useEffect, useCallback, useRef } from 'react'
  * @returns {{data, loading, error, execute, reset}} API state and controls
  */
 export function useApi(apiFunc, initialData = null) {
-  const [data, setData] = useState(initialData)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [data, setData] = useState(initialData);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const execute = useCallback(async (...args) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await apiFunc(...args)
-      setData(result)
-      return result
-    } catch (err) {
-      setError(err.message || 'An error occurred')
-      throw err
-    } finally {
-      setLoading(false)
-    }
-  }, [apiFunc])
+  const execute = useCallback(
+    async (...args) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await apiFunc(...args);
+        setData(result);
+        return result;
+      } catch (err) {
+        setError(err.message || "An error occurred");
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiFunc],
+  );
 
   const reset = useCallback(() => {
-    setData(initialData)
-    setError(null)
-    setLoading(false)
-  }, [initialData])
+    setData(initialData);
+    setError(null);
+    setLoading(false);
+  }, [initialData]);
 
-  return { data, loading, error, execute, reset }
+  return { data, loading, error, execute, reset };
 }
 
 /**
@@ -42,19 +45,19 @@ export function useApi(apiFunc, initialData = null) {
  * @returns {any} Debounced value
  */
 export function useDebounce(value, delay = 500) {
-  const [debouncedValue, setDebouncedValue] = useState(value)
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
+      setDebouncedValue(value);
+    }, delay);
 
     return () => {
-      clearTimeout(timer)
-    }
-  }, [value, delay])
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
 
-  return debouncedValue
+  return debouncedValue;
 }
 
 /**
@@ -66,27 +69,34 @@ export function useDebounce(value, delay = 500) {
 export function useLocalStorage(key, initialValue) {
   const [storedValue, setStoredValue] = useState(() => {
     try {
-      const item = globalThis.window.localStorage.getItem(key)
-      return item ? JSON.parse(item) : initialValue
+      const item = globalThis.window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.error(`Error reading localStorage key "${key}":`, error)
-      return initialValue
+      console.error(`Error reading localStorage key "${key}":`, error);
+      return initialValue;
     }
-  })
+  });
 
-  const setValue = useCallback((value) => {
-    try {
-      setStoredValue((previousValue) => {
-        const valueToStore = typeof value === 'function' ? value(previousValue) : value
-        globalThis.window.localStorage.setItem(key, JSON.stringify(valueToStore))
-        return valueToStore
-      })
-    } catch (error) {
-      console.error(`Error setting localStorage key "${key}":`, error)
-    }
-  }, [key])
+  const setValue = useCallback(
+    (value) => {
+      try {
+        setStoredValue((previousValue) => {
+          const valueToStore =
+            typeof value === "function" ? value(previousValue) : value;
+          globalThis.window.localStorage.setItem(
+            key,
+            JSON.stringify(valueToStore),
+          );
+          return valueToStore;
+        });
+      } catch (error) {
+        console.error(`Error setting localStorage key "${key}":`, error);
+      }
+    },
+    [key],
+  );
 
-  return [storedValue, setValue]
+  return [storedValue, setValue];
 }
 
 /**
@@ -96,28 +106,31 @@ export function useLocalStorage(key, initialValue) {
  * @returns {object} Pagination state and controls
  */
 export function usePagination(totalItems, itemsPerPage = 10) {
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const totalPages = Math.ceil(totalItems / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = Math.min(startIndex + itemsPerPage, totalItems)
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
 
-  const goToPage = useCallback((page) => {
-    const pageNumber = Math.max(1, Math.min(page, totalPages))
-    setCurrentPage(pageNumber)
-  }, [totalPages])
+  const goToPage = useCallback(
+    (page) => {
+      const pageNumber = Math.max(1, Math.min(page, totalPages));
+      setCurrentPage(pageNumber);
+    },
+    [totalPages],
+  );
 
   const nextPage = useCallback(() => {
-    goToPage(currentPage + 1)
-  }, [currentPage, goToPage])
+    goToPage(currentPage + 1);
+  }, [currentPage, goToPage]);
 
   const previousPage = useCallback(() => {
-    goToPage(currentPage - 1)
-  }, [currentPage, goToPage])
+    goToPage(currentPage - 1);
+  }, [currentPage, goToPage]);
 
   const reset = useCallback(() => {
-    setCurrentPage(1)
-  }, [])
+    setCurrentPage(1);
+  }, []);
 
   return {
     currentPage,
@@ -130,7 +143,7 @@ export function usePagination(totalItems, itemsPerPage = 10) {
     reset,
     hasNext: currentPage < totalPages,
     hasPrevious: currentPage > 1,
-  }
+  };
 }
 
 /**
@@ -140,23 +153,23 @@ export function usePagination(totalItems, itemsPerPage = 10) {
  * @param {boolean} enabled - Whether auto-refresh is enabled
  */
 export function useAutoRefresh(callback, interval = 30000, enabled = false) {
-  const savedCallback = useRef(callback)
+  const savedCallback = useRef(callback);
 
   useEffect(() => {
-    savedCallback.current = callback
-  }, [callback])
+    savedCallback.current = callback;
+  }, [callback]);
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) return;
 
     const tick = () => {
-      if (typeof document !== 'undefined' && document.hidden) return
-      savedCallback.current()
-    }
-    const id = setInterval(tick, interval)
+      if (typeof document !== "undefined" && document.hidden) return;
+      savedCallback.current();
+    };
+    const id = setInterval(tick, interval);
 
-    return () => clearInterval(id)
-  }, [interval, enabled])
+    return () => clearInterval(id);
+  }, [interval, enabled]);
 }
 
 /**
@@ -165,26 +178,26 @@ export function useAutoRefresh(callback, interval = 30000, enabled = false) {
  * @returns {React.RefObject} Ref to attach to element
  */
 export function useClickOutside(handler) {
-  const ref = useRef(null)
+  const ref = useRef(null);
 
   useEffect(() => {
     const listener = (event) => {
       if (!ref.current || ref.current.contains(event.target)) {
-        return
+        return;
       }
-      handler(event)
-    }
+      handler(event);
+    };
 
-    document.addEventListener('mousedown', listener)
-    document.addEventListener('touchstart', listener)
+    document.addEventListener("mousedown", listener);
+    document.addEventListener("touchstart", listener);
 
     return () => {
-      document.removeEventListener('mousedown', listener)
-      document.removeEventListener('touchstart', listener)
-    }
-  }, [handler])
+      document.removeEventListener("mousedown", listener);
+      document.removeEventListener("touchstart", listener);
+    };
+  }, [handler]);
 
-  return ref
+  return ref;
 }
 
 /**
@@ -193,37 +206,37 @@ export function useClickOutside(handler) {
  * @returns {any} Previous value
  */
 export function usePrevious(value) {
-  const ref = useRef()
+  const ref = useRef();
 
   useEffect(() => {
-    ref.current = value
-  }, [value])
+    ref.current = value;
+  }, [value]);
 
-  return ref.current
+  return ref.current;
 }
 
 /**
  * Hook for toggle state
  * @param {boolean} initialValue - Initial toggle value
  * @returns {[boolean, Function, Function, Function]} State and toggle functions
-*/
+ */
 
 export function useToggle(initialValue = false) {
-  const [value, setValue] = useState(initialValue)
+  const [value, setValue] = useState(initialValue);
 
   const toggle = useCallback(() => {
-    setValue(v => !v)
-  }, [])
+    setValue((v) => !v);
+  }, []);
 
   const setTrue = useCallback(() => {
-    setValue(true)
-  }, [])
+    setValue(true);
+  }, []);
 
   const setFalse = useCallback(() => {
-    setValue(false)
-  }, [])
+    setValue(false);
+  }, []);
 
-  return [value, toggle, setTrue, setFalse]
+  return [value, toggle, setTrue, setFalse];
 }
 
 /**
@@ -231,18 +244,18 @@ export function useToggle(initialValue = false) {
  */
 export function useBodyScrollLock(locked) {
   useEffect(() => {
-    const prev = document.body.style.overflow
+    const prev = document.body.style.overflow;
     if (locked) {
-      document.body.style.overflow = 'hidden'
+      document.body.style.overflow = "hidden";
     }
     return () => {
-      document.body.style.overflow = prev
-    }
-  }, [locked])
+      document.body.style.overflow = prev;
+    };
+  }, [locked]);
 }
 
-export { useDashboardData } from './useDashboardData'
-export { useAgentActivity } from './useAgentActivity'
-export { usePersistentOrder } from './usePersistentOrder'
-export { useIncidentsData } from './useIncidentsData'
-export { useAlertManagerData } from './useAlertManagerData'
+export { useDashboardData } from "./useDashboardData";
+export { useAgentActivity } from "./useAgentActivity";
+export { usePersistentOrder } from "./usePersistentOrder";
+export { useIncidentsData } from "./useIncidentsData";
+export { useAlertManagerData } from "./useAlertManagerData";

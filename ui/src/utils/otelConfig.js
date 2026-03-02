@@ -1,13 +1,19 @@
-import { LOKI_OTLP_ENDPOINT, MIMIR_REMOTE_WRITE, TEMPO_OTLP_ENDPOINT } from './constants'
+import {
+  LOKI_OTLP_ENDPOINT,
+  MIMIR_REMOTE_WRITE,
+  TEMPO_OTLP_ENDPOINT,
+} from "./constants";
 
 export function buildOtelYaml(otlpToken, endpoints = {}) {
   const {
     lokiEndpoint = LOKI_OTLP_ENDPOINT,
     tempoEndpoint = TEMPO_OTLP_ENDPOINT,
     mimirEndpoint = MIMIR_REMOTE_WRITE,
-  } = endpoints || {}
+  } = endpoints || {};
 
-  const tokenHeader = otlpToken ? `x-otlp-token: "${otlpToken}"` : `# x-otlp-token: <not available>`
+  const tokenHeader = otlpToken
+    ? `x-otlp-token: "${otlpToken}"`
+    : `# x-otlp-token: <not available>`;
 
   return `receivers:
   hostmetrics:
@@ -142,5 +148,5 @@ service:
               prometheus:
                 host: 0.0.0.0
                 port: 8889
-`
+`;
 }

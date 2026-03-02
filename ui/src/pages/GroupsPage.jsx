@@ -1,16 +1,27 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Input, Modal, ConfirmDialog, Alert } from '../components/ui';
-import { useNavigate } from 'react-router-dom';
-import { usePermissions } from '../hooks/usePermissions';
-import { useToast } from '../contexts/ToastContext';
-import HelpTooltip from '../components/HelpTooltip';
-import MemberList from '../components/groups/MemberList';
-import RuleEditorWizard from '../components/alertmanager/RuleEditorWizard'
-import GroupForm from '../components/groups/GroupForm'
-import GroupPermissions from '../components/groups/GroupPermissions'
-import GroupCard from '../components/groups/GroupCard'
-import { groupPermissionsByResource, filterGroups, sortUsersByDisplayName } from '../utils/groupManagementUtils';
-import * as api from '../api';
+import { useState, useEffect, useCallback } from "react";
+import {
+  Card,
+  Button,
+  Input,
+  Modal,
+  ConfirmDialog,
+  Alert,
+} from "../components/ui";
+import { useNavigate } from "react-router-dom";
+import { usePermissions } from "../hooks/usePermissions";
+import { useToast } from "../contexts/ToastContext";
+import HelpTooltip from "../components/HelpTooltip";
+import MemberList from "../components/groups/MemberList";
+import RuleEditorWizard from "../components/alertmanager/RuleEditorWizard";
+import GroupForm from "../components/groups/GroupForm";
+import GroupPermissions from "../components/groups/GroupPermissions";
+import GroupCard from "../components/groups/GroupCard";
+import {
+  groupPermissionsByResource,
+  filterGroups,
+  sortUsersByDisplayName,
+} from "../utils/groupManagementUtils";
+import * as api from "../api";
 
 export default function GroupsPage() {
   const { canManageGroups } = usePermissions();
@@ -21,46 +32,56 @@ export default function GroupsPage() {
   const [permissions, setPermissions] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [saving, setSaving] = useState(false);
-  
+
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  
+
   // Form states
-  const [formData, setFormData] = useState({ name: '', description: '' });
-  const [editGroupData, setEditGroupData] = useState({ id: '', name: '', description: '' });
+  const [formData, setFormData] = useState({ name: "", description: "" });
+  const [editGroupData, setEditGroupData] = useState({
+    id: "",
+    name: "",
+    description: "",
+  });
   const [groupPermissions, setGroupPermissions] = useState([]);
   const [selectedMembers, setSelectedMembers] = useState([]);
 
   // Create-group wizard state
-  const [currentStep, setCurrentStep] = useState(0)
-  const totalSteps = 3
+  const [currentStep, setCurrentStep] = useState(0);
+  const totalSteps = 3;
   const canProceedToNextStep = () => {
-    if (currentStep === 0) return !!formData.name.trim()
-    return true
-  }
-  const handleNext = () => { if (canProceedToNextStep() && currentStep < totalSteps - 1) setCurrentStep((s) => s + 1) }
-  const handlePrevious = () => { if (currentStep > 0) setCurrentStep((s) => s - 1) }
-  const handleWizardSubmit = async () => { await createGroup() }
-
+    if (currentStep === 0) return !!formData.name.trim();
+    return true;
+  };
+  const handleNext = () => {
+    if (canProceedToNextStep() && currentStep < totalSteps - 1)
+      setCurrentStep((s) => s + 1);
+  };
+  const handlePrevious = () => {
+    if (currentStep > 0) setCurrentStep((s) => s - 1);
+  };
+  const handleWizardSubmit = async () => {
+    await createGroup();
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [groupsData, permsData] = await Promise.all([
         api.getGroups(),
-        api.getPermissions()
+        api.getPermissions(),
       ]);
       setGroups(groupsData);
       setPermissions(permsData);
       const usersData = await api.getUsers().catch(() => []);
       setUsers(usersData || []);
     } catch (err) {
-      toast.error('Failed to load groups: ' + err.message);
+      toast.error("Failed to load groups: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -72,30 +93,30 @@ export default function GroupsPage() {
 
   const createGroup = async () => {
     if (!formData.name.trim()) {
-      toast.error('Group name is required');
+      toast.error("Group name is required");
       return;
     }
-    
+
     setSaving(true);
     try {
       // Create the group first
       const newGroup = await api.createGroup(formData);
-      
+
       // If permissions are selected, update them
       if (groupPermissions?.length > 0) {
         await api.updateGroupPermissions(newGroup.id, groupPermissions);
       }
       await api.updateGroupMembers(newGroup.id, selectedMembers);
-      
-      toast.success('Group created successfully');
+
+      toast.success("Group created successfully");
       setShowCreateModal(false);
       setCurrentStep(0);
-      setFormData({ name: '', description: '' });
+      setFormData({ name: "", description: "" });
       setGroupPermissions([]);
       setSelectedMembers([]);
       await fetchData();
     } catch (err) {
-      toast.error('Failed to create group: ' + err.message);
+      toast.error("Failed to create group: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -104,19 +125,21 @@ export default function GroupsPage() {
   const deleteGroup = async (groupId) => {
     try {
       await api.deleteGroup(groupId);
-      toast.success('Group deleted successfully');
+      toast.success("Group deleted successfully");
       fetchData();
     } catch (err) {
-      toast.error('Failed to delete group: ' + err.message);
+      toast.error("Failed to delete group: " + err.message);
     }
   };
 
   const openPermissionsModal = (group) => {
     setSelectedGroup(group);
     // Set current group permissions
-    const currentPerms = group.permissions?.map(p => p.name || p) || [];
+    const currentPerms = group.permissions?.map((p) => p.name || p) || [];
     setGroupPermissions(currentPerms);
-    const memberIds = (users || []).filter(u => (u.group_ids || []).includes(group.id)).map(u => u.id);
+    const memberIds = (users || [])
+      .filter((u) => (u.group_ids || []).includes(group.id))
+      .map((u) => u.id);
     setSelectedMembers(memberIds);
     setShowPermissionsModal(true);
   };
@@ -124,10 +147,12 @@ export default function GroupsPage() {
   const openEditModal = (group) => {
     setEditGroupData({
       id: group.id,
-      name: group.name || '',
-      description: group.description || ''
+      name: group.name || "",
+      description: group.description || "",
     });
-    const memberIds = (users || []).filter(u => (u.group_ids || []).includes(group.id)).map(u => u.id);
+    const memberIds = (users || [])
+      .filter((u) => (u.group_ids || []).includes(group.id))
+      .map((u) => u.id);
     setSelectedMembers(memberIds);
     setShowEditModal(true);
   };
@@ -137,13 +162,13 @@ export default function GroupsPage() {
     try {
       await api.updateGroupPermissions(selectedGroup.id, groupPermissions);
       await api.updateGroupMembers(selectedGroup.id, selectedMembers);
-      toast.success('Permissions updated successfully');
+      toast.success("Permissions updated successfully");
       setShowPermissionsModal(false);
       setSelectedGroup(null);
       setSelectedMembers([]);
       await fetchData();
     } catch (err) {
-      toast.error('Failed to update permissions: ' + err.message);
+      toast.error("Failed to update permissions: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -151,7 +176,7 @@ export default function GroupsPage() {
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
-    setFormData({ name: '', description: '' });
+    setFormData({ name: "", description: "" });
     setGroupPermissions([]);
     setSelectedMembers([]);
     setCurrentStep(0);
@@ -159,13 +184,13 @@ export default function GroupsPage() {
 
   const closeEditModal = () => {
     setShowEditModal(false);
-    setEditGroupData({ id: '', name: '', description: '' });
+    setEditGroupData({ id: "", name: "", description: "" });
     setSelectedMembers([]);
   };
 
   const updateGroup = async () => {
     if (!editGroupData.name.trim()) {
-      toast.error('Group name is required');
+      toast.error("Group name is required");
       return;
     }
 
@@ -173,39 +198,39 @@ export default function GroupsPage() {
     try {
       await api.updateGroup(editGroupData.id, {
         name: editGroupData.name,
-        description: editGroupData.description
+        description: editGroupData.description,
       });
       await api.updateGroupMembers(editGroupData.id, selectedMembers);
-      toast.success('Group updated successfully');
+      toast.success("Group updated successfully");
       closeEditModal();
       await fetchData();
     } catch (err) {
-      toast.error('Failed to update group: ' + err.message);
+      toast.error("Failed to update group: " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
   const togglePermission = (permName) => {
-    setGroupPermissions(prev => 
-      prev.includes(permName) 
-        ? prev.filter(p => p !== permName)
-        : [...prev, permName]
+    setGroupPermissions((prev) =>
+      prev.includes(permName)
+        ? prev.filter((p) => p !== permName)
+        : [...prev, permName],
     );
   };
 
   const addPerms = (perms) => {
-    const permNames = new Set(perms.map(p => p.name));
-    setGroupPermissions(prev => Array.from(new Set([...prev, ...permNames])));
+    const permNames = new Set(perms.map((p) => p.name));
+    setGroupPermissions((prev) => Array.from(new Set([...prev, ...permNames])));
   };
 
   const removePerms = (perms) => {
-    const permNames = new Set(perms.map(p => p.name));
-    setGroupPermissions(prev => prev.filter(p => !permNames.has(p)));
+    const permNames = new Set(perms.map((p) => p.name));
+    setGroupPermissions((prev) => prev.filter((p) => !permNames.has(p)));
   };
 
   const toggleMember = (userId) => {
-    setSelectedMembers(prev => {
+    setSelectedMembers((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) next.delete(userId);
       else next.add(userId);
@@ -222,7 +247,9 @@ export default function GroupsPage() {
       <div className="p-6">
         <Alert variant="error">
           <div className="font-semibold">Access Denied</div>
-          <div className="text-sm mt-1">You don't have permission to manage groups.</div>
+          <div className="text-sm mt-1">
+            You don't have permission to manage groups.
+          </div>
         </Alert>
       </div>
     );
@@ -233,8 +260,12 @@ export default function GroupsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-sre-text">Groups Management</h1>
-          <p className="text-sre-text-muted mt-2">Manage groups and assign permissions that members will inherit</p>
+          <h1 className="text-3xl font-bold text-sre-text">
+            Groups Management
+          </h1>
+          <p className="text-sre-text-muted mt-2">
+            Manage groups and assign permissions that members will inherit
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {!(groups.length === 0 && !searchQuery) && (
@@ -243,7 +274,11 @@ export default function GroupsPage() {
               Create Group
             </Button>
           )}
-          <Button size="sm" variant="secondary" onClick={() => navigate('/users')}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => navigate("/users")}
+          >
             <span className="material-icons mr-2">people</span>
             Users
           </Button>
@@ -270,9 +305,11 @@ export default function GroupsPage() {
         </div>
       ) : (
         <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-          {filteredGroups.map(group => {
-            const usersCount = (users || []).filter(u => (u.group_ids || []).includes(group.id)).length
-            const permsCount = (group.permissions || []).length || 0
+          {filteredGroups.map((group) => {
+            const usersCount = (users || []).filter((u) =>
+              (u.group_ids || []).includes(group.id),
+            ).length;
+            const permsCount = (group.permissions || []).length || 0;
             return (
               <GroupCard
                 key={group.id}
@@ -283,23 +320,39 @@ export default function GroupsPage() {
                 onEdit={openEditModal}
                 onDelete={setDeleteConfirm}
               />
-            )
+            );
           })}
         </div>
       )}
 
       {filteredGroups.length === 0 && !loading && (
         <Card className="text-center py-12">
-          <svg className="w-16 h-16 mx-auto text-sre-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          <svg
+            className="w-16 h-16 mx-auto text-sre-text-muted mb-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+            />
           </svg>
           <h3 className="text-lg font-semibold text-sre-text mb-2">
-            {searchQuery ? 'No groups found' : 'No groups yet'}
+            {searchQuery ? "No groups found" : "No groups yet"}
           </h3>
           <p className="text-sre-text-muted mb-4">
-            {searchQuery ? 'Try a different search term' : 'Create your first group to organize users and permissions'}
+            {searchQuery
+              ? "Try a different search term"
+              : "Create your first group to organize users and permissions"}
           </p>
-          {!searchQuery && <Button onClick={() => setShowCreateModal(true)}>Create Group</Button>}
+          {!searchQuery && (
+            <Button onClick={() => setShowCreateModal(true)}>
+              Create Group
+            </Button>
+          )}
         </Card>
       )}
 
@@ -313,7 +366,11 @@ export default function GroupsPage() {
         footer={
           <div className="flex items-center justify-between w-full">
             <div>
-              <Button variant="ghost" onClick={closeCreateModal} disabled={saving}>
+              <Button
+                variant="ghost"
+                onClick={closeCreateModal}
+                disabled={saving}
+              >
                 Cancel
               </Button>
             </div>
@@ -343,11 +400,28 @@ export default function GroupsPage() {
             canProceed={canProceedToNextStep()}
             isSubmitting={saving}
             hasErrors={false}
-            showButtons={false}            steps={[
-              { key: 'details', label: 'Group Details', icon: 'groups', description: 'Name & description' },
-              { key: 'permissions', label: 'Permissions', icon: 'security', description: 'Select action-level permissions' },
-              { key: 'members', label: 'Members', icon: 'person', description: 'Add members (optional)' },
-            ]}          />
+            showButtons={false}
+            steps={[
+              {
+                key: "details",
+                label: "Group Details",
+                icon: "groups",
+                description: "Name & description",
+              },
+              {
+                key: "permissions",
+                label: "Permissions",
+                icon: "security",
+                description: "Select action-level permissions",
+              },
+              {
+                key: "members",
+                label: "Members",
+                icon: "person",
+                description: "Add members (optional)",
+              },
+            ]}
+          />
 
           {/* Step 1 — Group Details */}
           {currentStep === 0 && (
@@ -368,8 +442,14 @@ export default function GroupsPage() {
           {/* Step 3 — Members */}
           {currentStep === 2 && (
             <div className="space-y-4">
-              <h3 className="font-semibold text-sre-text">Group Members (Optional)</h3>
-              <MemberList users={sortedUsers} selectedMembers={selectedMembers} toggleMember={toggleMember} />
+              <h3 className="font-semibold text-sre-text">
+                Group Members (Optional)
+              </h3>
+              <MemberList
+                users={sortedUsers}
+                selectedMembers={selectedMembers}
+                toggleMember={toggleMember}
+              />
             </div>
           )}
         </div>
@@ -387,22 +467,33 @@ export default function GroupsPage() {
             <Button variant="ghost" onClick={closeEditModal} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={updateGroup} disabled={!editGroupData.name.trim() || saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
+            <Button
+              onClick={updateGroup}
+              disabled={!editGroupData.name.trim() || saving}
+            >
+              {saving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         }
       >
         <div className="space-y-6">
           <div className="text-sm text-sre-text-muted">
-            Update group name and description. Permissions can be edited in the Permissions dialog.
+            Update group name and description. Permissions can be edited in the
+            Permissions dialog.
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <GroupForm formData={editGroupData} setFormData={setEditGroupData} />
+            <GroupForm
+              formData={editGroupData}
+              setFormData={setEditGroupData}
+            />
           </div>
           <div className="space-y-3">
             <h3 className="font-semibold text-sre-text">Group Members</h3>
-            <MemberList users={sortedUsers} selectedMembers={selectedMembers} toggleMember={toggleMember} />
+            <MemberList
+              users={sortedUsers}
+              selectedMembers={selectedMembers}
+              toggleMember={toggleMember}
+            />
           </div>
         </div>
       </Modal>
@@ -420,8 +511,8 @@ export default function GroupsPage() {
         size="lg"
         footer={
           <div className="flex gap-3 justify-end">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               onClick={() => {
                 setShowPermissionsModal(false);
                 setSelectedGroup(null);
@@ -432,7 +523,7 @@ export default function GroupsPage() {
               Cancel
             </Button>
             <Button onClick={savePermissions} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Permissions'}
+              {saving ? "Saving..." : "Save Permissions"}
             </Button>
           </div>
         }
@@ -440,7 +531,8 @@ export default function GroupsPage() {
         <div className="space-y-6">
           <Alert variant="info">
             <div className="text-sm">
-              All members of this group will inherit these permissions. User-specific permissions override group permissions.
+              All members of this group will inherit these permissions.
+              User-specific permissions override group permissions.
             </div>
           </Alert>
 
@@ -449,20 +541,27 @@ export default function GroupsPage() {
               <h3 className="font-semibold text-sre-text">Group Members</h3>
               <HelpTooltip text="Users who are members of this group and will inherit the selected permissions." />
             </div>
-            <MemberList users={sortedUsers} selectedMembers={selectedMembers} toggleMember={toggleMember} />
+            <MemberList
+              users={sortedUsers}
+              selectedMembers={selectedMembers}
+              toggleMember={toggleMember}
+            />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="text-sm text-sre-text-muted">
-                {groupPermissions.length} permission{groupPermissions.length === 1 ? '' : 's'} selected
+                {groupPermissions.length} permission
+                {groupPermissions.length === 1 ? "" : "s"} selected
               </div>
               <HelpTooltip text="Total number of permissions currently assigned to this group." />
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setGroupPermissions(permissions.map(p => p.name))}
+                onClick={() =>
+                  setGroupPermissions(permissions.map((p) => p.name))
+                }
                 className="text-sm text-sre-primary hover:text-sre-primary-light"
               >
                 Select All

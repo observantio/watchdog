@@ -1,48 +1,54 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useLocalStorage } from '../hooks'
-import PageHeader from '../components/ui/PageHeader'
-import { Alert, Button, Card, Spinner } from '../components/ui'
-import ConfirmModal from '../components/ConfirmModal'
-import { useRcaJobs } from '../hooks/useRcaJobs'
-import { useRcaReport } from '../hooks/useRcaReport'
-import { useAuth } from '../contexts/AuthContext'
-import RcaJobComposer from '../components/rca/RcaJobComposer'
-import RcaJobQueuePanel from '../components/rca/RcaJobQueuePanel'
-import RcaReportSummary from '../components/rca/RcaReportSummary'
-import RcaRootCauseTable from '../components/rca/RcaRootCauseTable'
-import RcaAnomalyPanels from '../components/rca/RcaAnomalyPanels'
-import RcaClusterPanel from '../components/rca/RcaClusterPanel'
-import RcaTopologyPanel from '../components/rca/RcaTopologyPanel'
-import RcaCausalPanel from '../components/rca/RcaCausalPanel'
-import RcaForecastSloPanel from '../components/rca/RcaForecastSloPanel'
-import RcaWarningsPanel from '../components/rca/RcaWarningsPanel'
-import RcaReportModal from '../components/rca/RcaReportModal'
-import RcaLookup from '../components/rca/RcaLookup'
+import { useEffect, useMemo, useState } from "react";
+import { useLocalStorage } from "../hooks";
+import PageHeader from "../components/ui/PageHeader";
+import { Alert, Button, Card, Spinner } from "../components/ui";
+import ConfirmModal from "../components/ConfirmModal";
+import { useRcaJobs } from "../hooks/useRcaJobs";
+import { useRcaReport } from "../hooks/useRcaReport";
+import { useAuth } from "../contexts/AuthContext";
+import RcaJobComposer from "../components/rca/RcaJobComposer";
+import RcaJobQueuePanel from "../components/rca/RcaJobQueuePanel";
+import RcaReportSummary from "../components/rca/RcaReportSummary";
+import RcaRootCauseTable from "../components/rca/RcaRootCauseTable";
+import RcaAnomalyPanels from "../components/rca/RcaAnomalyPanels";
+import RcaClusterPanel from "../components/rca/RcaClusterPanel";
+import RcaTopologyPanel from "../components/rca/RcaTopologyPanel";
+import RcaCausalPanel from "../components/rca/RcaCausalPanel";
+import RcaForecastSloPanel from "../components/rca/RcaForecastSloPanel";
+import RcaWarningsPanel from "../components/rca/RcaWarningsPanel";
+import RcaReportModal from "../components/rca/RcaReportModal";
+import RcaLookup from "../components/rca/RcaLookup";
 
-const TAB_STORAGE_KEY = 'rcaPage.activeTab'
-const JOB_STORAGE_KEY = 'rcaPage.selectedJobId'
-const REPORT_STORAGE_KEY = 'rcaPage.reportLookupId'
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const TAB_STORAGE_KEY = "rcaPage.activeTab";
+const JOB_STORAGE_KEY = "rcaPage.selectedJobId";
+const REPORT_STORAGE_KEY = "rcaPage.reportLookupId";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const TABS = [
-  { key: 'summary', label: 'Summary' },
-  { key: 'root-causes', label: 'Root Causes' },
-  { key: 'anomalies', label: 'Anomalies' },
-  { key: 'clusters', label: 'Clusters' },
-  { key: 'topology', label: 'Topology' },
-  { key: 'causal', label: 'Causal' },
-  { key: 'forecast-slo', label: 'Forecast/SLO' },
-  { key: 'warnings', label: 'Warnings' },
-]
+  { key: "summary", label: "Summary" },
+  { key: "root-causes", label: "Root Causes" },
+  { key: "anomalies", label: "Anomalies" },
+  { key: "clusters", label: "Clusters" },
+  { key: "topology", label: "Topology" },
+  { key: "causal", label: "Causal" },
+  { key: "forecast-slo", label: "Forecast/SLO" },
+  { key: "warnings", label: "Warnings" },
+];
 
 export default function RCAPage() {
-  const { user } = useAuth()
-  const [activeTab, setActiveTab] = useLocalStorage(TAB_STORAGE_KEY, 'summary')
-  const [reportLookupInput, setReportLookupInput] = useLocalStorage(REPORT_STORAGE_KEY, '')
-  const [reportLookupId, setReportLookupId] = useState(reportLookupInput || null)
-  const [lookupError, setLookupError] = useState(null)
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [viewModalOpen, setViewModalOpen] = useState(false)
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useLocalStorage(TAB_STORAGE_KEY, "summary");
+  const [reportLookupInput, setReportLookupInput] = useLocalStorage(
+    REPORT_STORAGE_KEY,
+    "",
+  );
+  const [reportLookupId, setReportLookupId] = useState(
+    reportLookupInput || null,
+  );
+  const [lookupError, setLookupError] = useState(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
 
   const {
     jobs,
@@ -56,14 +62,14 @@ export default function RCAPage() {
     refreshJobs,
     deleteReportById,
     removeJobByReportId,
-  } = useRcaJobs()
+  } = useRcaJobs();
 
   const handleView = (job) => {
-    if (!job || !job.job_id) return
-    setReportLookupId(null)
-    setSelectedJobId(job.job_id)
-    setViewModalOpen(true)
-  }
+    if (!job || !job.job_id) return;
+    setReportLookupId(null);
+    setSelectedJobId(job.job_id);
+    setViewModalOpen(true);
+  };
   const {
     loadingPrimaryReport,
     loadingInsights,
@@ -76,149 +82,156 @@ export default function RCAPage() {
     insightErrors,
     hasReport,
     reloadReport,
-  } = useRcaReport(
-    selectedJobId,
-    selectedJob,
-    reportLookupId,
-    { enableInsights: viewModalOpen, activeInsightTab: activeTab }
-  )
+  } = useRcaReport(selectedJobId, selectedJob, reportLookupId, {
+    enableInsights: viewModalOpen,
+    activeInsightTab: activeTab,
+  });
 
   const reportStats = useMemo(() => {
-    if (!report) return null
+    if (!report) return null;
     return [
       {
-        label: 'Overall Severity',
-        value: String(report.overall_severity || 'UNKNOWN').toUpperCase(),
+        label: "Overall Severity",
+        value: String(report.overall_severity || "UNKNOWN").toUpperCase(),
         color:
-          report.overall_severity === 'critical' || report.overall_severity === 'high'
-            ? 'text-sre-error'
-            : report.overall_severity === 'medium'
-            ? 'text-sre-warning'
-            : 'text-sre-success',
+          report.overall_severity === "critical" ||
+          report.overall_severity === "high"
+            ? "text-sre-error"
+            : report.overall_severity === "medium"
+              ? "text-sre-warning"
+              : "text-sre-success",
       },
       {
-        label: 'Metric Anomalies',
+        label: "Metric Anomalies",
         value: report.metric_anomalies?.length || 0,
-        color: 'text-sre-text',
+        color: "text-sre-text",
       },
       {
-        label: 'Root Causes',
+        label: "Root Causes",
         value: report.root_causes?.length || 0,
-        color: 'text-sre-text',
+        color: "text-sre-text",
       },
       {
-        label: 'Duration (s)',
+        label: "Duration (s)",
         value: report.duration_seconds || 0,
-        color: 'text-sre-text',
+        color: "text-sre-text",
       },
-    ]
-  }, [report])
+    ];
+  }, [report]);
 
-  const selectedReportId = reportMeta?.report_id || selectedJob?.report_id || null
-  const ownerUserId = reportMeta?.requested_by || selectedJob?.requested_by
-  const currentUserId = user?.id || user?.user_id || null
-  const canDelete = Boolean(selectedReportId && ownerUserId && currentUserId === ownerUserId)
+  const selectedReportId =
+    reportMeta?.report_id || selectedJob?.report_id || null;
+  const ownerUserId = reportMeta?.requested_by || selectedJob?.requested_by;
+  const currentUserId = user?.id || user?.user_id || null;
+  const canDelete = Boolean(
+    selectedReportId && ownerUserId && currentUserId === ownerUserId,
+  );
   useEffect(() => {
-    if (!selectedJobId) return
+    if (!selectedJobId) return;
     try {
-      localStorage.setItem(JOB_STORAGE_KEY, selectedJobId)
+      localStorage.setItem(JOB_STORAGE_KEY, selectedJobId);
     } catch {
       // ignore
     }
-  }, [selectedJobId])
+  }, [selectedJobId]);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(JOB_STORAGE_KEY)
+      const stored = localStorage.getItem(JOB_STORAGE_KEY);
       if (stored && jobs.some((j) => j.job_id === stored)) {
-        setSelectedJobId(stored)
+        setSelectedJobId(stored);
       }
     } catch {
       // ignore
     }
-  }, [jobs, setSelectedJobId])
+  }, [jobs, setSelectedJobId]);
 
   // if the job referenced in storage disappears from the returned list we should
   // also clear it so we don't keep an orphaned selection around.
   useEffect(() => {
-    if (!jobs.length) return
+    if (!jobs.length) return;
 
     if (selectedJobId && !jobs.some((j) => j.job_id === selectedJobId)) {
-      setSelectedJobId(null)
+      setSelectedJobId(null);
       try {
-        localStorage.removeItem(JOB_STORAGE_KEY)
+        localStorage.removeItem(JOB_STORAGE_KEY);
       } catch {
         // ignore
       }
-      return
+      return;
     }
 
     try {
-      const stored = localStorage.getItem(JOB_STORAGE_KEY)
+      const stored = localStorage.getItem(JOB_STORAGE_KEY);
       if (stored && !jobs.some((j) => j.job_id === stored)) {
-        localStorage.removeItem(JOB_STORAGE_KEY)
+        localStorage.removeItem(JOB_STORAGE_KEY);
       }
     } catch {
       // ignore
     }
-  }, [jobs, selectedJobId, setSelectedJobId])
+  }, [jobs, selectedJobId, setSelectedJobId]);
 
   // if the user had previously looked up a report id we automatically re-open
   // the modal when the page comes back, giving the sense of restoring state.
   useEffect(() => {
     if (reportLookupId) {
-      setViewModalOpen(true)
+      setViewModalOpen(true);
     }
-  }, [reportLookupId])
+  }, [reportLookupId]);
 
   // when a lookup ID is invalid (e.g. the report was deleted or the key changed)
   // the backend will return a 404. Rather than continuously retrying on every
   // mount we clear the stored value so the UI stops spamming error messages.
   useEffect(() => {
     if (reportErrorStatus === 404 && reportLookupId) {
-      setReportLookupInput('')
-      setReportLookupId(null)
-      setViewModalOpen(false)
+      setReportLookupInput("");
+      setReportLookupId(null);
+      setViewModalOpen(false);
       try {
-        localStorage.removeItem(REPORT_STORAGE_KEY)
+        localStorage.removeItem(REPORT_STORAGE_KEY);
       } catch {
         // ignore
       }
     }
-  }, [reportErrorStatus, reportLookupId, setReportLookupInput, setReportLookupId])
+  }, [
+    reportErrorStatus,
+    reportLookupId,
+    setReportLookupInput,
+    setReportLookupId,
+  ]);
 
   async function handleDeleteReport() {
-    if (!selectedReportId) return
-    await deleteReportById(selectedReportId)
-    setConfirmDeleteOpen(false)
-    setReportLookupId(null)
-    setReportLookupInput('')
-    removeJobByReportId(selectedReportId)
-    await refreshJobs()
+    if (!selectedReportId) return;
+    await deleteReportById(selectedReportId);
+    setConfirmDeleteOpen(false);
+    setReportLookupId(null);
+    setReportLookupInput("");
+    removeJobByReportId(selectedReportId);
+    await refreshJobs();
   }
 
   function handleLookupReport() {
-    const value = reportLookupInput.trim()
+    const value = reportLookupInput.trim();
     if (!value) {
-      setReportLookupId(null)
-      setLookupError(null)
-      return
+      setReportLookupId(null);
+      setLookupError(null);
+      return;
     }
     if (!UUID_RE.test(value)) {
-      setLookupError('Report ID must be a valid UUID')
-      return
+      setLookupError("Report ID must be a valid UUID");
+      return;
     }
-    setLookupError(null)
-    setSelectedJobId(null)
-    setReportLookupId(value)
+    setLookupError(null);
+    setSelectedJobId(null);
+    setReportLookupId(value);
     // whenever a user looks up an ID explicitly, open the modal
-    setViewModalOpen(true)
+    setViewModalOpen(true);
   }
 
   function handleClearLookup() {
-    setReportLookupInput('')
-    setReportLookupId(null)
-    setLookupError(null)
+    setReportLookupInput("");
+    setReportLookupId(null);
+    setLookupError(null);
   }
 
   function renderActiveTab(opts = {}) {
@@ -226,27 +239,42 @@ export default function RCAPage() {
       return (
         <Card className="border border-sre-border p-6 text-center">
           <p className="text-sm text-sre-text-muted">
-            Select a completed RCA job or look up a report ID to view report details.
+            Select a completed RCA job or look up a report ID to view report
+            details.
           </p>
         </Card>
-      )
+      );
     }
 
     const tabMap = {
-      summary: () => <RcaReportSummary report={report} compact={opts.compact} />,
-      'root-causes': () => <RcaRootCauseTable report={report} compact={opts.compact} />,
-      anomalies: () => <RcaAnomalyPanels report={report} compact={opts.compact} />,
-      clusters: () => <RcaClusterPanel report={report} compact={opts.compact} />,
+      summary: () => (
+        <RcaReportSummary report={report} compact={opts.compact} />
+      ),
+      "root-causes": () => (
+        <RcaRootCauseTable report={report} compact={opts.compact} />
+      ),
+      anomalies: () => (
+        <RcaAnomalyPanels report={report} compact={opts.compact} />
+      ),
+      clusters: () => (
+        <RcaClusterPanel report={report} compact={opts.compact} />
+      ),
       topology: () => {
         if (loadingInsights && !insights.topology) {
           return (
             <Card className="border border-sre-border p-6 flex items-center justify-center">
               <Spinner />
             </Card>
-          )
+          );
         }
-        if (insightErrors?.topology) return <Alert variant="error">{insightErrors.topology}</Alert>
-        return <RcaTopologyPanel topology={insights.topology} compact={opts.compact} />
+        if (insightErrors?.topology)
+          return <Alert variant="error">{insightErrors.topology}</Alert>;
+        return (
+          <RcaTopologyPanel
+            topology={insights.topology}
+            compact={opts.compact}
+          />
+        );
       },
       causal: () => {
         if (loadingInsights && !insights.granger && !insights.bayesian) {
@@ -254,10 +282,14 @@ export default function RCAPage() {
             <Card className="border border-sre-border p-6 flex items-center justify-center">
               <Spinner />
             </Card>
-          )
+          );
         }
         if (insightErrors?.granger || insightErrors?.bayesian)
-          return <Alert variant="error">{insightErrors.granger || insightErrors.bayesian}</Alert>
+          return (
+            <Alert variant="error">
+              {insightErrors.granger || insightErrors.bayesian}
+            </Alert>
+          );
         return (
           <RcaCausalPanel
             granger={insights.granger}
@@ -266,27 +298,38 @@ export default function RCAPage() {
             deployments={insights.deployments}
             compact={opts.compact}
           />
-        )
+        );
       },
-      'forecast-slo': () => {
+      "forecast-slo": () => {
         if (loadingInsights && !insights.forecast && !insights.slo) {
           return (
             <Card className="border border-sre-border p-6 flex items-center justify-center">
               <Spinner />
             </Card>
-          )
+          );
         }
         if (insightErrors?.forecast || insightErrors?.slo)
-          return <Alert variant="error">{insightErrors.forecast || insightErrors.slo}</Alert>
+          return (
+            <Alert variant="error">
+              {insightErrors.forecast || insightErrors.slo}
+            </Alert>
+          );
         return (
-          <RcaForecastSloPanel report={report} forecast={insights.forecast} slo={insights.slo} compact={opts.compact} />
-        )
+          <RcaForecastSloPanel
+            report={report}
+            forecast={insights.forecast}
+            slo={insights.slo}
+            compact={opts.compact}
+          />
+        );
       },
-      warnings: () => <RcaWarningsPanel report={report} compact={opts.compact} />, // no async logic
-    }
+      warnings: () => (
+        <RcaWarningsPanel report={report} compact={opts.compact} />
+      ), // no async logic
+    };
 
-    const renderer = tabMap[activeTab] || tabMap.summary
-    return renderer()
+    const renderer = tabMap[activeTab] || tabMap.summary;
+    return renderer();
   }
 
   return (
@@ -296,12 +339,16 @@ export default function RCAPage() {
         title="Be Certain"
         subtitle="Generate, find, and manage tenant-scoped RCA reports through Be Observant."
       >
-        <Button variant="secondary" size='sm' onClick={refreshJobs}>Refresh Jobs</Button>
+        <Button variant="secondary" size="sm" onClick={refreshJobs}>
+          Refresh Jobs
+        </Button>
       </PageHeader>
 
       {report && (
         <div className="mb-6">
-          <span className="text-xs text-sre-text-muted">Based on the previous RCA job you ran</span>
+          <span className="text-xs text-sre-text-muted">
+            Based on the previous RCA job you ran
+          </span>
           {reportStats && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               {reportStats.map((stat) => (
@@ -309,8 +356,12 @@ export default function RCAPage() {
                   key={stat.label}
                   className="p-4 relative overflow-visible bg-gradient-to-br from-sre-surface to-sre-surface/80 border-2 border-sre-border/50 hover:border-sre-primary/30 hover:shadow-lg transition-all duration-200 backdrop-blur-sm"
                 >
-                  <div className="text-sre-text-muted text-xs mb-1">{stat.label}</div>
-                  <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
+                  <div className="text-sre-text-muted text-xs mb-1">
+                    {stat.label}
+                  </div>
+                  <div className={`text-2xl font-bold ${stat.color}`}>
+                    {stat.value}
+                  </div>
                 </Card>
               ))}
             </div>
@@ -318,10 +369,7 @@ export default function RCAPage() {
         </div>
       )}
       <section className="space-y-3">
-        <RcaJobComposer
-          onCreate={createJob}
-          creating={creatingJob}
-        />
+        <RcaJobComposer onCreate={createJob} creating={creatingJob} />
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-12 border-t border-sre-border pt-6 mt-6 xl:flex xl:gap-8">
@@ -341,8 +389,8 @@ export default function RCAPage() {
             loading={loadingJobs}
             selectedJobId={selectedJobId}
             onSelectJob={(id) => {
-              setReportLookupId(null)
-              setSelectedJobId(id)
+              setReportLookupId(null);
+              setSelectedJobId(id);
             }}
             onReload={reloadReport}
             onDelete={() => setConfirmDeleteOpen(true)}
@@ -376,5 +424,5 @@ export default function RCAPage() {
         onCancel={() => setConfirmDeleteOpen(false)}
       />
     </div>
-  )
+  );
 }

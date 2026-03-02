@@ -1,9 +1,16 @@
-import { useState, useMemo } from 'react'
-import PropTypes from 'prop-types'
-import { Button, Badge, Input } from '../ui'
+import { useState, useMemo } from "react";
+import PropTypes from "prop-types";
+import { Button, Badge, Input } from "../ui";
 
-function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveFilters, groups }) {
-  const [isExpanded, setIsExpanded] = useState(false)
+function DsFilterBar({
+  filters,
+  setFilters,
+  onSearch,
+  onClearFilters,
+  hasActiveFilters,
+  groups,
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="bg-gradient-to-r from-sre-surface to-sre-bg-alt rounded-xl border border-sre-border/50 shadow-sm overflow-hidden">
@@ -13,7 +20,7 @@ function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveF
       >
         <div className="flex items-center gap-3">
           <span className="material-icons text-sre-primary">
-            {isExpanded ? 'expand_less' : 'expand_more'}
+            {isExpanded ? "expand_less" : "expand_more"}
           </span>
           <span className="text-sm font-semibold text-sre-text">Filters</span>
           {hasActiveFilters && (
@@ -23,7 +30,7 @@ function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveF
           )}
         </div>
         <div className="text-xs text-sre-text-muted">
-          {hasActiveFilters ? 'Filters applied' : 'Click to filter'}
+          {hasActiveFilters ? "Filters applied" : "Click to filter"}
         </div>
       </button>
 
@@ -31,33 +38,55 @@ function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveF
         <div className="px-4 pb-4 border-t border-sre-border/30">
           <div className="flex flex-wrap items-center gap-4 pt-4">
             <div className="flex items-center gap-2">
-              <label htmlFor="group-filter" className="text-sm font-medium text-sre-text-muted">Group:</label>
+              <label
+                htmlFor="group-filter"
+                className="text-sm font-medium text-sre-text-muted"
+              >
+                Group:
+              </label>
               <select
                 id="group-filter"
                 value={filters.teamId}
-                onChange={e => setFilters({...filters, teamId: e.target.value})}
+                onChange={(e) =>
+                  setFilters({ ...filters, teamId: e.target.value })
+                }
                 className="px-3 py-2 text-sm bg-sre-bg border border-sre-border rounded-lg text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
               >
                 <option value="">All teams</option>
-                {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                {(groups || []).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
               </select>
             </div>
             <label className="flex items-center gap-2 text-sm text-sre-text cursor-pointer p-2 rounded-lg hover:bg-sre-surface/50 transition-colors">
-              <input 
-                type="checkbox" 
-                checked={filters.showHidden} 
-                onChange={e => setFilters({...filters, showHidden: e.target.checked})} 
-                className="w-4 h-4 text-sre-primary rounded focus:ring-sre-primary focus:ring-2" 
+              <input
+                type="checkbox"
+                checked={filters.showHidden}
+                onChange={(e) =>
+                  setFilters({ ...filters, showHidden: e.target.checked })
+                }
+                className="w-4 h-4 text-sre-primary rounded focus:ring-sre-primary focus:ring-2"
               />
               <span className="font-medium">Show hidden datasources</span>
             </label>
             <div className="flex gap-2 ml-auto">
               {hasActiveFilters && (
-                <Button size="sm" variant="ghost" onClick={onClearFilters} className="hover:bg-sre-surface/50">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onClearFilters}
+                  className="hover:bg-sre-surface/50"
+                >
                   Clear
                 </Button>
               )}
-              <Button size="sm" onClick={onSearch} className="bg-sre-primary hover:bg-sre-primary/90 shadow-sm">
+              <Button
+                size="sm"
+                onClick={onSearch}
+                className="bg-sre-primary hover:bg-sre-primary/90 shadow-sm"
+              >
                 Apply
               </Button>
             </div>
@@ -65,52 +94,91 @@ function DsFilterBar({ filters, setFilters, onSearch, onClearFilters, hasActiveF
         </div>
       )}
     </div>
-  )
+  );
 }
 
 export default function DatasourcesTab({
-  datasources, groups, filters, setFilters,
-  onSearch, onClearFilters, hasActiveFilters,
-  openDatasourceEditor, onDeleteDatasource,
-  onToggleHidden, getDatasourceIcon
+  datasources,
+  groups,
+  filters,
+  setFilters,
+  onSearch,
+  onClearFilters,
+  hasActiveFilters,
+  openDatasourceEditor,
+  onDeleteDatasource,
+  onToggleHidden,
+  getDatasourceIcon,
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return datasources
-    const q = query.toLowerCase()
-    return datasources.filter(ds => (
-      (ds.name || '').toLowerCase().includes(q) ||
-      (ds.type || '').toLowerCase().includes(q) ||
-      (ds.url || '').toLowerCase().includes(q) ||
-      (ds.uid || '').toLowerCase().includes(q)
-    ))
-  }, [datasources, query])
+    if (!query.trim()) return datasources;
+    const q = query.toLowerCase();
+    return datasources.filter(
+      (ds) =>
+        (ds.name || "").toLowerCase().includes(q) ||
+        (ds.type || "").toLowerCase().includes(q) ||
+        (ds.url || "").toLowerCase().includes(q) ||
+        (ds.uid || "").toLowerCase().includes(q),
+    );
+  }, [datasources, query]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="material-icons text-2xl text-sre-primary">storage</span>
+          <span className="material-icons text-2xl text-sre-primary">
+            storage
+          </span>
           <div>
             <h2 className="text-xl font-semibold text-sre-text">Datasources</h2>
             <p className="text-sm text-sre-text-muted">
               {datasources.length > 0
-                ? `You've got access to ${datasources.length} datasource${datasources.length !== 1 ? 's' : ''}, start creating dashboards`
-                : 'No datasources configured yet'}
+                ? `You've got access to ${datasources.length} datasource${datasources.length !== 1 ? "s" : ""}, start creating dashboards`
+                : "No datasources configured yet"}
             </p>
           </div>
         </div>
       </div>
 
       <div className="mb-4 flex gap-2">
-        <form onSubmit={(e) => { e.preventDefault() }} className="flex gap-2 flex-1">
-          <Input size="sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search datasources by name, type, URL or UID..." className="flex-1 px-2 py-0.5 text-sm" />
-          <Button type="button" onClick={() => setQuery('')} size="sm">Clear</Button>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+          className="flex gap-2 flex-1"
+        >
+          <Input
+            size="sm"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search datasources by name, type, URL or UID..."
+            className="flex-1 px-2 py-0.5 text-sm"
+          />
+          <Button type="button" onClick={() => setQuery("")} size="sm">
+            Clear
+          </Button>
         </form>
         {datasources.length ? (
-          <Button onClick={() => openDatasourceEditor()} variant="primary" size="sm">
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          <Button
+            onClick={() => openDatasourceEditor()}
+            variant="primary"
+            size="sm"
+          >
+            <svg
+              className="w-4 h-4 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
             New Datasource
           </Button>
         ) : null}
@@ -131,46 +199,60 @@ export default function DatasourcesTab({
             <div
               key={ds.uid}
               className={`p-6 bg-sre-surface border-2 rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200 ${
-                ds.is_hidden ? 'border-dashed border-sre-border/50 opacity-60' : 'border-sre-border'
+                ds.is_hidden
+                  ? "border-dashed border-sre-border/50 opacity-60"
+                  : "border-sre-border"
               }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                      <span className="text-2xl text-green-600 dark:text-green-400">{getDatasourceIcon(ds.type)}</span>
+                      <span className="text-2xl text-green-600 dark:text-green-400">
+                        {getDatasourceIcon(ds.type)}
+                      </span>
                     </div>
                     <div>
                       <h3 className="font-semibold text-sre-text text-lg flex items-center gap-2">
                         {ds.name}
                         {ds.is_hidden && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Hidden</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                            Hidden
+                          </span>
                         )}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          ds.type === 'prometheus'
-                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200'
-                            : ds.type === 'loki'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200'
-                            : ds.type === 'tempo'
-                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200'
-                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                        }`}>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            ds.type === "prometheus"
+                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200"
+                              : ds.type === "loki"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200"
+                                : ds.type === "tempo"
+                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200"
+                                  : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                          }`}
+                        >
                           {ds.type}
                         </span>
                         {ds.isDefault && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">default</span>
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                            default
+                          </span>
                         )}
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          ds.access === 'proxy'
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200'
-                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200'
-                        }`}>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            ds.access === "proxy"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200"
+                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200"
+                          }`}
+                        >
                           {ds.access}
                         </span>
                         {ds.visibility && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-sre-surface text-sre-text-muted dark:bg-gray-800 capitalize">{ds.visibility}</span>
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-sre-surface text-sre-text-muted dark:bg-gray-800 capitalize">
+                            {ds.visibility}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -180,8 +262,12 @@ export default function DatasourcesTab({
                   {ds.labels && Object.keys(ds.labels).length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {Object.entries(ds.labels).map(([k, v]) => (
-                        <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200">
-                          {k}{v ? `=${v}` : ''}
+                        <span
+                          key={k}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200"
+                        >
+                          {k}
+                          {v ? `=${v}` : ""}
                         </span>
                       ))}
                     </div>
@@ -198,15 +284,60 @@ export default function DatasourcesTab({
 
                 <div className="flex gap-1 ml-4">
                   {!ds.is_owned && (
-                    <Button variant="ghost" size="sm" onClick={() => onToggleHidden(ds)} title={ds.is_hidden ? 'Unhide' : 'Hide'} className="p-2">
-                      <span className="material-icons text-base">{ds.is_hidden ? 'visibility' : 'visibility_off'}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onToggleHidden(ds)}
+                      title={ds.is_hidden ? "Unhide" : "Hide"}
+                      className="p-2"
+                    >
+                      <span className="material-icons text-base">
+                        {ds.is_hidden ? "visibility" : "visibility_off"}
+                      </span>
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => openDatasourceEditor(ds)} title="Edit" className="p-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openDatasourceEditor(ds)}
+                    title="Edit"
+                    className="p-2"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => onDeleteDatasource(ds)} className="p-2 text-red-500 hover:text-red-600" title="Delete" disabled={ds.isDefault}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDeleteDatasource(ds)}
+                    className="p-2 text-red-500 hover:text-red-600"
+                    title="Delete"
+                    disabled={ds.isDefault}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
                   </Button>
                 </div>
               </div>
@@ -215,16 +346,23 @@ export default function DatasourcesTab({
         </div>
       ) : (
         <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
-          <span className="material-icons text-5xl text-sre-text-muted mb-4 block">storage</span>
-          <h3 className="text-xl font-semibold text-sre-text mb-2">No Datasources Configured</h3>
+          <span className="material-icons text-5xl text-sre-text-muted mb-4 block">
+            storage
+          </span>
+          <h3 className="text-xl font-semibold text-sre-text mb-2">
+            No Datasources Configured
+          </h3>
           <p className="text-sre-text-muted mb-6 max-w-md mx-auto">
-            Add datasources to connect Grafana to your monitoring data and start creating dashboards.
+            Add datasources to connect Grafana to your monitoring data and start
+            creating dashboards.
           </p>
-          <Button onClick={() => openDatasourceEditor()} variant="primary">Add Your First Datasource</Button>
+          <Button onClick={() => openDatasourceEditor()} variant="primary">
+            Add Your First Datasource
+          </Button>
         </div>
       )}
     </div>
-  )
+  );
 }
 
 DatasourcesTab.propTypes = {
@@ -240,4 +378,4 @@ DatasourcesTab.propTypes = {
   onToggleHidden: PropTypes.func,
   onEditLabels: PropTypes.func,
   getDatasourceIcon: PropTypes.func.isRequired,
-}
+};

@@ -1,7 +1,11 @@
-import PropTypes from 'prop-types'
-import { Button } from '../ui'
+import PropTypes from "prop-types";
+import { Button } from "../ui";
 
-export default function OIDCLoginButton({ loading, onClick, providerLabel = 'Single Sign-On' }) {
+export default function OIDCLoginButton({
+  loading,
+  onClick,
+  providerLabel = "Single Sign-On",
+}) {
   return (
     <Button
       type="button"
@@ -10,13 +14,13 @@ export default function OIDCLoginButton({ loading, onClick, providerLabel = 'Sin
       loading={loading}
       onClick={onClick}
     >
-      {loading ? 'Redirecting...' : `Continue with ${providerLabel}`}
+      {loading ? "Redirecting..." : `Continue with ${providerLabel}`}
     </Button>
-  )
+  );
 }
 
 OIDCLoginButton.propTypes = {
   loading: PropTypes.bool,
   onClick: PropTypes.func.isRequired,
   providerLabel: PropTypes.string,
-}
+};

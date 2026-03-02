@@ -1,25 +1,25 @@
-import { useState } from 'react'
-import PropTypes from 'prop-types'
-import { Card } from '../ui'
-import { ConnectedServices } from './ConnectedServices'
-import { AgentActivitySection } from './AgentActivitySection'
-import { DataVolume } from './DataVolume'
-import { SystemMetricsCard } from './SystemMetricsCard'
-import { usePersistentOrder } from '../../hooks'
+import { useState } from "react";
+import PropTypes from "prop-types";
+import { Card } from "../ui";
+import { ConnectedServices } from "./ConnectedServices";
+import { AgentActivitySection } from "./AgentActivitySection";
+import { DataVolume } from "./DataVolume";
+import { SystemMetricsCard } from "./SystemMetricsCard";
+import { usePersistentOrder } from "../../hooks";
 
 export function DashboardLayout({ dashboardData, agentData }) {
-  const [draggedIndex, setDraggedIndex] = useState(null)
+  const [draggedIndex, setDraggedIndex] = useState(null);
 
   const layoutComponents = [
     {
-      id: 'connected-services',
+      id: "connected-services",
       title: "Powered By",
       subtitle: "Observability stack components",
       className: "lg:col-span-2",
-      content: <ConnectedServices />
+      content: <ConnectedServices />,
     },
     {
-      id: 'active-otel-agents',
+      id: "active-otel-agents",
       title: "Active OTEL Agents",
       subtitle: "Agents Activity",
       className: "lg:col-span-2",
@@ -28,89 +28,95 @@ export function DashboardLayout({ dashboardData, agentData }) {
           loading={agentData.loadingAgents}
           agents={agentData.agentActivity}
         />
-      )
+      ),
     },
     {
-      id: 'data-volume',
+      id: "data-volume",
       className: "",
       content: (
         <DataVolume
           loadingLogs={dashboardData.loadingLogs}
           logVolumeSeries={dashboardData.logVolumeSeries}
         />
-      )
+      ),
     },
     {
-      id: 'server-metrics',
+      id: "server-metrics",
       title: "BeObservant Plane",
-      subtitle: dashboardData.systemMetrics?.stress?.message || "Process resource utilization",
+      subtitle:
+        dashboardData.systemMetrics?.stress?.message ||
+        "Process resource utilization",
       className: "",
       content: (
         <SystemMetricsCard
           loading={dashboardData.loadingSystemMetrics}
           systemMetrics={dashboardData.systemMetrics}
         />
-      )
-    }
-  ]
+      ),
+    },
+  ];
 
-  const [layoutOrder, setLayoutOrder] = usePersistentOrder('dashboard-layout-order', layoutComponents.length)
+  const [layoutOrder, setLayoutOrder] = usePersistentOrder(
+    "dashboard-layout-order",
+    layoutComponents.length,
+  );
 
   const sanitizedLayoutOrder = (() => {
-    const max = layoutComponents.length
-    const seen = new Set()
-    const parsed = Array.isArray(layoutOrder) ? layoutOrder : []
-    const result = []
+    const max = layoutComponents.length;
+    const seen = new Set();
+    const parsed = Array.isArray(layoutOrder) ? layoutOrder : [];
+    const result = [];
     for (const idx of parsed) {
-      if (typeof idx === 'number' && idx >= 0 && idx < max && !seen.has(idx)) {
-        result.push(idx)
-        seen.add(idx)
+      if (typeof idx === "number" && idx >= 0 && idx < max && !seen.has(idx)) {
+        result.push(idx);
+        seen.add(idx);
       }
     }
     for (let i = 0; i < max; i++) {
-      if (!seen.has(i)) result.push(i)
+      if (!seen.has(i)) result.push(i);
     }
-    return result
-  })()
-
+    return result;
+  })();
 
   const handleLayoutDragStart = (e, index) => {
-    setDraggedIndex(index)
-    e.dataTransfer.effectAllowed = 'move'
-  }
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
 
   const handleLayoutDrop = (e, dropIndex) => {
-    e.preventDefault()
-    if (draggedIndex === null || draggedIndex === dropIndex) return
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) return;
 
-    const newOrder = [...layoutOrder]
-    const draggedItem = newOrder[draggedIndex]
-    newOrder.splice(draggedIndex, 1)
-    newOrder.splice(dropIndex, 0, draggedItem)
+    const newOrder = [...layoutOrder];
+    const draggedItem = newOrder[draggedIndex];
+    newOrder.splice(draggedIndex, 1);
+    newOrder.splice(dropIndex, 0, draggedItem);
 
-    setLayoutOrder(newOrder)
-    setDraggedIndex(null)
-  }
+    setLayoutOrder(newOrder);
+    setDraggedIndex(null);
+  };
 
   const handleDragOver = (e) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
 
   const handleDragEnd = () => {
-    setDraggedIndex(null)
-  }
+    setDraggedIndex(null);
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       {sanitizedLayoutOrder.map((layoutIndex, displayIndex) => {
-        const component = layoutComponents[layoutIndex]
-        if (!component) return null
+        const component = layoutComponents[layoutIndex];
+        if (!component) return null;
         return (
           <div
             key={component.id}
             className={`transition-transform duration-200 ease-out will-change-transform ${
-              draggedIndex === displayIndex ? 'opacity-50 scale-95 shadow-xl' : ''
+              draggedIndex === displayIndex
+                ? "opacity-50 scale-95 shadow-xl"
+                : ""
             }`}
           >
             <Card
@@ -124,18 +130,23 @@ export function DashboardLayout({ dashboardData, agentData }) {
               onDragEnd={handleDragEnd}
             >
               <div className="absolute top-4 right-4 text-sre-text-muted hover:text-sre-text transition-colors z-10">
-                <span className="material-icons text-sm drag-handle" aria-hidden>drag_indicator</span>
+                <span
+                  className="material-icons text-sm drag-handle"
+                  aria-hidden
+                >
+                  drag_indicator
+                </span>
               </div>
               {component.content}
             </Card>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 DashboardLayout.propTypes = {
   dashboardData: PropTypes.object.isRequired,
   agentData: PropTypes.object.isRequired,
-}
+};

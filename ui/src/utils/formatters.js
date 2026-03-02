@@ -4,9 +4,9 @@
  * @returns {string} ISO formatted date string
  */
 export function formatNsToIso(ns) {
-  if (!ns) return ''
-  const ms = Math.round(Number(ns) / 1e6)
-  return new Date(ms).toISOString()
+  if (!ns) return "";
+  const ms = Math.round(Number(ns) / 1e6);
+  return new Date(ms).toISOString();
 }
 
 /**
@@ -15,19 +15,19 @@ export function formatNsToIso(ns) {
  * @returns {string} Relative time string
  */
 export function formatRelativeTime(ns) {
-  if (!ns) return ''
-  const ms = Math.round(Number(ns) / 1e6)
-  const now = Date.now()
-  const diffMs = now - ms
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHr = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHr / 24)
+  if (!ns) return "";
+  const ms = Math.round(Number(ns) / 1e6);
+  const now = Date.now();
+  const diffMs = now - ms;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
 
-  if (diffDay > 0) return `${diffDay}d ago`
-  if (diffHr > 0) return `${diffHr}h ago`
-  if (diffMin > 0) return `${diffMin}m ago`
-  return `${diffSec}s ago`
+  if (diffDay > 0) return `${diffDay}d ago`;
+  if (diffHr > 0) return `${diffHr}h ago`;
+  if (diffMin > 0) return `${diffMin}m ago`;
+  return `${diffSec}s ago`;
 }
 
 /**
@@ -36,13 +36,13 @@ export function formatRelativeTime(ns) {
  * @returns {string} Formatted duration (e.g., "150ms", "2.5s")
  */
 export function formatDuration(ns) {
-  if (ns === null || ns === undefined || Number.isNaN(ns)) return '0ms'
-  const safe = Math.max(0, Number(ns))
-  const ms = safe / 1000000
+  if (ns === null || ns === undefined || Number.isNaN(ns)) return "0ms";
+  const safe = Math.max(0, Number(ns));
+  const ms = safe / 1000000;
 
-  if (ms < 1) return `${(safe / 1000).toFixed(0)}μs`
-  if (ms < 1000) return `${ms.toFixed(2)}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  if (ms < 1) return `${(safe / 1000).toFixed(0)}μs`;
+  if (ms < 1000) return `${ms.toFixed(2)}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
 }
 
 /**
@@ -52,15 +52,15 @@ export function formatDuration(ns) {
  * @returns {string} Formatted size (e.g., "1.5 MB")
  */
 export function formatBytes(bytes, decimals = 2) {
-  if (bytes === 0) return '0 Bytes'
-  
-  const k = 1024
-  const dm = Math.max(0, decimals)
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
-  return `${Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
+  if (bytes === 0) return "0 Bytes";
+
+  const k = 1024;
+  const dm = Math.max(0, decimals);
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return `${Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
 /**
@@ -69,7 +69,7 @@ export function formatBytes(bytes, decimals = 2) {
  * @returns {string} Formatted number (e.g., "1,234,567")
  */
 export function formatNumber(num) {
-  return new Intl.NumberFormat().format(num)
+  return new Intl.NumberFormat().format(num);
 }
 
 /**
@@ -79,7 +79,7 @@ export function formatNumber(num) {
  * @returns {string} Formatted percentage (e.g., "45.67%")
  */
 export function formatPercentage(value, decimals = 1) {
-  return `${Number(value).toFixed(decimals)}%`
+  return `${Number(value).toFixed(decimals)}%`;
 }
 
 /**
@@ -89,8 +89,8 @@ export function formatPercentage(value, decimals = 1) {
  * @returns {string} Truncated string with ellipsis
  */
 export function truncate(str, length = 50) {
-  if (!str || str.length <= length) return str
-  return `${str.substring(0, length)}...`
+  if (!str || str.length <= length) return str;
+  return `${str.substring(0, length)}...`;
 }
 
 /**
@@ -101,9 +101,9 @@ export function truncate(str, length = 50) {
  */
 export function formatJSON(obj, indent = 2) {
   try {
-    return JSON.stringify(obj, null, indent)
+    return JSON.stringify(obj, null, indent);
   } catch {
-    return '[Invalid JSON]'
+    return "[Invalid JSON]";
   }
 }
 
@@ -114,9 +114,9 @@ export function formatJSON(obj, indent = 2) {
  */
 export function parseLogLine(line) {
   try {
-    const parsed = JSON.parse(line)
-    return { type: 'json', data: parsed }
+    const parsed = JSON.parse(line);
+    return { type: "json", data: parsed };
   } catch {
-    return { type: 'text', data: line }
+    return { type: "text", data: line };
   }
 }

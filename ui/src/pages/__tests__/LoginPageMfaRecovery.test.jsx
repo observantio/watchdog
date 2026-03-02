@@ -1,19 +1,21 @@
-import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, vi, beforeEach } from 'vitest'
+import React from "react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, vi, beforeEach } from "vitest";
 
-const loginMock = vi.fn()
+const loginMock = vi.fn();
 
-vi.mock('../../api', () => ({
+vi.mock("../../api", () => ({
   enrollMFA: vi.fn(),
   verifyMFA: vi.fn(),
   clearSetupToken: vi.fn(),
   setSetupToken: vi.fn(),
-}))
+}));
 
-vi.mock('../../contexts/ToastContext', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }))
+vi.mock("../../contexts/ToastContext", () => ({
+  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+}));
 
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
     login: loginMock,
     startOIDCLogin: vi.fn(),
@@ -22,35 +24,46 @@ vi.mock('../../contexts/AuthContext', () => ({
     isAuthenticated: false,
     loading: false,
   }),
-}))
+}));
 
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
+vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
 
-import LoginPage from '../LoginPage'
+import LoginPage from "../LoginPage";
 
-describe('LoginPage MFA recovery toggle', () => {
+describe("LoginPage MFA recovery toggle", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.clearAllMocks();
     loginMock
-      .mockRejectedValueOnce({ status: 401, body: { detail: 'MFA required' } })
-      .mockResolvedValueOnce({ access_token: 'token-1' })
-  })
+      .mockRejectedValueOnce({ status: 401, body: { detail: "MFA required" } })
+      .mockResolvedValueOnce({ access_token: "token-1" });
+  });
 
-  it('allows switching to recovery code mode during MFA challenge', async () => {
-    render(<LoginPage />)
+  it("allows switching to recovery code mode during MFA challenge", async () => {
+    render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'alice' } })
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pw' } })
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: "alice" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: "pw" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(screen.getByLabelText(/Authentication code/i)).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /Use recovery code instead/i }))
-    expect(screen.getByLabelText(/Recovery code/i)).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Authentication code/i)).toBeInTheDocument(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Use recovery code instead/i }),
+    );
+    expect(screen.getByLabelText(/Recovery code/i)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/Recovery code/i), { target: { value: 'recovery-1' } })
-    fireEvent.click(screen.getByRole('button', { name: /Verify/i }))
+    fireEvent.change(screen.getByLabelText(/Recovery code/i), {
+      target: { value: "recovery-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Verify/i }));
 
-    await waitFor(() => expect(loginMock).toHaveBeenLastCalledWith('alice', 'pw', 'recovery-1'))
-  })
-})
-
+    await waitFor(() =>
+      expect(loginMock).toHaveBeenLastCalledWith("alice", "pw", "recovery-1"),
+    );
+  });
+});

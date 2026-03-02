@@ -1,8 +1,8 @@
-import PropTypes from 'prop-types'
-import { useTheme } from '../contexts/ThemeContext'
+import PropTypes from "prop-types";
+import { useTheme } from "../contexts/ThemeContext";
 
-export default function ThemeToggle({ className = '' }) {
-  const { theme, toggleTheme } = useTheme()
+export default function ThemeToggle({ className = "" }) {
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <button
@@ -11,10 +11,10 @@ export default function ThemeToggle({ className = '' }) {
         hover:bg-sre-surface active:scale-95
         focus:outline-none focus:ring-2 focus:ring-sre-primary focus:ring-offset-2 focus:ring-offset-sre-bg
         ${className}`}
-      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
     >
-      {theme === 'dark' ? (
+      {theme === "dark" ? (
         <svg
           className="w-5 h-5 text-sre-text-muted hover:text-sre-text transition-colors"
           fill="none"
@@ -44,9 +44,9 @@ export default function ThemeToggle({ className = '' }) {
         </svg>
       )}
     </button>
-  )
+  );
 }
 
 ThemeToggle.propTypes = {
   className: PropTypes.string,
-}
+};

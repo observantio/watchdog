@@ -1,60 +1,146 @@
-import { useState } from 'react'
-import { Button, Input, Modal, Select } from '../../components/ui'
-import HelpTooltip from '../../components/HelpTooltip'
-import VisibilitySelector from './VisibilitySelector'
-import DatasourceSelector from './DatasourceSelector'
-import { GRAFANA_REFRESH_INTERVALS } from '../../utils/constants'
+import { useState } from "react";
+import { Button, Input, Modal, Select } from "../../components/ui";
+import HelpTooltip from "../../components/HelpTooltip";
+import VisibilitySelector from "./VisibilitySelector";
+import DatasourceSelector from "./DatasourceSelector";
+import { GRAFANA_REFRESH_INTERVALS } from "../../utils/constants";
 
 const SAMPLE_MIMIR_DASHBOARD = {
   schemaVersion: 38,
-  title: 'System & Process Metrics (Mimir)',
-  timezone: 'browser',
-  refresh: '30s',
-  uid: 'system-process-mimir',
+  title: "System & Process Metrics (Mimir)",
+  timezone: "browser",
+  refresh: "30s",
+  uid: "system-process-mimir",
   version: 1,
-  time: { from: 'now-1h', to: 'now' },
+  time: { from: "now-1h", to: "now" },
   panels: [
-    { type: 'row', title: 'CPU', gridPos: { x: 0, y: 9, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'System CPU Time', gridPos: { x: 12, y: 10, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_cpu_time_seconds_total[5m])', refId: 'A' }] },
+    { type: "row", title: "CPU", gridPos: { x: 0, y: 9, w: 24, h: 1 } },
+    {
+      type: "timeseries",
+      title: "System CPU Time",
+      gridPos: { x: 12, y: 10, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [
+        { expr: "rate(system_cpu_time_seconds_total[5m])", refId: "A" },
+      ],
+    },
 
-    { type: 'row', title: 'Memory', gridPos: { x: 0, y: 18, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'Virtual Memory', gridPos: { x: 12, y: 19, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'process_memory_virtual_bytes', refId: 'A' }] },
-    { type: 'timeseries', title: 'System Memory Usage', gridPos: { x: 0, y: 27, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'system_memory_usage_bytes', refId: 'A' }] },
+    { type: "row", title: "Memory", gridPos: { x: 0, y: 18, w: 24, h: 1 } },
+    {
+      type: "timeseries",
+      title: "Virtual Memory",
+      gridPos: { x: 12, y: 19, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "process_memory_virtual_bytes", refId: "A" }],
+    },
+    {
+      type: "timeseries",
+      title: "System Memory Usage",
+      gridPos: { x: 0, y: 27, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "system_memory_usage_bytes", refId: "A" }],
+    },
 
-    { type: 'row', title: 'Disk', gridPos: { x: 0, y: 35, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'Disk IO Bytes', gridPos: { x: 0, y: 36, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_disk_io_bytes_total[5m])', refId: 'A' }] },
-    { type: 'timeseries', title: 'Disk Operations', gridPos: { x: 12, y: 36, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_disk_operations_total[5m])', refId: 'A' }] },
-    { type: 'timeseries', title: 'Disk Pending Ops', gridPos: { x: 0, y: 44, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'system_disk_pending_operations', refId: 'A' }] },
-    { type: 'timeseries', title: 'Weighted IO Time', gridPos: { x: 12, y: 44, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_disk_weighted_io_time_seconds_total[5m])', refId: 'A' }] },
+    { type: "row", title: "Disk", gridPos: { x: 0, y: 35, w: 24, h: 1 } },
+    {
+      type: "timeseries",
+      title: "Disk IO Bytes",
+      gridPos: { x: 0, y: 36, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "rate(system_disk_io_bytes_total[5m])", refId: "A" }],
+    },
+    {
+      type: "timeseries",
+      title: "Disk Operations",
+      gridPos: { x: 12, y: 36, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "rate(system_disk_operations_total[5m])", refId: "A" }],
+    },
+    {
+      type: "timeseries",
+      title: "Disk Pending Ops",
+      gridPos: { x: 0, y: 44, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "system_disk_pending_operations", refId: "A" }],
+    },
+    {
+      type: "timeseries",
+      title: "Weighted IO Time",
+      gridPos: { x: 12, y: 44, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [
+        {
+          expr: "rate(system_disk_weighted_io_time_seconds_total[5m])",
+          refId: "A",
+        },
+      ],
+    },
 
-    { type: 'row', title: 'Network', gridPos: { x: 0, y: 52, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'Network IO', gridPos: { x: 0, y: 53, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_network_io_bytes_total[5m])', refId: 'A' }] },
-    { type: 'timeseries', title: 'Network Errors', gridPos: { x: 12, y: 53, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_network_errors_total[5m])', refId: 'A' }] },
+    { type: "row", title: "Network", gridPos: { x: 0, y: 52, w: 24, h: 1 } },
+    {
+      type: "timeseries",
+      title: "Network IO",
+      gridPos: { x: 0, y: 53, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [
+        { expr: "rate(system_network_io_bytes_total[5m])", refId: "A" },
+      ],
+    },
+    {
+      type: "timeseries",
+      title: "Network Errors",
+      gridPos: { x: 12, y: 53, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "rate(system_network_errors_total[5m])", refId: "A" }],
+    },
 
-    { type: 'row', title: 'Paging & System', gridPos: { x: 0, y: 61, w: 24, h: 1 } },
-    { type: 'timeseries', title: 'Paging Faults', gridPos: { x: 0, y: 62, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'rate(system_paging_faults_total[5m])', refId: 'A' }] },
-    { type: 'timeseries', title: 'System Uptime', gridPos: { x: 12, y: 62, w: 12, h: 8 }, datasource: { uid: 'mimir-prometheus', type: 'prometheus' }, targets: [{ expr: 'system_uptime_seconds', refId: 'A' }] },
+    {
+      type: "row",
+      title: "Paging & System",
+      gridPos: { x: 0, y: 61, w: 24, h: 1 },
+    },
+    {
+      type: "timeseries",
+      title: "Paging Faults",
+      gridPos: { x: 0, y: 62, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "rate(system_paging_faults_total[5m])", refId: "A" }],
+    },
+    {
+      type: "timeseries",
+      title: "System Uptime",
+      gridPos: { x: 12, y: 62, w: 12, h: 8 },
+      datasource: { uid: "mimir-prometheus", type: "prometheus" },
+      targets: [{ expr: "system_uptime_seconds", refId: "A" }],
+    },
   ],
-}
+};
 
 const DASHBOARD_TEMPLATES = [
   {
-    id: 'mimir-system-process',
-    name: 'System & Process (Mimir)',
-    icon: 'monitor_heart',
-    summary: 'CPU, memory, disk and network overview for Mimir/Prometheus',
-    datasourceUid: 'mimir-prometheus',
+    id: "mimir-system-process",
+    name: "System & Process (Mimir)",
+    icon: "monitor_heart",
+    summary: "CPU, memory, disk and network overview for Mimir/Prometheus",
+    datasourceUid: "mimir-prometheus",
     dashboard: SAMPLE_MIMIR_DASHBOARD,
   },
   {
-    id: 'empty',
-    name: 'Empty Dashboard',
-    icon: 'dashboard_customize',
-    summary: 'Start from a blank dashboard',
-    datasourceUid: '',
-    dashboard: { schemaVersion: 38, title: 'Empty Dashboard', uid: 'empty-dashboard', version: 1, time: { from: 'now-1h', to: 'now' }, panels: [] },
+    id: "empty",
+    name: "Empty Dashboard",
+    icon: "dashboard_customize",
+    summary: "Start from a blank dashboard",
+    datasourceUid: "",
+    dashboard: {
+      schemaVersion: 38,
+      title: "Empty Dashboard",
+      uid: "empty-dashboard",
+      version: 1,
+      time: { from: "now-1h", to: "now" },
+      panels: [],
+    },
   },
-]
+];
 
 export default function DashboardEditorModal({
   isOpen,
@@ -73,274 +159,393 @@ export default function DashboardEditorModal({
   folders,
   datasources,
   groups,
-  onSave
+  onSave,
 }) {
-  const [selectedTemplate, setSelectedTemplate] = useState(null)
-  const [showJsonConflict, setShowJsonConflict] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [showJsonConflict, setShowJsonConflict] = useState(false);
 
   const applyTemplate = (template) => {
-    setSelectedTemplate(template.id)
-    setJsonContent(JSON.stringify(template.dashboard, null, 2))
-    setJsonError('')
-    setFileUploaded(false)
+    setSelectedTemplate(template.id);
+    setJsonContent(JSON.stringify(template.dashboard, null, 2));
+    setJsonError("");
+    setFileUploaded(false);
     if (template.datasourceUid) {
-      setDashboardForm({ ...dashboardForm, datasourceUid: template.datasourceUid, useTemplating: true })
+      setDashboardForm({
+        ...dashboardForm,
+        datasourceUid: template.datasourceUid,
+        useTemplating: true,
+      });
     }
-  }
+  };
 
   const _jsonLooksMeaningful = (content) => {
-    if (!content || !content.trim()) return false
+    if (!content || !content.trim()) return false;
     try {
-      const parsed = JSON.parse(content)
-      const db = parsed.dashboard || parsed
-      if (fileUploaded) return true
-      if (editingDashboard) return true
-      if (db && Array.isArray(db.panels) && db.panels.length > 0) return true
-      if (db && typeof db.title === 'string' && db.title.trim().length > 0) return true
+      const parsed = JSON.parse(content);
+      const db = parsed.dashboard || parsed;
+      if (fileUploaded) return true;
+      if (editingDashboard) return true;
+      if (db && Array.isArray(db.panels) && db.panels.length > 0) return true;
+      if (db && typeof db.title === "string" && db.title.trim().length > 0)
+        return true;
       // otherwise treat as non-meaningful (e.g. default empty object)
-      return false
+      return false;
     } catch (e) {
       // invalid JSON — consider it meaningful so user can choose what to do
-      return true
+      return true;
     }
-  }
+  };
 
   const mergeFormIntoJson = (rawJson) => {
-    let parsed
+    let parsed;
     try {
-      parsed = JSON.parse(rawJson)
+      parsed = JSON.parse(rawJson);
     } catch (e) {
       // if JSON invalid, fall back to building a fresh dashboard object
-      parsed = {}
+      parsed = {};
     }
 
-    const db = parsed.dashboard || parsed
-    const tags = (dashboardForm.tags || '')
-      .split(',')
-      .map(t => t.trim())
-      .filter(Boolean)
+    const db = parsed.dashboard || parsed;
+    const tags = (dashboardForm.tags || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
-    const selectedDatasource = datasources.find(ds => ds.uid === dashboardForm.datasourceUid)
+    const selectedDatasource = datasources.find(
+      (ds) => ds.uid === dashboardForm.datasourceUid,
+    );
 
     // update the dashboard-level settings while preserving panels/layout
-    db.title = dashboardForm.title
-    db.refresh = dashboardForm.refresh
-    db.tags = tags
-    db.timezone = db.timezone || 'browser'
+    db.title = dashboardForm.title;
+    db.refresh = dashboardForm.refresh;
+    db.tags = tags;
+    db.timezone = db.timezone || "browser";
 
-    db.templating = (selectedDatasource && dashboardForm.useTemplating)
-      ? {
-          list: [
-            {
-              name: 'ds_default',
-              label: 'Datasource',
-              type: 'datasource',
-              query: selectedDatasource.type,
-              current: { text: selectedDatasource.name, value: selectedDatasource.uid },
-            },
-          ],
-        }
-      : (db.templating || { list: [] })
+    db.templating =
+      selectedDatasource && dashboardForm.useTemplating
+        ? {
+            list: [
+              {
+                name: "ds_default",
+                label: "Datasource",
+                type: "datasource",
+                query: selectedDatasource.type,
+                current: {
+                  text: selectedDatasource.name,
+                  value: selectedDatasource.uid,
+                },
+              },
+            ],
+          }
+        : db.templating || { list: [] };
 
     // preserve wrapper shape if original had one
     if (parsed.dashboard) {
-      parsed.dashboard = db
-      return parsed
+      parsed.dashboard = db;
+      return parsed;
     }
-    return db
-  }
+    return db;
+  };
 
   const overrideJsonWithForm = () => {
-    const tags = (dashboardForm.tags || '')
-      .split(',')
-      .map(t => t.trim())
-      .filter(Boolean)
+    const tags = (dashboardForm.tags || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
-    const selectedDatasource = datasources.find(ds => ds.uid === dashboardForm.datasourceUid)
+    const selectedDatasource = datasources.find(
+      (ds) => ds.uid === dashboardForm.datasourceUid,
+    );
 
     const dashboardObj = {
       title: dashboardForm.title,
       tags,
       refresh: dashboardForm.refresh,
       panels: [],
-      timezone: 'browser',
+      timezone: "browser",
       schemaVersion: 16,
       editable: true,
-      templating: (selectedDatasource && dashboardForm.useTemplating)
-        ? {
-            list: [
-              {
-                name: 'ds_default',
-                label: 'Datasource',
-                type: 'datasource',
-                query: selectedDatasource.type,
-                current: { text: selectedDatasource.name, value: selectedDatasource.uid },
-              },
-            ],
-          }
-        : { list: [] },
-    }
+      templating:
+        selectedDatasource && dashboardForm.useTemplating
+          ? {
+              list: [
+                {
+                  name: "ds_default",
+                  label: "Datasource",
+                  type: "datasource",
+                  query: selectedDatasource.type,
+                  current: {
+                    text: selectedDatasource.name,
+                    value: selectedDatasource.uid,
+                  },
+                },
+              ],
+            }
+          : { list: [] },
+    };
 
-    const str = JSON.stringify(dashboardObj, null, 2)
-    setJsonContent(str)
+    const str = JSON.stringify(dashboardObj, null, 2);
+    setJsonContent(str);
     // request parent to save using JSON payload (pass the JSON string to avoid state race)
-    onSave(str)
-  }
+    onSave(str);
+  };
 
   // renamed to avoid React hook naming convention
   const updateJsonWithForm = () => {
-    const merged = mergeFormIntoJson(jsonContent || '{}')
-    const str = JSON.stringify(merged, null, 2)
-    setJsonContent(str)
+    const merged = mergeFormIntoJson(jsonContent || "{}");
+    const str = JSON.stringify(merged, null, 2);
+    setJsonContent(str);
     // request parent to save using JSON payload (pass the JSON string to avoid state race)
-    onSave(str)
-  }
+    onSave(str);
+  };
 
   const handleSave = () => {
     // If user is saving via the form but there's an existing meaningful JSON
     // (either previously uploaded or an existing dashboard JSON), ask first.
-    if (editorTab === 'form' && _jsonLooksMeaningful(jsonContent)) {
-      setShowJsonConflict(true)
-      return
+    if (editorTab === "form" && _jsonLooksMeaningful(jsonContent)) {
+      setShowJsonConflict(true);
+      return;
     }
 
     // parent save accepts optional jsonOverride when the modal needs to save
     // using the current JSON payload immediately.
-    onSave()
-  }
+    onSave();
+  };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       closeOnOverlayClick={false}
-      title={editingDashboard ? 'Edit Dashboard' : 'Create New Dashboard'}
+      title={editingDashboard ? "Edit Dashboard" : "Create New Dashboard"}
       size="md"
       footer={
         <div className="flex gap-3 justify-end">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave} disabled={editorTab === 'form' ? !dashboardForm.title.trim() : !jsonContent.trim() || !!jsonError}>
-            {editingDashboard ? 'Update Dashboard' : 'Create Dashboard'}
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            disabled={
+              editorTab === "form"
+                ? !dashboardForm.title.trim()
+                : !jsonContent.trim() || !!jsonError
+            }
+          >
+            {editingDashboard ? "Update Dashboard" : "Create Dashboard"}
           </Button>
         </div>
       }
     >
       <div>
         <div className="flex gap-2 mb-4 justify-center">
-          <button type="button" className={`px-3 py-1 rounded ${editorTab === 'form' ? 'text-sre-text border-b-2 border-sre-primary' : 'bg-transparent text-sre-text-muted'}`} onClick={() => setEditorTab('form')}>Form</button>
-          <button type="button" className={`px-3 py-1 rounded ${editorTab === 'json' ? 'text-sre-text border-b-2 border-sre-primary' : 'bg-transparent text-sre-text-muted'}`} onClick={() => setEditorTab('json')}>JSON</button>
+          <button
+            type="button"
+            className={`px-3 py-1 rounded ${editorTab === "form" ? "text-sre-text border-b-2 border-sre-primary" : "bg-transparent text-sre-text-muted"}`}
+            onClick={() => setEditorTab("form")}
+          >
+            Form
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 rounded ${editorTab === "json" ? "text-sre-text border-b-2 border-sre-primary" : "bg-transparent text-sre-text-muted"}`}
+            onClick={() => setEditorTab("json")}
+          >
+            JSON
+          </button>
         </div>
 
-        {editorTab === 'form' && (
+        {editorTab === "form" && (
           <div className="space-y-4">
-                {showJsonConflict && (
-                  <div className="p-5 mb-4 rounded-xl border-2 border-red-600 border-dashed">
-                    <div className="flex flex-col sm:flex-row sm:justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="text-base font-semibold text-sre-text mb-1">JSON content detected</div>
-                        <div className="text-sm text-sre-text-muted mb-3">
-                          You previously edited or uploaded dashboard JSON. Choose how to proceed:
-                        </div>
-                        <ul className="list-disc list-inside text-sm text-sre-text-muted space-y-1">
-                          <li>
-                            <strong>Fresh Start</strong> — replace the JSON with values from the form.
-                          </li>
-                          <li>
-                            <strong>Update JSON</strong> — keep panels/layout from JSON but update title, tags, datasource, and refresh from the form.
-                          </li>
-                          <li>
-                            <strong>Cancel Edit</strong> — return to editing without saving.
-                          </li>
-                        </ul>
-                      </div>
-
-                      <div className="flex flex-col sm:items-end gap-2 mt-3 sm:mt-0">
-                        <button
-                          data-testid="json-conflict-override"
-                          type="button"
-                          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors"
-                          onClick={() => { setShowJsonConflict(false); overrideJsonWithForm() }}
-                        >
-                          Fresh Start
-                        </button>
-                        <button
-                          data-testid="json-conflict-merge"
-                          type="button"
-                          className="px-4 py-2 rounded-lg bg-sre-primary text-white text-sm font-medium hover:bg-sre-primary/90 transition-colors"
-                          onClick={() => { setShowJsonConflict(false); updateJsonWithForm() }}
-                        >
-                          Update JSON
-                        </button>
-                        <button
-                          data-testid="json-conflict-cancel"
-                          type="button"
-                          className="px-4 py-2 rounded-lg border border-sre-border bg-transparent text-sm font-medium hover:bg-sre-bg-alt transition-colors"
-                          onClick={() => setShowJsonConflict(false)}
-                        >
-                          Cancel Edit
-                        </button>
-                      </div>
+            {showJsonConflict && (
+              <div className="p-5 mb-4 rounded-xl border-2 border-red-600 border-dashed">
+                <div className="flex flex-col sm:flex-row sm:justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="text-base font-semibold text-sre-text mb-1">
+                      JSON content detected
                     </div>
+                    <div className="text-sm text-sre-text-muted mb-3">
+                      You previously edited or uploaded dashboard JSON. Choose
+                      how to proceed:
+                    </div>
+                    <ul className="list-disc list-inside text-sm text-sre-text-muted space-y-1">
+                      <li>
+                        <strong>Fresh Start</strong> — replace the JSON with
+                        values from the form.
+                      </li>
+                      <li>
+                        <strong>Update JSON</strong> — keep panels/layout from
+                        JSON but update title, tags, datasource, and refresh
+                        from the form.
+                      </li>
+                      <li>
+                        <strong>Cancel Edit</strong> — return to editing without
+                        saving.
+                      </li>
+                    </ul>
                   </div>
-                )}
+
+                  <div className="flex flex-col sm:items-end gap-2 mt-3 sm:mt-0">
+                    <button
+                      data-testid="json-conflict-override"
+                      type="button"
+                      className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors"
+                      onClick={() => {
+                        setShowJsonConflict(false);
+                        overrideJsonWithForm();
+                      }}
+                    >
+                      Fresh Start
+                    </button>
+                    <button
+                      data-testid="json-conflict-merge"
+                      type="button"
+                      className="px-4 py-2 rounded-lg bg-sre-primary text-white text-sm font-medium hover:bg-sre-primary/90 transition-colors"
+                      onClick={() => {
+                        setShowJsonConflict(false);
+                        updateJsonWithForm();
+                      }}
+                    >
+                      Update JSON
+                    </button>
+                    <button
+                      data-testid="json-conflict-cancel"
+                      type="button"
+                      className="px-4 py-2 rounded-lg border border-sre-border bg-transparent text-sm font-medium hover:bg-sre-bg-alt transition-colors"
+                      onClick={() => setShowJsonConflict(false)}
+                    >
+                      Cancel Edit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-sre-text mb-2">
-                Dashboard Title <span className="text-red-500">*</span> <HelpTooltip text="Enter a descriptive title for your dashboard." />
+                Dashboard Title <span className="text-red-500">*</span>{" "}
+                <HelpTooltip text="Enter a descriptive title for your dashboard." />
               </label>
-              <Input value={dashboardForm.title} onChange={(e) => setDashboardForm({ ...dashboardForm, title: e.target.value })} placeholder="My Awesome Dashboard" required />
+              <Input
+                value={dashboardForm.title}
+                onChange={(e) =>
+                  setDashboardForm({ ...dashboardForm, title: e.target.value })
+                }
+                placeholder="My Awesome Dashboard"
+                required
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">Tags (comma-separated)</label>
-              <Input value={dashboardForm.tags} onChange={(e) => setDashboardForm({ ...dashboardForm, tags: e.target.value })} placeholder="production, metrics, monitoring" />
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                Tags (comma-separated)
+              </label>
+              <Input
+                value={dashboardForm.tags}
+                onChange={(e) =>
+                  setDashboardForm({ ...dashboardForm, tags: e.target.value })
+                }
+                placeholder="production, metrics, monitoring"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">Folder</label>
-              <Select value={dashboardForm.folderId} onChange={(e) => setDashboardForm({ ...dashboardForm, folderId: e.target.value })}>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                Folder
+              </label>
+              <Select
+                value={dashboardForm.folderId}
+                onChange={(e) =>
+                  setDashboardForm({
+                    ...dashboardForm,
+                    folderId: e.target.value,
+                  })
+                }
+              >
                 <option value="0">General</option>
-                {folders.map((folder) => (<option key={folder.id} value={folder.id}>{folder.title}</option>))}
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.title}
+                  </option>
+                ))}
               </Select>
             </div>
             <DatasourceSelector
               datasourceUid={dashboardForm.datasourceUid}
-              onDatasourceChange={(v) => setDashboardForm({ ...dashboardForm, datasourceUid: v })}
+              onDatasourceChange={(v) =>
+                setDashboardForm({ ...dashboardForm, datasourceUid: v })
+              }
               useTemplating={dashboardForm.useTemplating}
-              onUseTemplatingChange={(v) => setDashboardForm({ ...dashboardForm, useTemplating: v })}
+              onUseTemplatingChange={(v) =>
+                setDashboardForm({ ...dashboardForm, useTemplating: v })
+              }
               datasources={datasources}
             />
             <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">Auto-refresh</label>
-              <Select value={dashboardForm.refresh} onChange={(e) => setDashboardForm({ ...dashboardForm, refresh: e.target.value })}>
-                {GRAFANA_REFRESH_INTERVALS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                Auto-refresh
+              </label>
+              <Select
+                value={dashboardForm.refresh}
+                onChange={(e) =>
+                  setDashboardForm({
+                    ...dashboardForm,
+                    refresh: e.target.value,
+                  })
+                }
+              >
+                {GRAFANA_REFRESH_INTERVALS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </Select>
             </div>
             <div className="border-t border-sre-border pt-4">
-              <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                Visibility
+              </label>
               <VisibilitySelector
                 visibility={dashboardForm.visibility}
-                onVisibilityChange={(value) => setDashboardForm({ ...dashboardForm, visibility: value, sharedGroupIds: [] })}
+                onVisibilityChange={(value) =>
+                  setDashboardForm({
+                    ...dashboardForm,
+                    visibility: value,
+                    sharedGroupIds: [],
+                  })
+                }
                 sharedGroupIds={dashboardForm.sharedGroupIds}
-                onSharedGroupIdsChange={(ids) => setDashboardForm({ ...dashboardForm, sharedGroupIds: ids })}
+                onSharedGroupIdsChange={(ids) =>
+                  setDashboardForm({ ...dashboardForm, sharedGroupIds: ids })
+                }
                 groups={groups}
               />
             </div>
           </div>
         )}
 
-        {editorTab === 'json' && (
+        {editorTab === "json" && (
           <div className="space-y-4">
             {/* Templates picker */}
             <div className="">
               <div className="mb-3 flex items-center gap-3">
                 <div>
-                  <h4 className="text-base font-semibold text-sre-text">Templates</h4>
-                  <p className="text-sm text-sre-text-muted">Choose a starting dashboard template — click a card to load it into the editor.</p>
+                  <h4 className="text-base font-semibold text-sre-text">
+                    Templates
+                  </h4>
+                  <p className="text-sm text-sre-text-muted">
+                    Choose a starting dashboard template — click a card to load
+                    it into the editor.
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {DASHBOARD_TEMPLATES.map((t) => {
-                  const isSelected = selectedTemplate === t.id
-                  const panelTitles = (t.dashboard.panels || []).map(p => p.title).slice(0, 3).join('\n') || 'No panels'
+                  const isSelected = selectedTemplate === t.id;
+                  const panelTitles =
+                    (t.dashboard.panels || [])
+                      .map((p) => p.title)
+                      .slice(0, 3)
+                      .join("\n") || "No panels";
                   return (
                     <button
                       key={t.id}
@@ -348,41 +553,57 @@ export default function DashboardEditorModal({
                       onClick={() => applyTemplate(t)}
                       className={`text-left p-3 rounded-lg border-2 transition-all duration-200 group shadow-sm hover:shadow-md ${
                         isSelected
-                          ? 'border-sre-primary bg-sre-primary/10 shadow-md'
-                          : 'border-sre-border bg-sre-surface hover:border-sre-primary hover:bg-sre-primary/5'
+                          ? "border-sre-primary bg-sre-primary/10 shadow-md"
+                          : "border-sre-border bg-sre-surface hover:border-sre-primary hover:bg-sre-primary/5"
                       }`}
-                      data-testid={t.id === 'mimir-system-process' ? 'load-mimir-sample' : undefined}
+                      data-testid={
+                        t.id === "mimir-system-process"
+                          ? "load-mimir-sample"
+                          : undefined
+                      }
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <div className={`text-base font-semibold ${isSelected ? 'text-sre-primary' : 'text-sre-text'}`}>{t.name}</div>
-                        <span className="material-icons text-sre-text-muted">{t.icon}</span>
+                        <div
+                          className={`text-base font-semibold ${isSelected ? "text-sre-primary" : "text-sre-text"}`}
+                        >
+                          {t.name}
+                        </div>
+                        <span className="material-icons text-sre-text-muted">
+                          {t.icon}
+                        </span>
                       </div>
-                      <div className="text-sm text-sre-text-muted mb-3 line-clamp-3">{t.summary}</div>
-                      <div className="text-xs font-mono text-sre-text-muted bg-sre-bg-alt p-2 rounded border whitespace-pre-wrap leading-relaxed min-h-[48px] overflow-hidden">{panelTitles}</div>
+                      <div className="text-sm text-sre-text-muted mb-3 line-clamp-3">
+                        {t.summary}
+                      </div>
+                      <div className="text-xs font-mono text-sre-text-muted bg-sre-bg-alt p-2 rounded border whitespace-pre-wrap leading-relaxed min-h-[48px] overflow-hidden">
+                        {panelTitles}
+                      </div>
                     </button>
-                  )
+                  );
                 })}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-sre-text mb-3">Upload JSON file</label>
+              <label className="block text-sm font-medium text-sre-text mb-3">
+                Upload JSON file
+              </label>
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <input
                     type="file"
                     accept="application/json,.json"
                     onChange={async (e) => {
-                      const f = e.target.files && e.target.files[0]
-                      if (!f) return
+                      const f = e.target.files && e.target.files[0];
+                      if (!f) return;
                       try {
-                        const txt = await f.text()
-                        setJsonContent(txt)
-                        setJsonError('')
-                        setFileUploaded(true)
+                        const txt = await f.text();
+                        setJsonContent(txt);
+                        setJsonError("");
+                        setFileUploaded(true);
                       } catch (err) {
-                        setJsonError('Failed to read file')
-                        setFileUploaded(false)
+                        setJsonError("Failed to read file");
+                        setFileUploaded(false);
                       }
                     }}
                     className="hidden"
@@ -396,45 +617,97 @@ export default function DashboardEditorModal({
                     Choose File
                   </label>
 
-                  <span className="text-sm text-sre-text-muted">{fileUploaded ? 'File loaded' : 'No file chosen'}</span>
+                  <span className="text-sm text-sre-text-muted">
+                    {fileUploaded ? "File loaded" : "No file chosen"}
+                  </span>
                 </div>
-                <p className="text-sm text-sre-text-muted">You can upload a Grafana-exported JSON or paste a dashboard object in the editor below.</p>
+                <p className="text-sm text-sre-text-muted">
+                  You can upload a Grafana-exported JSON or paste a dashboard
+                  object in the editor below.
+                </p>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-sre-text mb-2">Dashboard JSON</label>
-              <textarea className="w-full min-h-[220px] p-3 border rounded bg-sre-bg" value={jsonContent} onChange={(e) => setJsonContent(e.target.value)} placeholder="Paste dashboard JSON here (export from Grafana or raw dashboard object)" />
-              {jsonError && <p className="text-sm text-red-500 mt-2">JSON error: {jsonError}</p>}
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                Dashboard JSON
+              </label>
+              <textarea
+                className="w-full min-h-[220px] p-3 border rounded bg-sre-bg"
+                value={jsonContent}
+                onChange={(e) => setJsonContent(e.target.value)}
+                placeholder="Paste dashboard JSON here (export from Grafana or raw dashboard object)"
+              />
+              {jsonError && (
+                <p className="text-sm text-red-500 mt-2">
+                  JSON error: {jsonError}
+                </p>
+              )}
             </div>
             <div className="border-t border-sre-border pt-4">
-              <label className="block text-sm font-medium text-sre-text mb-2">Folder</label>
-              <Select value={dashboardForm.folderId} onChange={(e) => setDashboardForm({ ...dashboardForm, folderId: e.target.value })}>
+              <label className="block text-sm font-medium text-sre-text mb-2">
+                Folder
+              </label>
+              <Select
+                value={dashboardForm.folderId}
+                onChange={(e) =>
+                  setDashboardForm({
+                    ...dashboardForm,
+                    folderId: e.target.value,
+                  })
+                }
+              >
                 <option value="0">General</option>
-                {folders.map((folder) => (<option key={folder.id} value={folder.id}>{folder.title}</option>))}
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.title}
+                  </option>
+                ))}
               </Select>
 
               <div className="mt-4">
                 <DatasourceSelector
                   datasourceUid={dashboardForm.datasourceUid}
-                  onDatasourceChange={(v) => setDashboardForm({ ...dashboardForm, datasourceUid: v })}
+                  onDatasourceChange={(v) =>
+                    setDashboardForm({ ...dashboardForm, datasourceUid: v })
+                  }
                   useTemplating={dashboardForm.useTemplating}
-                  onUseTemplatingChange={(v) => setDashboardForm({ ...dashboardForm, useTemplating: v })}
+                  onUseTemplatingChange={(v) =>
+                    setDashboardForm({ ...dashboardForm, useTemplating: v })
+                  }
                   datasources={datasources}
                 />
               </div>
 
               <div className="mt-4">
-                <label className="block text-sm font-medium text-sre-text mb-2">Tags (comma-separated)</label>
-                <Input value={dashboardForm.tags} onChange={(e) => setDashboardForm({ ...dashboardForm, tags: e.target.value })} placeholder="production, metrics, monitoring" />
+                <label className="block text-sm font-medium text-sre-text mb-2">
+                  Tags (comma-separated)
+                </label>
+                <Input
+                  value={dashboardForm.tags}
+                  onChange={(e) =>
+                    setDashboardForm({ ...dashboardForm, tags: e.target.value })
+                  }
+                  placeholder="production, metrics, monitoring"
+                />
               </div>
 
               <div className="mt-4">
-                <label className="block text-sm font-medium text-sre-text mb-2">Visibility</label>
+                <label className="block text-sm font-medium text-sre-text mb-2">
+                  Visibility
+                </label>
                 <VisibilitySelector
                   visibility={dashboardForm.visibility}
-                  onVisibilityChange={(value) => setDashboardForm({ ...dashboardForm, visibility: value, sharedGroupIds: [] })}
+                  onVisibilityChange={(value) =>
+                    setDashboardForm({
+                      ...dashboardForm,
+                      visibility: value,
+                      sharedGroupIds: [],
+                    })
+                  }
                   sharedGroupIds={dashboardForm.sharedGroupIds}
-                  onSharedGroupIdsChange={(ids) => setDashboardForm({ ...dashboardForm, sharedGroupIds: ids })}
+                  onSharedGroupIdsChange={(ids) =>
+                    setDashboardForm({ ...dashboardForm, sharedGroupIds: ids })
+                  }
                   groups={groups}
                 />
               </div>
@@ -443,5 +716,5 @@ export default function DashboardEditorModal({
         )}
       </div>
     </Modal>
-  )
+  );
 }

@@ -1,13 +1,13 @@
-import HelpTooltip from '../HelpTooltip'
-import { REFRESH_INTERVALS } from '../../utils/constants'
+import HelpTooltip from "../HelpTooltip";
+import { REFRESH_INTERVALS } from "../../utils/constants";
 
 export default function AutoRefreshControl({
   enabled,
   onToggle,
   interval,
   onIntervalChange,
-  label = 'Auto-refresh',
-  tooltip = 'Automatically refresh the query results at the selected interval. Useful for monitoring live data.',
+  label = "Auto-refresh",
+  tooltip = "Automatically refresh the query results at the selected interval. Useful for monitoring live data.",
   intervalOptions = REFRESH_INTERVALS,
 }) {
   return (
@@ -30,13 +30,15 @@ export default function AutoRefreshControl({
             onChange={(e) => onIntervalChange(Number(e.target.value))}
             className="px-2 pr-10 py-1 bg-sre-surface border border-sre-border rounded text-sm"
           >
-            {intervalOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            {intervalOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
             ))}
           </select>
           <HelpTooltip text="How often to automatically refresh. Shorter intervals provide more real-time data but increase server load." />
         </div>
       )}
     </div>
-  )
+  );
 }

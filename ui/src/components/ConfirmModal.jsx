@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
-import PropTypes from 'prop-types'
-import { Button } from './ui'
+import { useEffect, useRef } from "react";
+import PropTypes from "prop-types";
+import { Button } from "./ui";
 
 export default function ConfirmModal({
   isOpen,
@@ -8,32 +8,32 @@ export default function ConfirmModal({
   message,
   onConfirm,
   onCancel,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
-  variant = 'danger'
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  variant = "danger",
 }) {
-  const modalRef = useRef(null)
+  const modalRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
-      modalRef.current?.focus()
+      modalRef.current?.focus();
     }
-  }, [isOpen])
+  }, [isOpen]);
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && isOpen) {
-        onCancel()
+      if (e.key === "Escape" && isOpen) {
+        onCancel();
       }
-    }
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [isOpen, onCancel])
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onCancel]);
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       onClick={onCancel}
       role="button"
@@ -66,7 +66,7 @@ export default function ConfirmModal({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 ConfirmModal.propTypes = {
@@ -77,5 +77,5 @@ ConfirmModal.propTypes = {
   onCancel: PropTypes.func.isRequired,
   confirmText: PropTypes.string,
   cancelText: PropTypes.string,
-  variant: PropTypes.oneOf(['danger', 'primary', 'success'])
-}
+  variant: PropTypes.oneOf(["danger", "primary", "success"]),
+};

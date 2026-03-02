@@ -1,187 +1,211 @@
-
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
-import { useToast } from '../contexts/ToastContext'
-import * as api from '../api'
-import { Card, Spinner } from '../components/ui'
-import PasswordLoginForm from '../components/auth/PasswordLoginForm'
-import OIDCLoginButton from '../components/auth/OIDCLoginButton'
-import { OIDC_PROVIDER_LABEL } from '../utils/constants'
-import { copyToClipboard as clipboardCopy } from '../utils/helpers'
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
+import * as api from "../api";
+import { Card, Spinner } from "../components/ui";
+import PasswordLoginForm from "../components/auth/PasswordLoginForm";
+import OIDCLoginButton from "../components/auth/OIDCLoginButton";
+import { OIDC_PROVIDER_LABEL } from "../utils/constants";
+import { copyToClipboard as clipboardCopy } from "../utils/helpers";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [mfaRequired, setMfaRequired] = useState(false)
-  const [mfaCode, setMfaCode] = useState('')
-  const [useRecoveryCode, setUseRecoveryCode] = useState(false)
-  const [showMfaSetup, setShowMfaSetup] = useState(false)
-  const [setupStep, setSetupStep] = useState(0)
-  const [setupLoading, setSetupLoading] = useState(false)
-  const [setupSecret, setSetupSecret] = useState('')
-  const [setupQrUrl, setSetupQrUrl] = useState('')
-  const [setupCode, setSetupCode] = useState('')
-  const [verifiedSetupCode, setVerifiedSetupCode] = useState('')
-  const [setupRecoveryCodes, setSetupRecoveryCodes] = useState([])
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [oidcLoading, setOidcLoading] = useState(false)
-  const { login, startOIDCLogin, authMode, authModeLoading, isAuthenticated, loading: authLoading } = useAuth()
-  const navigate = useNavigate()
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [showMfaSetup, setShowMfaSetup] = useState(false);
+  const [setupStep, setSetupStep] = useState(0);
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupSecret, setSetupSecret] = useState("");
+  const [setupQrUrl, setSetupQrUrl] = useState("");
+  const [setupCode, setSetupCode] = useState("");
+  const [verifiedSetupCode, setVerifiedSetupCode] = useState("");
+  const [setupRecoveryCodes, setSetupRecoveryCodes] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [oidcLoading, setOidcLoading] = useState(false);
+  const {
+    login,
+    startOIDCLogin,
+    authMode,
+    authModeLoading,
+    isAuthenticated,
+    loading: authLoading,
+  } = useAuth();
+  const navigate = useNavigate();
 
   // If user is already authenticated, redirect away from the login page
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate('/', { replace: true })
+      navigate("/", { replace: true });
     }
-  }, [authLoading, isAuthenticated, navigate])
+  }, [authLoading, isAuthenticated, navigate]);
 
-  const hasOIDC = Boolean(authMode?.oidc_enabled)
-  const hasPassword = Boolean(authMode?.password_enabled)
-  const showDivider = hasOIDC && hasPassword
+  const hasOIDC = Boolean(authMode?.oidc_enabled);
+  const hasPassword = Boolean(authMode?.password_enabled);
+  const showDivider = hasOIDC && hasPassword;
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
+    e.preventDefault();
+    setError("");
 
     if (!hasPassword) {
-      setError('Password login is disabled. Use Single Sign-On.')
-      return
+      setError("Password login is disabled. Use Single Sign-On.");
+      return;
     }
 
     if (!username.trim()) {
-      setError('Username is required')
-      return
+      setError("Username is required");
+      return;
     }
     if (!password) {
-      setError('Password is required')
-      return
+      setError("Password is required");
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
     try {
-      await login(username.trim(), password)
-      navigate('/')
+      await login(username.trim(), password);
+      navigate("/");
     } catch (err) {
       // Detect MFA challenge
-      if (err?.status === 401 && err?.body?.detail === 'MFA required') {
-        setMfaRequired(true)
-        setUseRecoveryCode(false)
-        setError('')
-        return
+      if (err?.status === 401 && err?.body?.detail === "MFA required") {
+        setMfaRequired(true);
+        setUseRecoveryCode(false);
+        setError("");
+        return;
       }
       // Detect MFA setup required (first-time admin / forced requirement)
-      const challenge = err?.body?.detail && typeof err.body.detail === 'object'
-        ? err.body.detail
-        : (err?.body && typeof err.body === 'object' ? err.body : null)
+      const challenge =
+        err?.body?.detail && typeof err.body.detail === "object"
+          ? err.body.detail
+          : err?.body && typeof err.body === "object"
+            ? err.body
+            : null;
 
       if (err?.status === 401 && challenge?.mfa_setup_required) {
-        const setupToken = challenge.setup_token
+        const setupToken = challenge.setup_token;
         try {
-          api.setSetupToken(setupToken)
+          api.setSetupToken(setupToken);
         } catch (_) {}
-        setSetupStep(0)
-        setSetupSecret('')
-        setSetupQrUrl('')
-        setSetupCode('')
-        setSetupRecoveryCodes([])
-        setShowMfaSetup(true)
-        return
+        setSetupStep(0);
+        setSetupSecret("");
+        setSetupQrUrl("");
+        setSetupCode("");
+        setSetupRecoveryCodes([]);
+        setShowMfaSetup(true);
+        return;
       }
-      setError('Invalid username or password. Please try again.')
+      setError("Invalid username or password. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleVerifyMfa = async (e) => {
-    e.preventDefault()
-    setError('')
+    e.preventDefault();
+    setError("");
     if (!mfaCode) {
-      setError(useRecoveryCode ? 'Enter one of your recovery codes to continue' : 'Enter the authentication code from your authenticator app to continue')
-      return
+      setError(
+        useRecoveryCode
+          ? "Enter one of your recovery codes to continue"
+          : "Enter the authentication code from your authenticator app to continue",
+      );
+      return;
     }
-    setLoading(true)
+    setLoading(true);
     try {
-      await login(username.trim(), password, mfaCode)
-      navigate('/')
+      await login(username.trim(), password, mfaCode);
+      navigate("/");
     } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Invalid authenticator or recovery code, or your session expired.')
+      setError(
+        err?.body?.detail ||
+          err?.message ||
+          "Invalid authenticator or recovery code, or your session expired.",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleOIDCLogin = async () => {
-    setError('')
-    setOidcLoading(true)
+    setError("");
+    setOidcLoading(true);
     try {
-      await startOIDCLogin()
+      await startOIDCLogin();
     } catch (err) {
-      setError(err?.message || 'Unable to start Single Sign-On')
-      setOidcLoading(false)
+      setError(err?.message || "Unable to start Single Sign-On");
+      setOidcLoading(false);
     }
-  }
+  };
 
   const startMfaSetup = async () => {
-    setError('')
-    setSetupLoading(true)
+    setError("");
+    setSetupLoading(true);
     try {
-      const payload = await api.enrollMFA()
-      setSetupSecret(payload.secret)
-      setSetupQrUrl(payload.otpauth_url)
-      setSetupStep(1)
+      const payload = await api.enrollMFA();
+      setSetupSecret(payload.secret);
+      setSetupQrUrl(payload.otpauth_url);
+      setSetupStep(1);
     } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Failed to start MFA setup')
+      setError(
+        err?.body?.detail || err?.message || "Failed to start MFA setup",
+      );
     } finally {
-      setSetupLoading(false)
+      setSetupLoading(false);
     }
-  }
+  };
 
-  const toast = useToast()
-
-
+  const toast = useToast();
 
   const verifyMfaSetup = async (e) => {
-    e.preventDefault()
-    setError('')
+    e.preventDefault();
+    setError("");
     if (!setupCode) {
-      setError('Authentication code is required')
-      return
+      setError("Authentication code is required");
+      return;
     }
 
-    setSetupLoading(true)
+    setSetupLoading(true);
     try {
-      const res = await api.verifyMFA(setupCode)
-      setSetupRecoveryCodes(res?.recovery_codes || [])
-      setVerifiedSetupCode(setupCode)
-      setSetupStep(2)
+      const res = await api.verifyMFA(setupCode);
+      setSetupRecoveryCodes(res?.recovery_codes || []);
+      setVerifiedSetupCode(setupCode);
+      setSetupStep(2);
     } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Failed to verify MFA code')
+      setError(
+        err?.body?.detail || err?.message || "Failed to verify MFA code",
+      );
     } finally {
-      setSetupLoading(false)
+      setSetupLoading(false);
     }
-  }
+  };
 
   const cancelMfaSetup = () => {
-    api.clearSetupToken()
-    setShowMfaSetup(false)
-    setSetupStep(0)
-    setSetupSecret('')
-    setSetupQrUrl('')
-    setSetupCode('')
-    setVerifiedSetupCode('')
-    setSetupRecoveryCodes([])
-  }
+    api.clearSetupToken();
+    setShowMfaSetup(false);
+    setSetupStep(0);
+    setSetupSecret("");
+    setSetupQrUrl("");
+    setSetupCode("");
+    setVerifiedSetupCode("");
+    setSetupRecoveryCodes([]);
+  };
 
-  const providerLabel = hasOIDC ? OIDC_PROVIDER_LABEL : 'Single Sign-On'
+  const providerLabel = hasOIDC ? OIDC_PROVIDER_LABEL : "Single Sign-On";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-sre-bg p-4">
       <Card className="w-full max-w-md">
         <div className="text-center mb-8">
-          <span className="material-icons text-7xl text-sre-black eye-blink" aria-hidden="true">visibility</span>
+          <span
+            className="material-icons text-7xl text-sre-black eye-blink"
+            aria-hidden="true"
+          >
+            visibility
+          </span>
           <h1 className="text-3xl font-bold text-sre-text mb-2">
             Be Observant
           </h1>
@@ -191,7 +215,10 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-500 text-sm" role="alert">
+          <div
+            className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-500 text-sm"
+            role="alert"
+          >
             <span className="material-icons text-sm">error_outline</span>
             {error}
           </div>
@@ -217,19 +244,29 @@ export default function LoginPage() {
           </div>
         )}
 
-        {!authModeLoading && hasPassword && (
-          showMfaSetup ? (
+        {!authModeLoading &&
+          hasPassword &&
+          (showMfaSetup ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between text-xs text-sre-text-muted">
                 <span>Step {Math.min(setupStep + 1, 3)} of 3</span>
-                <button type="button" className="underline" onClick={cancelMfaSetup}>Cancel</button>
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={cancelMfaSetup}
+                >
+                  Cancel
+                </button>
               </div>
 
               {setupStep === 0 && (
                 <div className="space-y-4 animate-fade-in">
-                  <h2 className="text-lg font-semibold text-sre-text">Set up two-factor authentication</h2>
+                  <h2 className="text-lg font-semibold text-sre-text">
+                    Set up two-factor authentication
+                  </h2>
                   <p className="text-sm text-sre-text-muted">
-                    Your account requires MFA before you can continue. Click below to generate your authenticator setup.
+                    Your account requires MFA before you can continue. Click
+                    below to generate your authenticator setup.
                   </p>
                   <button
                     type="button"
@@ -237,14 +274,19 @@ export default function LoginPage() {
                     onClick={startMfaSetup}
                     disabled={setupLoading}
                   >
-                    {setupLoading ? 'Preparing setup...' : 'Start MFA setup'}
+                    {setupLoading ? "Preparing setup..." : "Start MFA setup"}
                   </button>
                 </div>
               )}
 
               {setupStep === 1 && (
-                <form onSubmit={verifyMfaSetup} className="space-y-4 animate-fade-in">
-                  <h2 className="text-lg font-semibold text-sre-text">Verify your authenticator code</h2>
+                <form
+                  onSubmit={verifyMfaSetup}
+                  className="space-y-4 animate-fade-in"
+                >
+                  <h2 className="text-lg font-semibold text-sre-text">
+                    Verify your authenticator code
+                  </h2>
                   {setupQrUrl && (
                     <div className="flex justify-center">
                       <img
@@ -255,7 +297,9 @@ export default function LoginPage() {
                   )}
                   {setupSecret && (
                     <div>
-                      <label className="block text-xs text-sre-text-muted mb-1">Manual secret</label>
+                      <label className="block text-xs text-sre-text-muted mb-1">
+                        Manual secret
+                      </label>
                       <input
                         type="text"
                         value={setupSecret}
@@ -265,7 +309,12 @@ export default function LoginPage() {
                     </div>
                   )}
                   <div>
-                    <label htmlFor="setupMfa" className="block text-sm font-medium text-sre-text mb-1">Authentication code</label>
+                    <label
+                      htmlFor="setupMfa"
+                      className="block text-sm font-medium text-sre-text mb-1"
+                    >
+                      Authentication code
+                    </label>
                     <input
                       id="setupMfa"
                       type="text"
@@ -277,23 +326,39 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="text-sm text-sre-text-muted">After verification you'll be shown recovery codes — make sure to copy or download them. You will need these if you lose access to your authenticator.</div>
+                  <div className="text-sm text-sre-text-muted">
+                    After verification you'll be shown recovery codes — make
+                    sure to copy or download them. You will need these if you
+                    lose access to your authenticator.
+                  </div>
 
-                  <button type="submit" className="w-full px-4 py-2 bg-sre-primary text-white rounded" disabled={setupLoading}>
-                    {setupLoading ? 'Verifying...' : 'Verify'}
+                  <button
+                    type="submit"
+                    className="w-full px-4 py-2 bg-sre-primary text-white rounded"
+                    disabled={setupLoading}
+                  >
+                    {setupLoading ? "Verifying..." : "Verify"}
                   </button>
                 </form>
               )}
 
               {setupStep === 2 && (
                 <div className="space-y-4 animate-fade-in">
-                  <h2 className="text-lg font-semibold text-sre-text">Recovery codes — save these now</h2>
-                  <p className="text-sm text-sre-text-muted">These recovery codes are shown only once. Copy or download them and store them securely.</p>
+                  <h2 className="text-lg font-semibold text-sre-text">
+                    Recovery codes — save these now
+                  </h2>
+                  <p className="text-sm text-sre-text-muted">
+                    These recovery codes are shown only once. Copy or download
+                    them and store them securely.
+                  </p>
 
                   <div className="p-3 bg-sre-bg border border-sre-border rounded">
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       {setupRecoveryCodes.map((code) => (
-                        <div key={code} className="p-2 bg-sre-surface border border-sre-border rounded font-mono text-xs text-sre-text text-center">
+                        <div
+                          key={code}
+                          className="p-2 bg-sre-surface border border-sre-border rounded font-mono text-xs text-sre-text text-center"
+                        >
                           {code}
                         </div>
                       ))}
@@ -305,10 +370,10 @@ export default function LoginPage() {
                       type="button"
                       className="px-3 py-2 bg-sre-surface border rounded"
                       onClick={async () => {
-                        const txt = setupRecoveryCodes.join('\n')
-                        const ok = await clipboardCopy(txt)
-                        if (ok) toast.success('Recovery codes copied')
-                        else toast.error('Unable to copy')
+                        const txt = setupRecoveryCodes.join("\n");
+                        const ok = await clipboardCopy(txt);
+                        if (ok) toast.success("Recovery codes copied");
+                        else toast.error("Unable to copy");
                       }}
                     >
                       Copy codes
@@ -319,10 +384,15 @@ export default function LoginPage() {
                       className="px-3 py-2 bg-sre-surface border rounded"
                       onClick={() => {
                         (async () => {
-                          const { downloadFile } = await import('../utils/helpers')
-                          downloadFile(setupRecoveryCodes.join('\n'), 'beobservant-recovery-codes.txt', 'text/plain')
-                          toast.success('Recovery codes downloaded')
-                        })()
+                          const { downloadFile } =
+                            await import("../utils/helpers");
+                          downloadFile(
+                            setupRecoveryCodes.join("\n"),
+                            "beobservant-recovery-codes.txt",
+                            "text/plain",
+                          );
+                          toast.success("Recovery codes downloaded");
+                        })();
                       }}
                     >
                       Download
@@ -333,23 +403,33 @@ export default function LoginPage() {
                     <button
                       type="button"
                       className="px-4 py-2 bg-sre-primary text-white rounded"
-                      disabled={!verifiedSetupCode || setupRecoveryCodes.length === 0 || setupLoading}
+                      disabled={
+                        !verifiedSetupCode ||
+                        setupRecoveryCodes.length === 0 ||
+                        setupLoading
+                      }
                       onClick={async () => {
-                        setSetupLoading(true)
-                        setError('')
+                        setSetupLoading(true);
+                        setError("");
                         try {
-                          await login(username.trim(), password, verifiedSetupCode)
-                          api.clearSetupToken()
-                          setShowMfaSetup(false)
-                          setSetupStep(0)
-                          setSetupCode('')
-                          setVerifiedSetupCode('')
-                          setSetupRecoveryCodes([])
-                          navigate('/')
+                          await login(
+                            username.trim(),
+                            password,
+                            verifiedSetupCode,
+                          );
+                          api.clearSetupToken();
+                          setShowMfaSetup(false);
+                          setSetupStep(0);
+                          setSetupCode("");
+                          setVerifiedSetupCode("");
+                          setSetupRecoveryCodes([]);
+                          navigate("/");
                         } catch (err) {
-                          setError(err?.body?.detail || err?.message || 'Login failed')
+                          setError(
+                            err?.body?.detail || err?.message || "Login failed",
+                          );
                         } finally {
-                          setSetupLoading(false)
+                          setSetupLoading(false);
                         }
                       }}
                     >
@@ -358,54 +438,70 @@ export default function LoginPage() {
                           <Spinner size="sm" />
                           Logging in...
                         </span>
-                      ) : 'Login'}
+                      ) : (
+                        "Login"
+                      )}
                     </button>
                   </div>
-
                 </div>
               )}
             </div>
           ) : mfaRequired ? (
             <form onSubmit={handleVerifyMfa} className="space-y-4">
               <div>
-                <label htmlFor="mfa" className="block text-sm font-medium text-sre-text mb-1">
-                  {useRecoveryCode ? 'Recovery code' : 'Authentication code'}
+                <label
+                  htmlFor="mfa"
+                  className="block text-sm font-medium text-sre-text mb-1"
+                >
+                  {useRecoveryCode ? "Recovery code" : "Authentication code"}
                 </label>
                 <input
                   id="mfa"
                   type="text"
                   value={mfaCode}
                   onChange={(e) => setMfaCode(e.target.value)}
-                  placeholder={useRecoveryCode ? 'Enter recovery code' : 'Enter 6-digit code'}
+                  placeholder={
+                    useRecoveryCode
+                      ? "Enter recovery code"
+                      : "Enter 6-digit code"
+                  }
                   className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
                   autoFocus
                 />
                 <p className="text-xs text-sre-text-muted mt-2">
                   {useRecoveryCode
-                    ? 'Recovery codes are single-use. Enter one exactly as saved.'
-                    : 'Use the code from your authenticator app, or switch to a recovery code if unavailable.'}
+                    ? "Recovery codes are single-use. Enter one exactly as saved."
+                    : "Use the code from your authenticator app, or switch to a recovery code if unavailable."}
                 </p>
               </div>
               <button
                 type="button"
                 className="text-xs text-sre-primary underline"
                 onClick={() => {
-                  setUseRecoveryCode((prev) => !prev)
-                  setMfaCode('')
-                  setError('')
+                  setUseRecoveryCode((prev) => !prev);
+                  setMfaCode("");
+                  setError("");
                 }}
               >
-                {useRecoveryCode ? 'Use authenticator code instead' : 'Use recovery code instead'}
+                {useRecoveryCode
+                  ? "Use authenticator code instead"
+                  : "Use recovery code instead"}
               </button>
               <div className="flex gap-2 justify-end">
-                <button type="submit" className="px-4 py-2 bg-sre-primary text-white rounded" disabled={loading}>{loading ? 'Verifying...' : 'Verify'}</button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sre-primary text-white rounded"
+                  disabled={loading}
+                >
+                  {loading ? "Verifying..." : "Verify"}
+                </button>
                 <button
                   type="button"
                   className="px-4 py-2 bg-sre-surface border rounded"
                   onClick={() => {
-                    setMfaRequired(false)
-                    setUseRecoveryCode(false)
-                    setMfaCode('')
+                    setMfaRequired(false);
+                    setUseRecoveryCode(false);
+                    setMfaCode("");
                   }}
                 >
                   Back
@@ -422,8 +518,7 @@ export default function LoginPage() {
               loading={loading}
               disabled={oidcLoading}
             />
-          )
-        )}
+          ))}
 
         {!authModeLoading && !hasOIDC && !hasPassword && (
           <p className="text-sm text-red-500 text-center">
@@ -432,9 +527,10 @@ export default function LoginPage() {
         )}
 
         <p className="text-xs text-sre-text-muted text-center mt-6">
-          Contact your administrator if you need access or have forgotten your credentials.
+          Contact your administrator if you need access or have forgotten your
+          credentials.
         </p>
       </Card>
     </div>
-  )
+  );
 }

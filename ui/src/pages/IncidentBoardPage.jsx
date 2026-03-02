@@ -1,27 +1,49 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 
 export function getUserLabel(userItem) {
-  if (!userItem) return 'Unknown user'
-  const name = userItem.full_name || userItem.username || userItem.id || ''
-  const email = userItem.email ? ` ${userItem.email}` : ''
-  return `${name}${email}`
+  if (!userItem) return "Unknown user";
+  const name = userItem.full_name || userItem.username || userItem.id || "";
+  const email = userItem.email ? ` ${userItem.email}` : "";
+  return `${name}${email}`;
 }
 
-import { updateIncident, getGroups, createIncidentJira,
-  listJiraProjectsByIntegration, listJiraIssueTypes, listIncidentJiraComments, createIncidentJiraComment, syncIncidentJiraComments,
-  listJiraIntegrations, getAlertsByFilter,
-} from '../api'
-import { Card, Button, Select, Badge, Spinner, Modal, Input, Alert } from '../components/ui'
-import { useToast } from '../contexts/ToastContext'
-import { useAuth } from '../contexts/AuthContext'
-import HelpTooltip from '../components/HelpTooltip'
-import { useIncidentsData, useLocalStorage } from '../hooks'
+import {
+  updateIncident,
+  getGroups,
+  createIncidentJira,
+  listJiraProjectsByIntegration,
+  listJiraIssueTypes,
+  listIncidentJiraComments,
+  createIncidentJiraComment,
+  syncIncidentJiraComments,
+  listJiraIntegrations,
+  getAlertsByFilter,
+} from "../api";
+import {
+  Card,
+  Button,
+  Select,
+  Badge,
+  Spinner,
+  Modal,
+  Input,
+  Alert,
+} from "../components/ui";
+import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
+import HelpTooltip from "../components/HelpTooltip";
+import { useIncidentsData, useLocalStorage } from "../hooks";
 
 export function clearDroppedState(prev, droppedId) {
-  if (typeof droppedId === 'undefined' || droppedId === null || droppedId === '') return prev
-  const next = { ...prev }
-  delete next[droppedId]
-  return next
+  if (
+    typeof droppedId === "undefined" ||
+    droppedId === null ||
+    droppedId === ""
+  )
+    return prev;
+  const next = { ...prev };
+  delete next[droppedId];
+  return next;
 }
 
 const IncidentCard = memo(function IncidentCard({
@@ -33,62 +55,93 @@ const IncidentCard = memo(function IncidentCard({
   onUnhide,
   droppingState,
 }) {
-  const assigneeUser = incident.assignee ? userById[incident.assignee] : null
-  const assigneeLabel = assigneeUser ? getUserLabel(assigneeUser) : (incident.assignee || 'Unassigned')
+  const assigneeUser = incident.assignee ? userById[incident.assignee] : null;
+  const assigneeLabel = assigneeUser
+    ? getUserLabel(assigneeUser)
+    : incident.assignee || "Unassigned";
 
   return (
     <div
       draggable={!!canUpdateIncidents}
       onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move'
-        e.dataTransfer.setData('text/incident', String(incident.id))
-        e.currentTarget.classList.add('opacity-50', 'scale-95', 'rotate-2')
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/incident", String(incident.id));
+        e.currentTarget.classList.add("opacity-50", "scale-95", "rotate-2");
       }}
-      onDragEnd={(e) => { e.currentTarget.classList.remove('opacity-50', 'scale-95', 'rotate-2') }}
+      onDragEnd={(e) => {
+        e.currentTarget.classList.remove("opacity-50", "scale-95", "rotate-2");
+      }}
       className="group bg-gradient-to-br from-sre-bg to-sre-surface border border-sre-border/50 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-move relative overflow-hidden backdrop-blur-sm"
     >
-      <div className={`h-2 w-full ${
-        incident.severity === 'critical' ? 'bg-gradient-to-r from-red-500 to-red-600' :
-        incident.severity === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
-        'bg-gradient-to-r from-blue-500 to-blue-600'
-      }`} />
+      <div
+        className={`h-2 w-full ${
+          incident.severity === "critical"
+            ? "bg-gradient-to-r from-red-500 to-red-600"
+            : incident.severity === "warning"
+              ? "bg-gradient-to-r from-yellow-500 to-orange-500"
+              : "bg-gradient-to-r from-blue-500 to-blue-600"
+        }`}
+      />
 
       <div className="p-5">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
-              incident.severity === 'critical' ? 'bg-red-500 shadow-red-500/50 shadow-lg' :
-              incident.severity === 'warning' ? 'bg-yellow-500 shadow-yellow-500/50 shadow-lg' :
-              'bg-blue-500 shadow-blue-500/50 shadow-lg'
-            }`} />
-            <h3 className="font-semibold text-sre-text text-base leading-tight flex-1 min-w-0 truncate">{incident.alertName}</h3>
+            <div
+              className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                incident.severity === "critical"
+                  ? "bg-red-500 shadow-red-500/50 shadow-lg"
+                  : incident.severity === "warning"
+                    ? "bg-yellow-500 shadow-yellow-500/50 shadow-lg"
+                    : "bg-blue-500 shadow-blue-500/50 shadow-lg"
+              }`}
+            />
+            <h3 className="font-semibold text-sre-text text-base leading-tight flex-1 min-w-0 truncate">
+              {incident.alertName}
+            </h3>
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <Badge variant={incident.status === 'resolved' ? 'success' : 'warning'} className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm">{incident.status}</Badge>
+            <Badge
+              variant={incident.status === "resolved" ? "success" : "warning"}
+              className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm"
+            >
+              {incident.status}
+            </Badge>
           </div>
         </div>
 
         <div className="space-y-3 mb-4">
           <div className="flex items-center gap-3 text-sm text-sre-text-muted">
             <div className="flex items-center gap-2">
-              <span className="material-icons text-base text-sre-primary/70">schedule</span>
-              <span className="font-medium">{new Date(incident.lastSeenAt).toLocaleString()}</span>
+              <span className="material-icons text-base text-sre-primary/70">
+                schedule
+              </span>
+              <span className="font-medium">
+                {new Date(incident.lastSeenAt).toLocaleString()}
+              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3 text-sm text-sre-text-muted">
             <div className="flex items-center gap-2">
-              <span className="material-icons text-base text-sre-primary/70">person</span>
-              <span className="font-medium truncate min-w-0">{assigneeLabel}</span>
+              <span className="material-icons text-base text-sre-primary/70">
+                person
+              </span>
+              <span className="font-medium truncate min-w-0">
+                {assigneeLabel}
+              </span>
             </div>
           </div>
 
           {incident.jiraTicketKey && (
             <div className="flex items-center gap-3 text-sm text-sre-text-muted">
               <div className="flex items-center gap-2">
-                <span className="material-icons text-base text-sre-primary/70">link</span>
-                <span className="font-medium text-sre-primary hover:text-sre-primary/80 transition-colors truncate">{incident.jiraTicketKey}</span>
+                <span className="material-icons text-base text-sre-primary/70">
+                  link
+                </span>
+                <span className="font-medium text-sre-primary hover:text-sre-primary/80 transition-colors truncate">
+                  {incident.jiraTicketKey}
+                </span>
               </div>
             </div>
           )}
@@ -96,34 +149,76 @@ const IncidentCard = memo(function IncidentCard({
 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant={incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warning' : 'info'} className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm">
-              <span className="material-icons text-sm mr-1">{incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warning' : 'info'}</span>
+            <Badge
+              variant={
+                incident.severity === "critical"
+                  ? "error"
+                  : incident.severity === "warning"
+                    ? "warning"
+                    : "info"
+              }
+              className="text-xs px-3 py-1.5 rounded-full font-medium shadow-sm"
+            >
+              <span className="material-icons text-sm mr-1">
+                {incident.severity === "critical"
+                  ? "error"
+                  : incident.severity === "warning"
+                    ? "warning"
+                    : "info"}
+              </span>
               {incident.severity}
             </Badge>
 
             {incident.hideWhenResolved && (
-              <Badge variant="ghost" className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-sre-border/50 bg-sre-surface/50">
-                <span className="material-icons text-sm mr-1">visibility_off</span>
+              <Badge
+                variant="ghost"
+                className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-sre-border/50 bg-sre-surface/50"
+              >
+                <span className="material-icons text-sm mr-1">
+                  visibility_off
+                </span>
                 Hidden
               </Badge>
             )}
           </div>
 
           <div className="flex items-center gap-1">
-            {incident.status === 'resolved' && incident.hideWhenResolved && (
-              <Button size="sm" variant="ghost" onClick={() => onUnhide(incident.id)} className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50" title="Unhide incident">
+            {incident.status === "resolved" && incident.hideWhenResolved && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onUnhide(incident.id)}
+                className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
+                title="Unhide incident"
+              >
                 <span className="material-icons text-sm">visibility</span>
               </Button>
             )}
 
-            <Button size="sm" variant="ghost" onClick={() => { onOpenModal(incident); onSetModalTab('notes') }} className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50 relative" title="View notes">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                onOpenModal(incident);
+                onSetModalTab("notes");
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50 relative"
+              title="View notes"
+            >
               <span className="material-icons text-sm">notes</span>
               {Array.isArray(incident.notes) && incident.notes.length > 0 && (
-                <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs rounded-full bg-sre-primary text-white">{incident.notes.length}</span>
+                <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs rounded-full bg-sre-primary text-white">
+                  {incident.notes.length}
+                </span>
               )}
             </Button>
 
-            <Button size="sm" variant="ghost" onClick={() => onOpenModal(incident)} className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onOpenModal(incident)}
+              className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
+            >
               <span className="material-icons text-sm">edit</span>
             </Button>
           </div>
@@ -131,7 +226,9 @@ const IncidentCard = memo(function IncidentCard({
       </div>
 
       <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-        <span className="material-icons text-sre-text-muted/70 text-sm">drag_indicator</span>
+        <span className="material-icons text-sre-text-muted/70 text-sm">
+          drag_indicator
+        </span>
       </div>
 
       {droppingState && (
@@ -143,10 +240,25 @@ const IncidentCard = memo(function IncidentCard({
         </div>
       )}
     </div>
-  )
-})
+  );
+});
 
-const Column = memo(function Column({ title, count, colorDot, icon, help, items, empty, canUpdateIncidents, onDropColumn, userById, openIncidentModal, setIncidentModalTab, handleUnhideIncident, dropping }) {
+const Column = memo(function Column({
+  title,
+  count,
+  colorDot,
+  icon,
+  help,
+  items,
+  empty,
+  canUpdateIncidents,
+  onDropColumn,
+  userById,
+  openIncidentModal,
+  setIncidentModalTab,
+  handleUnhideIncident,
+  dropping,
+}) {
   return (
     <div className="flex flex-col">
       <div className="mb-4">
@@ -155,17 +267,28 @@ const Column = memo(function Column({ title, count, colorDot, icon, help, items,
             <div className={`w-3 h-3 ${colorDot} rounded-full`} />
             <h3 className="text-lg font-semibold text-sre-text">{title}</h3>
             <HelpTooltip text={help} />
-            <span className="px-2 py-1 bg-sre-surface text-sre-text-muted text-xs font-medium rounded-full border border-sre-border">{count}</span>
+            <span className="px-2 py-1 bg-sre-surface text-sre-text-muted text-xs font-medium rounded-full border border-sre-border">
+              {count}
+            </span>
           </div>
         </div>
-        <div className={`mt-2 h-1 ${colorDot.replace('bg-', 'bg-gradient-to-r from-') || 'bg-gradient-to-r from-blue-500 to-blue-400'} rounded-full`} />
+        <div
+          className={`mt-2 h-1 ${colorDot.replace("bg-", "bg-gradient-to-r from-") || "bg-gradient-to-r from-blue-500 to-blue-400"} rounded-full`}
+        />
       </div>
       <div
         className={`flex-1 min-h-[500px] p-4 rounded-xl border-2 border-dashed border-sre-border/50 bg-sre-surface/30 transition-all duration-200 ${
-          canUpdateIncidents ? 'hover:border-sre-primary/30 hover:bg-sre-surface/50 cursor-move' : ''
+          canUpdateIncidents
+            ? "hover:border-sre-primary/30 hover:bg-sre-surface/50 cursor-move"
+            : ""
         }`}
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
-        onDrop={(e) => { onDropColumn(icon, e) }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          onDropColumn(icon, e);
+        }}
       >
         <div className="space-y-3">
           {items.length > 0 ? (
@@ -183,231 +306,307 @@ const Column = memo(function Column({ title, count, colorDot, icon, help, items,
             ))
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">{empty.icon}</span>
+              <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">
+                {empty.icon}
+              </span>
               <p className="text-sre-text-muted text-sm">{empty.title}</p>
-              <p className="text-sre-text-muted/70 text-xs mt-1">{empty.subtitle}</p>
+              <p className="text-sre-text-muted/70 text-xs mt-1">
+                {empty.subtitle}
+              </p>
             </div>
           )}
         </div>
       </div>
     </div>
-  )
-})
+  );
+});
 
 export default function IncidentBoardPage() {
-  const { user, hasPermission } = useAuth()
-  const [incidentDrafts, setIncidentDrafts] = useState({})
-  const [expandedNotes, setExpandedNotes] = useState(new Set())
-  const [incidentModalTab, setIncidentModalTab] = useState('details')
-  const [incidentVisibilityTab, setIncidentVisibilityTab] = useLocalStorage('incidents-visibility', 'public')
-  const [selectedGroup, setSelectedGroup] = useLocalStorage('incidents-selected-group', '')
-  const [groups, setGroups] = useState([])
-  const [incidentModal, setIncidentModal] = useState({ isOpen: false, incident: null })
-  const [dropping, setDropping] = useState({})
-  const [assigneeSearch, setAssigneeSearch] = useState('')
-  const [showHiddenResolved, setShowHiddenResolved] = useState(false)
-  const [jiraCreating, setJiraCreating] = useState({})
-  const [jiraProjects, setJiraProjects] = useState([])
-  const [jiraIntegrations, setJiraIntegrations] = useState([])
-  const [jiraIssueTypes, setJiraIssueTypes] = useState([])
-  const [jiraComments, setJiraComments] = useState([])
-  const [jiraCommentsLoading, setJiraCommentsLoading] = useState(false)
-  const { toast } = useToast()
+  const { user, hasPermission } = useAuth();
+  const [incidentDrafts, setIncidentDrafts] = useState({});
+  const [expandedNotes, setExpandedNotes] = useState(new Set());
+  const [incidentModalTab, setIncidentModalTab] = useState("details");
+  const [incidentVisibilityTab, setIncidentVisibilityTab] = useLocalStorage(
+    "incidents-visibility",
+    "public",
+  );
+  const [selectedGroup, setSelectedGroup] = useLocalStorage(
+    "incidents-selected-group",
+    "",
+  );
+  const [groups, setGroups] = useState([]);
+  const [incidentModal, setIncidentModal] = useState({
+    isOpen: false,
+    incident: null,
+  });
+  const [dropping, setDropping] = useState({});
+  const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [showHiddenResolved, setShowHiddenResolved] = useState(false);
+  const [jiraCreating, setJiraCreating] = useState({});
+  const [jiraProjects, setJiraProjects] = useState([]);
+  const [jiraIntegrations, setJiraIntegrations] = useState([]);
+  const [jiraIssueTypes, setJiraIssueTypes] = useState([]);
+  const [jiraComments, setJiraComments] = useState([]);
+  const [jiraCommentsLoading, setJiraCommentsLoading] = useState(false);
+  const { toast } = useToast();
 
-  const canReadUsers = hasPermission('read:users') || hasPermission('manage:users')
-  const canUpdateIncidents = hasPermission('update:incidents')
+  const canReadUsers =
+    hasPermission("read:users") || hasPermission("manage:users");
+  const canUpdateIncidents = hasPermission("update:incidents");
 
-  const { incidents, incidentUsers, loading, error, refresh, setIncidents, setError } = useIncidentsData({
+  const {
+    incidents,
+    incidentUsers,
+    loading,
+    error,
+    refresh,
+    setIncidents,
+    setError,
+  } = useIncidentsData({
     visibilityTab: incidentVisibilityTab,
     selectedGroup,
     showHiddenResolved,
     canReadUsers,
-  })
+  });
 
   const loadGroups = useCallback(async () => {
     try {
-      const groupsData = await getGroups()
-      const allGroups = Array.isArray(groupsData) ? groupsData : []
-      const userGroupIds = new Set([
-        ...((user?.group_ids || user?.groupIds || []).map((id) => String(id))),
-        ...((Array.isArray(user?.groups) ? user.groups : []).map((group) => String(group?.id || ''))),
-      ].filter(Boolean))
+      const groupsData = await getGroups();
+      const allGroups = Array.isArray(groupsData) ? groupsData : [];
+      const userGroupIds = new Set(
+        [
+          ...(user?.group_ids || user?.groupIds || []).map((id) => String(id)),
+          ...(Array.isArray(user?.groups) ? user.groups : []).map((group) =>
+            String(group?.id || ""),
+          ),
+        ].filter(Boolean),
+      );
 
-      const memberGroups = userGroupIds.size > 0
-        ? allGroups.filter((group) => userGroupIds.has(String(group?.id || '')))
-        : allGroups
+      const memberGroups =
+        userGroupIds.size > 0
+          ? allGroups.filter((group) =>
+              userGroupIds.has(String(group?.id || "")),
+            )
+          : allGroups;
 
-      setGroups(memberGroups)
+      setGroups(memberGroups);
 
-      if (selectedGroup && !memberGroups.some((group) => String(group?.id || '') === String(selectedGroup))) {
-        setSelectedGroup('')
+      if (
+        selectedGroup &&
+        !memberGroups.some(
+          (group) => String(group?.id || "") === String(selectedGroup),
+        )
+      ) {
+        setSelectedGroup("");
       }
     } catch (e) {
-      console.error('Failed to load groups:', e)
+      console.error("Failed to load groups:", e);
     }
-  }, [selectedGroup, setSelectedGroup, user?.group_ids, user?.groupIds, user?.groups])
+  }, [
+    selectedGroup,
+    setSelectedGroup,
+    user?.group_ids,
+    user?.groupIds,
+    user?.groups,
+  ]);
 
   useEffect(() => {
-    loadGroups()
-  }, [loadGroups])
+    loadGroups();
+  }, [loadGroups]);
 
   useEffect(() => {
-    loadJiraIntegrations()
-  }, [])
+    loadJiraIntegrations();
+  }, []);
 
   async function loadJiraIntegrations() {
     try {
-      const data = await listJiraIntegrations()
-      const items = Array.isArray(data?.items) ? data.items : []
-      setJiraIntegrations(items)
+      const data = await listJiraIntegrations();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setJiraIntegrations(items);
     } catch {
-      setJiraIntegrations([])
+      setJiraIntegrations([]);
     }
   }
 
   async function loadJiraIssueTypes(projectKey, integrationId) {
     try {
       if (!projectKey) {
-        setJiraIssueTypes([])
-        return
+        setJiraIssueTypes([]);
+        return;
       }
-      const data = await listJiraIssueTypes(projectKey, integrationId)
-      setJiraIssueTypes(Array.isArray(data?.issueTypes) ? data.issueTypes : [])
+      const data = await listJiraIssueTypes(projectKey, integrationId);
+      setJiraIssueTypes(Array.isArray(data?.issueTypes) ? data.issueTypes : []);
     } catch {
-      setJiraIssueTypes([])
+      setJiraIssueTypes([]);
     }
   }
 
   const loadJiraComments = useCallback(async (incidentId) => {
-    if (!incidentId) return
-    setJiraCommentsLoading(true)
+    if (!incidentId) return;
+    setJiraCommentsLoading(true);
     try {
-      const data = await listIncidentJiraComments(incidentId)
-      setJiraComments(Array.isArray(data?.comments) ? data.comments : [])
+      const data = await listIncidentJiraComments(incidentId);
+      setJiraComments(Array.isArray(data?.comments) ? data.comments : []);
     } catch {
-      setJiraComments([])
+      setJiraComments([]);
     } finally {
-      setJiraCommentsLoading(false)
+      setJiraCommentsLoading(false);
     }
-  }, [])
+  }, []);
 
   const incidentsByState = useMemo(() => {
     return {
-      unresolved: incidents.filter((incident) => incident.status !== 'resolved'),
-      unassigned: incidents.filter((incident) => incident.status !== 'resolved' && !incident.assignee),
-      assigned: incidents.filter((incident) => incident.status !== 'resolved' && !!incident.assignee),
-      resolved: incidents.filter((incident) => incident.status === 'resolved'),
-    }
-  }, [incidents])
+      unresolved: incidents.filter(
+        (incident) => incident.status !== "resolved",
+      ),
+      unassigned: incidents.filter(
+        (incident) => incident.status !== "resolved" && !incident.assignee,
+      ),
+      assigned: incidents.filter(
+        (incident) => incident.status !== "resolved" && !!incident.assignee,
+      ),
+      resolved: incidents.filter((incident) => incident.status === "resolved"),
+    };
+  }, [incidents]);
 
   const userById = useMemo(() => {
-    const map = {}
+    const map = {};
     for (const userItem of incidentUsers) {
-      map[userItem.id] = userItem
+      map[userItem.id] = userItem;
     }
-    return map
-  }, [incidentUsers])
+    return map;
+  }, [incidentUsers]);
 
   const assignableIncidentUsers = useMemo(() => {
-    const incident = incidentModal.incident
-    if (!incident) return []
+    const incident = incidentModal.incident;
+    if (!incident) return [];
 
-    const visibility = String(incident.visibility || 'public').toLowerCase()
-    if (visibility === 'private') {
-      return incidentUsers.filter((userItem) => String(userItem?.id || '') === String(user?.id || user?.user_id || ''))
+    const visibility = String(incident.visibility || "public").toLowerCase();
+    if (visibility === "private") {
+      return incidentUsers.filter(
+        (userItem) =>
+          String(userItem?.id || "") ===
+          String(user?.id || user?.user_id || ""),
+      );
     }
 
-    if (visibility === 'group') {
-      const sharedGroupIds = new Set((Array.isArray(incident.sharedGroupIds) ? incident.sharedGroupIds : []).map((id) => String(id)))
-      if (sharedGroupIds.size === 0) return []
+    if (visibility === "group") {
+      const sharedGroupIds = new Set(
+        (Array.isArray(incident.sharedGroupIds)
+          ? incident.sharedGroupIds
+          : []
+        ).map((id) => String(id)),
+      );
+      if (sharedGroupIds.size === 0) return [];
       return incidentUsers.filter((userItem) => {
-        const userGroupIds = new Set([
-          ...((Array.isArray(userItem?.group_ids) ? userItem.group_ids : []).map((id) => String(id))),
-          ...((Array.isArray(userItem?.groupIds) ? userItem.groupIds : []).map((id) => String(id))),
-          ...((Array.isArray(userItem?.groups) ? userItem.groups : []).map((group) => String(group?.id || ''))),
-        ].filter(Boolean))
+        const userGroupIds = new Set(
+          [
+            ...(Array.isArray(userItem?.group_ids)
+              ? userItem.group_ids
+              : []
+            ).map((id) => String(id)),
+            ...(Array.isArray(userItem?.groupIds) ? userItem.groupIds : []).map(
+              (id) => String(id),
+            ),
+            ...(Array.isArray(userItem?.groups) ? userItem.groups : []).map(
+              (group) => String(group?.id || ""),
+            ),
+          ].filter(Boolean),
+        );
         for (const gid of userGroupIds) {
-          if (sharedGroupIds.has(gid)) return true
+          if (sharedGroupIds.has(gid)) return true;
         }
-        return false
-      })
+        return false;
+      });
     }
 
-    return incidentUsers
-  }, [incidentModal.incident, incidentUsers, user])
+    return incidentUsers;
+  }, [incidentModal.incident, incidentUsers, user]);
 
   const filteredIncidentUsers = useMemo(() => {
-    const q = assigneeSearch.trim().toLowerCase()
-    if (!q) return assignableIncidentUsers.slice(0, 20)
-    return assignableIncidentUsers
-      .filter((userItem) => {
-        const haystack = [userItem.full_name, userItem.username, userItem.email, userItem.id]
-        return haystack.some((h) => h?.toLowerCase().includes(q))
-      })
-  }, [assignableIncidentUsers, assigneeSearch])
+    const q = assigneeSearch.trim().toLowerCase();
+    if (!q) return assignableIncidentUsers.slice(0, 20);
+    return assignableIncidentUsers.filter((userItem) => {
+      const haystack = [
+        userItem.full_name,
+        userItem.username,
+        userItem.email,
+        userItem.id,
+      ];
+      return haystack.some((h) => h?.toLowerCase().includes(q));
+    });
+  }, [assignableIncidentUsers, assigneeSearch]);
 
   // Format ISO timestamp to `DD/MM/YYYY, hh:mm:ss am/pm` (consistently used for notes/comments)
   const formatDateTime = (iso) => {
-    if (!iso) return 'unknown time'
+    if (!iso) return "unknown time";
     try {
-      const d = new Date(iso)
-      const pad = (n) => String(n).padStart(2, '0')
-      const day = pad(d.getDate())
-      const month = pad(d.getMonth() + 1)
-      const year = d.getFullYear()
-      let hours = d.getHours()
-      const ampm = hours >= 12 ? 'pm' : 'am'
-      hours = hours % 12 || 12
-      const hh = pad(hours)
-      const mm = pad(d.getMinutes())
-      const ss = pad(d.getSeconds())
-      return `${day}/${month}/${year}, ${hh}:${mm}:${ss} ${ampm}`
+      const d = new Date(iso);
+      const pad = (n) => String(n).padStart(2, "0");
+      const day = pad(d.getDate());
+      const month = pad(d.getMonth() + 1);
+      const year = d.getFullYear();
+      let hours = d.getHours();
+      const ampm = hours >= 12 ? "pm" : "am";
+      hours = hours % 12 || 12;
+      const hh = pad(hours);
+      const mm = pad(d.getMinutes());
+      const ss = pad(d.getSeconds());
+      return `${day}/${month}/${year}, ${hh}:${mm}:${ss} ${ampm}`;
     } catch (e) {
-      return String(iso)
+      return String(iso);
     }
-  }
+  };
 
   const openIncidentModal = (incident) => {
-    const defaultIntegrationId = incident.jiraIntegrationId || jiraIntegrations[0]?.id || ''
+    const defaultIntegrationId =
+      incident.jiraIntegrationId || jiraIntegrations[0]?.id || "";
     const draftDefaults = {
-      assignee: incident.assignee ?? '',
+      assignee: incident.assignee ?? "",
       status: incident.status,
-      note: '',
-      jiraTicketKey: incident.jiraTicketKey ?? '',
-      jiraTicketUrl: incident.jiraTicketUrl ?? '',
+      note: "",
+      jiraTicketKey: incident.jiraTicketKey ?? "",
+      jiraTicketUrl: incident.jiraTicketUrl ?? "",
       jiraIntegrationId: defaultIntegrationId,
       hideWhenResolved: incident.hideWhenResolved ?? false,
       // Jira create form defaults (prefer any existing draft value)
-      projectKey: (incidentDrafts?.[incident.id]?.projectKey) || (jiraProjects[0]?.key || 'SRE'),
-      issueType: (incidentDrafts?.[incident.id]?.issueType) || 'Task',
-      jiraComment: '',
-    }
+      projectKey:
+        incidentDrafts?.[incident.id]?.projectKey ||
+        jiraProjects[0]?.key ||
+        "SRE",
+      issueType: incidentDrafts?.[incident.id]?.issueType || "Task",
+      jiraComment: "",
+    };
 
-    setIncidentModal({ isOpen: true, incident })
-    setAssigneeSearch('')
-    setExpandedNotes(new Set())
-    setIncidentModalTab('details')
-    setIncidentDrafts((prev) => ({ ...prev, [incident.id]: { ...(prev[incident.id] || {}), ...draftDefaults } }))
+    setIncidentModal({ isOpen: true, incident });
+    setAssigneeSearch("");
+    setExpandedNotes(new Set());
+    setIncidentModalTab("details");
+    setIncidentDrafts((prev) => ({
+      ...prev,
+      [incident.id]: { ...(prev[incident.id] || {}), ...draftDefaults },
+    }));
 
     if (defaultIntegrationId) {
       listJiraProjectsByIntegration(defaultIntegrationId)
         .then((data) => {
-          const projects = Array.isArray(data?.projects) ? data.projects : []
-          setJiraProjects(projects)
-          const selectedProject = draftDefaults.projectKey || projects[0]?.key || 'SRE'
-          loadJiraIssueTypes(selectedProject, defaultIntegrationId)
+          const projects = Array.isArray(data?.projects) ? data.projects : [];
+          setJiraProjects(projects);
+          const selectedProject =
+            draftDefaults.projectKey || projects[0]?.key || "SRE";
+          loadJiraIssueTypes(selectedProject, defaultIntegrationId);
         })
         .catch(() => {
-          setJiraProjects([])
-          setJiraIssueTypes([])
-        })
+          setJiraProjects([]);
+          setJiraIssueTypes([]);
+        });
     } else {
-      setJiraProjects([])
-      setJiraIssueTypes([])
+      setJiraProjects([]);
+      setJiraIssueTypes([]);
     }
 
-    loadJiraComments(incident.id)
-  }
+    loadJiraComments(incident.id);
+  };
 
   // Duplicate JSX removed — memoized `IncidentCard`/`Column` are used instead.
 
@@ -415,224 +614,305 @@ export default function IncidentBoardPage() {
     <div className="mt-4 inline-flex bg-sre-bg-alt rounded-lg p-1 border border-sre-border">
       <button
         type="button"
-        onClick={() => setTab('details')}
-        aria-pressed={tab === 'details'}
-        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === 'details' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+        onClick={() => setTab("details")}
+        aria-pressed={tab === "details"}
+        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === "details" ? "bg-sre-primary/10 text-sre-primary" : "text-sre-text-muted hover:text-sre-text"}`}
+      >
         <span className="material-icons text-sm mr-2">info</span>
         Details
       </button>
 
       <button
         type="button"
-        onClick={() => setTab('assignment')}
-        aria-pressed={tab === 'assignment'}
-        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === 'assignment' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+        onClick={() => setTab("assignment")}
+        aria-pressed={tab === "assignment"}
+        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === "assignment" ? "bg-sre-primary/10 text-sre-primary" : "text-sre-text-muted hover:text-sre-text"}`}
+      >
         <span className="material-icons text-sm mr-2">person</span>
         Assignment
       </button>
 
       <button
         type="button"
-        onClick={() => setTab('jira')}
-        aria-pressed={tab === 'jira'}
-        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === 'jira' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+        onClick={() => setTab("jira")}
+        aria-pressed={tab === "jira"}
+        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === "jira" ? "bg-sre-primary/10 text-sre-primary" : "text-sre-text-muted hover:text-sre-text"}`}
+      >
         <span className="material-icons text-sm mr-2">link</span>
         Jira
       </button>
 
       <button
         type="button"
-        onClick={() => setTab('notes')}
-        aria-pressed={tab === 'notes'}
-        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === 'notes' ? 'bg-sre-primary/10 text-sre-primary' : 'text-sre-text-muted hover:text-sre-text'}`}>
+        onClick={() => setTab("notes")}
+        aria-pressed={tab === "notes"}
+        className={`px-4 py-2 text-sm rounded-md transition-all ${tab === "notes" ? "bg-sre-primary/10 text-sre-primary" : "text-sre-text-muted hover:text-sre-text"}`}
+      >
         <span className="material-icons text-sm mr-2">notes</span>
         Notes
       </button>
     </div>
-  )
+  );
 
   const IncidentBehavior = ({ incident, draft, setIncidentDrafts }) => {
-    if (!incident) return null
+    if (!incident) return null;
     return (
       <div className="mt-4">
-        <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Behavior</label>
+        <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+          Behavior
+        </label>
         <div className="p-2 border border-sre-border rounded bg-sre-bg-alt flex items-center justify-between gap-4">
           <div className="text-sm text-sre-text">Hide when resolved</div>
           <div>
             <label className="inline-flex items-center gap-2  p-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={draft.hideWhenResolved ?? incident.hideWhenResolved ?? false}
-                onChange={(e) => setIncidentDrafts((prev) => ({
-                  ...prev,
-                  [incident.id]: { ...(prev[incident.id] || {}), hideWhenResolved: e.target.checked }
-                }))}
+                checked={
+                  draft.hideWhenResolved ?? incident.hideWhenResolved ?? false
+                }
+                onChange={(e) =>
+                  setIncidentDrafts((prev) => ({
+                    ...prev,
+                    [incident.id]: {
+                      ...(prev[incident.id] || {}),
+                      hideWhenResolved: e.target.checked,
+                    },
+                  }))
+                }
                 className="form-checkbox h-4 w-4 text-sre-primary"
               />
             </label>
           </div>
         </div>
       </div>
-    )
-  }
+    );
+  };
 
-  const handleDropOnColumn = useCallback(async (target, e) => {
-    e.preventDefault()
-    let droppedId
-    try {
-      const id = e.dataTransfer.getData('text/incident')
-      if (!id) return
-      droppedId = id
-      setDropping((prev) => ({ ...prev, [droppedId]: true }))
-      const incident = incidents.find((it) => String(it.id) === String(droppedId))
-      if (!incident) {
-        setDropping((prev) => clearDroppedState(prev, droppedId))
-        return
-      }
+  const handleDropOnColumn = useCallback(
+    async (target, e) => {
+      e.preventDefault();
+      let droppedId;
+      try {
+        const id = e.dataTransfer.getData("text/incident");
+        if (!id) return;
+        droppedId = id;
+        setDropping((prev) => ({ ...prev, [droppedId]: true }));
+        const incident = incidents.find(
+          (it) => String(it.id) === String(droppedId),
+        );
+        if (!incident) {
+          setDropping((prev) => clearDroppedState(prev, droppedId));
+          return;
+        }
 
-      const payload = {}
-      if (target === 'unassigned') {
-        payload.assignee = null
-        payload.status = 'open'
-      } else if (target === 'assigned') {
-        payload.status = 'open'
-      } else if (target === 'resolved') {
-        payload.status = 'resolved'
-      }
+        const payload = {};
+        if (target === "unassigned") {
+          payload.assignee = null;
+          payload.status = "open";
+        } else if (target === "assigned") {
+          payload.status = "open";
+        } else if (target === "resolved") {
+          payload.status = "resolved";
+        }
 
-      // Prevent resolving if the underlying alert is still active (client-side check).
-      if (target === 'resolved' && incident && incident.fingerprint) {
+        // Prevent resolving if the underlying alert is still active (client-side check).
+        if (target === "resolved" && incident && incident.fingerprint) {
+          try {
+            const activeAlerts = await getAlertsByFilter(
+              { fingerprint: incident.fingerprint },
+              true,
+            );
+            if (Array.isArray(activeAlerts) && activeAlerts.length > 0) {
+              setDropping((prev) => clearDroppedState(prev, droppedId));
+              try {
+                toast.error("Cannot resolve: underlying alert is still active");
+              } catch (_) {}
+              return;
+            }
+          } catch (err) {
+            // If the check fails, fall back to server-side enforcement (do not block UX)
+            console.warn(
+              "Alert active-check failed, will rely on server-side enforcement",
+              err,
+            );
+          }
+        }
+
+        await updateIncident(id, payload);
+        setDropping((prev) => clearDroppedState(prev, droppedId));
+        await refresh();
+      } catch (err) {
+        setError(
+          err?.body?.detail || err?.message || "Unable to update incident",
+        );
         try {
-          const activeAlerts = await getAlertsByFilter({ fingerprint: incident.fingerprint }, true)
+          toast.error(
+            err?.body?.detail || err?.message || "Unable to update incident",
+          );
+        } catch (_) {}
+      } finally {
+        setDropping((prev) => clearDroppedState(prev, droppedId));
+      }
+    },
+    [incidents, refresh, setError, toast],
+  );
+
+  const handleSaveIncident = useCallback(
+    async (incident) => {
+      const draft = incidentDrafts[incident.id] || {};
+      const payload = {
+        assignee: draft.assignee || null,
+        status: draft.status || incident.status,
+        note: draft.note || null,
+        jiraTicketKey: draft.jiraTicketKey || null,
+        jiraTicketUrl: draft.jiraTicketUrl || null,
+        jiraIntegrationId: draft.jiraIntegrationId || null,
+        hideWhenResolved:
+          typeof draft.hideWhenResolved !== "undefined"
+            ? draft.hideWhenResolved
+            : incident.hideWhenResolved || false,
+      };
+
+      // Client-side pre-check: disallow resolving if underlying alert still active
+      if (payload.status === "resolved" && incident.fingerprint) {
+        try {
+          const activeAlerts = await getAlertsByFilter(
+            { fingerprint: incident.fingerprint },
+            true,
+          );
           if (Array.isArray(activeAlerts) && activeAlerts.length > 0) {
-            setDropping((prev) => clearDroppedState(prev, droppedId))
-            try { toast.error('Cannot resolve: underlying alert is still active') } catch (_) {}
-            return
+            try {
+              toast.error(
+                "Cannot mark resolved: underlying alert is still active",
+              );
+            } catch (_) {}
+            return;
           }
         } catch (err) {
-          // If the check fails, fall back to server-side enforcement (do not block UX)
-          console.warn('Alert active-check failed, will rely on server-side enforcement', err)
+          // fallback to server-side enforcement if the check fails
+          console.warn(
+            "Alert active-check failed during save, will rely on server-side enforcement",
+            err,
+          );
         }
       }
 
-      await updateIncident(id, payload)
-      setDropping((prev) => clearDroppedState(prev, droppedId))
-      await refresh()
-    } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Unable to update incident')
-      try { toast.error(err?.body?.detail || err?.message || 'Unable to update incident') } catch (_) {}
-    } finally {
-      setDropping((prev) => clearDroppedState(prev, droppedId))
-    }
-  }, [incidents, refresh, setError, toast])
-
-  const handleSaveIncident = useCallback(async (incident) => {
-    const draft = incidentDrafts[incident.id] || {}
-    const payload = {
-      assignee: draft.assignee || null,
-      status: draft.status || incident.status,
-      note: draft.note || null,
-      jiraTicketKey: draft.jiraTicketKey || null,
-      jiraTicketUrl: draft.jiraTicketUrl || null,
-      jiraIntegrationId: draft.jiraIntegrationId || null,
-      hideWhenResolved: typeof draft.hideWhenResolved !== 'undefined' ? draft.hideWhenResolved : (incident.hideWhenResolved || false),
-    }
-
-    // Client-side pre-check: disallow resolving if underlying alert still active
-    if (payload.status === 'resolved' && incident.fingerprint) {
       try {
-        const activeAlerts = await getAlertsByFilter({ fingerprint: incident.fingerprint }, true)
-        if (Array.isArray(activeAlerts) && activeAlerts.length > 0) {
-          try { toast.error('Cannot mark resolved: underlying alert is still active') } catch (_) {}
-          return
-        }
+        await updateIncident(incident.id, payload);
+        setIncidentModal({ isOpen: false, incident: null });
+        setAssigneeSearch("");
+        setIncidentDrafts((prev) => {
+          const next = { ...prev };
+          delete next[incident.id];
+          return next;
+        });
+        await refresh();
       } catch (err) {
-        // fallback to server-side enforcement if the check fails
-        console.warn('Alert active-check failed during save, will rely on server-side enforcement', err)
+        setError(
+          err?.body?.detail || err?.message || "Unable to update incident",
+        );
+        try {
+          toast.error(
+            err?.body?.detail || err?.message || "Unable to update incident",
+          );
+        } catch (_) {}
       }
-    }
-
-    try {
-      await updateIncident(incident.id, payload)
-      setIncidentModal({ isOpen: false, incident: null })
-      setAssigneeSearch('')
-      setIncidentDrafts((prev) => {
-        const next = { ...prev }
-        delete next[incident.id]
-        return next
-      })
-      await refresh()
-    } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Unable to update incident')
-      try { toast.error(err?.body?.detail || err?.message || 'Unable to update incident') } catch (_) {}
-    }
-  }, [incidentDrafts, refresh, setError, toast])
+    },
+    [incidentDrafts, refresh, setError, toast],
+  );
 
   useEffect(() => {
-    if (!incidentModal.isOpen) return
+    if (!incidentModal.isOpen) return;
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        const current = incidentModal.incident
-        if (canUpdateIncidents && current) handleSaveIncident(current)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        const current = incidentModal.incident;
+        if (canUpdateIncidents && current) handleSaveIncident(current);
       }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [incidentModal.isOpen, incidentModal.incident, canUpdateIncidents, handleSaveIncident])
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [
+    incidentModal.isOpen,
+    incidentModal.incident,
+    canUpdateIncidents,
+    handleSaveIncident,
+  ]);
 
   // Quickly add a single note (does not close modal). Clears draft and refreshes notes.
-  const handleAddNote = useCallback(async (incidentId) => {
-    const draft = incidentDrafts[incidentId] || {}
-    const text = (draft.note || '').trim()
-    if (!text) return
+  const handleAddNote = useCallback(
+    async (incidentId) => {
+      const draft = incidentDrafts[incidentId] || {};
+      const text = (draft.note || "").trim();
+      if (!text) return;
 
-    try {
-      const updated = await updateIncident(incidentId, { note: text })
+      try {
+        const updated = await updateIncident(incidentId, { note: text });
 
-      // update modal / incidents immediately with the server response
-      setIncidentModal(() => ({ isOpen: true, incident: updated }))
+        // update modal / incidents immediately with the server response
+        setIncidentModal(() => ({ isOpen: true, incident: updated }));
 
-      // clear the draft note
-      setIncidentDrafts((prev) => ({
-        ...prev,
-        [incidentId]: { ...(prev[incidentId] || {}), note: '' }
-      }))
+        // clear the draft note
+        setIncidentDrafts((prev) => ({
+          ...prev,
+          [incidentId]: { ...(prev[incidentId] || {}), note: "" },
+        }));
 
-      // also update incidents list optimistically
-      setIncidents((prev) => prev.map((it) => (String(it.id) === String(updated.id) ? updated : it)))
+        // also update incidents list optimistically
+        setIncidents((prev) =>
+          prev.map((it) =>
+            String(it.id) === String(updated.id) ? updated : it,
+          ),
+        );
 
-      await loadJiraComments(incidentId)
-      try { toast.success('Note added') } catch (_) {}
-    } catch (e) {
-      try { toast.error(e?.body?.detail || e?.message || 'Failed to add note') } catch (_) {}
-    }
-  }, [incidentDrafts, setIncidentDrafts, setIncidents, loadJiraComments, toast])
+        await loadJiraComments(incidentId);
+        try {
+          toast.success("Note added");
+        } catch (_) {}
+      } catch (e) {
+        try {
+          toast.error(e?.body?.detail || e?.message || "Failed to add note");
+        } catch (_) {}
+      }
+    },
+    [incidentDrafts, setIncidentDrafts, setIncidents, loadJiraComments, toast],
+  );
 
-  const handleUnhideIncident = useCallback(async (incidentId) => {
-    try {
-      setDropping((prev) => ({ ...prev, [incidentId]: true }))
-      await updateIncident(incidentId, { hideWhenResolved: false })
-      await refresh()
-      try { toast.success('Incident unhidden') } catch (_) {}
-    } catch (err) {
-      setError(err?.body?.detail || err?.message || 'Unable to unhide incident')
-      try { toast.error(err?.body?.detail || err?.message || 'Unable to unhide incident') } catch (_) {}
-    } finally {
-      setDropping((prev) => {
-        const next = { ...prev }
-        delete next[incidentId]
-        return next
-      })
-    }
-  }, [refresh, setError, toast])
+  const handleUnhideIncident = useCallback(
+    async (incidentId) => {
+      try {
+        setDropping((prev) => ({ ...prev, [incidentId]: true }));
+        await updateIncident(incidentId, { hideWhenResolved: false });
+        await refresh();
+        try {
+          toast.success("Incident unhidden");
+        } catch (_) {}
+      } catch (err) {
+        setError(
+          err?.body?.detail || err?.message || "Unable to unhide incident",
+        );
+        try {
+          toast.error(
+            err?.body?.detail || err?.message || "Unable to unhide incident",
+          );
+        } catch (_) {}
+      } finally {
+        setDropping((prev) => {
+          const next = { ...prev };
+          delete next[incidentId];
+          return next;
+        });
+      }
+    },
+    [refresh, setError, toast],
+  );
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Spinner size="lg" />
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -642,105 +922,131 @@ export default function IncidentBoardPage() {
           {error}
         </Alert>
       </div>
-    )
+    );
   }
 
-  const activeIncident = incidentModal.incident
-  const activeIncidentDraft = activeIncident ? (incidentDrafts[activeIncident.id] || {}) : {}
+  const activeIncident = incidentModal.incident;
+  const activeIncidentDraft = activeIncident
+    ? incidentDrafts[activeIncident.id] || {}
+    : {};
   const stats = {
     totalIncidents: incidents.length,
     unresolved: incidentsByState.unresolved.length,
     unassigned: incidentsByState.unassigned.length,
-  }
+  };
 
   return (
     <div className="min-h-screen via-sre-bg-alt to-sre-bg">
       <div className="">
-          <div className="mb-8">
-            <div className="flex items-center justify-between ">
-              <div className="flex flex-col gap-4">
-                <div>
-              <h1 className="text-3xl font-bold text-sre-text"><span className="material-icons text-3xl text-sre-primary">assignment</span> InOps</h1>
-                <p className="text-sre-text-muted mt-1">Manage and track incident response workflows</p>
-            </div>
+        <div className="mb-8">
+          <div className="flex items-center justify-between ">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h1 className="text-3xl font-bold text-sre-text">
+                  <span className="material-icons text-3xl text-sre-primary">
+                    assignment
+                  </span>{" "}
+                  InOps
+                </h1>
+                <p className="text-sre-text-muted mt-1">
+                  Manage and track incident response workflows
+                </p>
+              </div>
 
-            <div className="mb-5">
-            <div className="flex mt-0 items-center gap-2 p-1 bg-sre-surface rounded-lg border border-sre-border w-fit">
-              <Button
-                variant={incidentVisibilityTab === 'public' ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => {
-                  setIncidentVisibilityTab('public')
-                  setSelectedGroup('')
-                }}
-                className="px-4 py-2"
-              >
-                <span className="material-icons text-sm mr-2">public</span>
-                Public
-              </Button>
-              <Button
-                variant={incidentVisibilityTab === 'private' ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => {
-                  setIncidentVisibilityTab('private')
-                  setSelectedGroup('')
-                }}
-                className="px-4 py-2"
-              >
-                <span className="material-icons text-sm mr-2">lock</span>
-                Private
-              </Button>
-              <Button
-                variant={incidentVisibilityTab === 'group' ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => setIncidentVisibilityTab('group')}
-                className="px-4 py-2"
-              >
-                <span className="material-icons text-sm mr-2">group</span>
-                Group
-              </Button>
-            </div>
-            <div className="mt-2 w-fit">
-              {incidentVisibilityTab === 'group' && (
-                groups.length > 0 ? (
-                  <Select
-              value={selectedGroup}
-              onChange={setSelectedGroup}
-              placeholder="Select group..."
+              <div className="mb-5">
+                <div className="flex mt-0 items-center gap-2 p-1 bg-sre-surface rounded-lg border border-sre-border w-fit">
+                  <Button
+                    variant={
+                      incidentVisibilityTab === "public" ? "primary" : "ghost"
+                    }
+                    size="sm"
+                    onClick={() => {
+                      setIncidentVisibilityTab("public");
+                      setSelectedGroup("");
+                    }}
+                    className="px-4 py-2"
                   >
-              {groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-                  </Select>
-                ) : (
-                  <div className="truncate text-sre-text-muted text-sm px-3 py-2 bg-sre-surface border border-sre-border rounded">
-              No groups available to you ...
-                  </div>
-                )
-              )}
-            </div>
+                    <span className="material-icons text-sm mr-2">public</span>
+                    Public
+                  </Button>
+                  <Button
+                    variant={
+                      incidentVisibilityTab === "private" ? "primary" : "ghost"
+                    }
+                    size="sm"
+                    onClick={() => {
+                      setIncidentVisibilityTab("private");
+                      setSelectedGroup("");
+                    }}
+                    className="px-4 py-2"
+                  >
+                    <span className="material-icons text-sm mr-2">lock</span>
+                    Private
+                  </Button>
+                  <Button
+                    variant={
+                      incidentVisibilityTab === "group" ? "primary" : "ghost"
+                    }
+                    size="sm"
+                    onClick={() => setIncidentVisibilityTab("group")}
+                    className="px-4 py-2"
+                  >
+                    <span className="material-icons text-sm mr-2">group</span>
+                    Group
+                  </Button>
+                </div>
+                <div className="mt-2 w-fit">
+                  {incidentVisibilityTab === "group" &&
+                    (groups.length > 0 ? (
+                      <Select
+                        value={selectedGroup}
+                        onChange={setSelectedGroup}
+                        placeholder="Select group..."
+                      >
+                        {groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <div className="truncate text-sre-text-muted text-sm px-3 py-2 bg-sre-surface border border-sre-border rounded">
+                        No groups available to you ...
+                      </div>
+                    ))}
                 </div>
               </div>
-              <div className="flex items-center gap-6">
-                {/* Stats */}
+            </div>
+            <div className="flex items-center gap-6">
+              {/* Stats */}
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2 px-3 py-2 bg-sre-surface rounded-lg border border-sre-border">
-                  <span className="material-icons text-base text-orange-500">warning</span>
-                  <span className="font-medium text-sre-text">{stats.unresolved}</span>
+                  <span className="material-icons text-base text-orange-500">
+                    warning
+                  </span>
+                  <span className="font-medium text-sre-text">
+                    {stats.unresolved}
+                  </span>
                   <span className="text-sre-text-muted">unresolved</span>
                   <HelpTooltip text="Number of incidents that are still open and require attention." />
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-sre-surface rounded-lg border border-sre-border">
-                  <span className="material-icons text-base text-blue-500">person_off</span>
-                  <span className="font-medium text-sre-text">{stats.unassigned}</span>
+                  <span className="material-icons text-base text-blue-500">
+                    person_off
+                  </span>
+                  <span className="font-medium text-sre-text">
+                    {stats.unassigned}
+                  </span>
                   <span className="text-sre-text-muted">unassigned</span>
                   <HelpTooltip text="Number of open incidents that haven't been assigned to anyone yet." />
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-sre-surface rounded-lg border border-sre-border">
-                  <span className="material-icons text-base text-gray-500">assignment_turned_in</span>
-                  <span className="font-medium text-sre-text">{stats.totalIncidents}</span>
+                  <span className="material-icons text-base text-gray-500">
+                    assignment_turned_in
+                  </span>
+                  <span className="font-medium text-sre-text">
+                    {stats.totalIncidents}
+                  </span>
                   <span className="text-sre-text-muted">total</span>
                   <HelpTooltip text="Total number of incidents currently visible based on your filters." />
                 </div>
@@ -752,10 +1058,12 @@ export default function IncidentBoardPage() {
                     type="checkbox"
                     className="form-checkbox h-4 w-4"
                     checked={showHiddenResolved}
-                    onChange={(e) => { setShowHiddenResolved(e.target.checked) }}
+                    onChange={(e) => {
+                      setShowHiddenResolved(e.target.checked);
+                    }}
                   />
                   <span>Show hidden</span>
-                  </label>
+                </label>
               </div>
             </div>
           </div>
@@ -764,674 +1072,1078 @@ export default function IncidentBoardPage() {
         {/* Board */}
         {incidents.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[600px]">
-              <>
-                <Column
-                  title="Unassigned"
-                  count={incidentsByState.unassigned.length}
-                  colorDot="bg-blue-500"
-                  icon="unassigned"
-                  help="Incidents that haven't been assigned to anyone yet. These need immediate attention."
-                  items={incidentsByState.unassigned}
-                  empty={{ icon: 'person_off', title: 'No unassigned incidents', subtitle: 'Drag incidents here to unassign' }}
-                  canUpdateIncidents={canUpdateIncidents}
-                  onDropColumn={handleDropOnColumn}
-                  userById={userById}
-                  openIncidentModal={openIncidentModal}
-                  setIncidentModalTab={setIncidentModalTab}
-                  handleUnhideIncident={handleUnhideIncident}
-                  dropping={dropping}
-                />
+            <>
+              <Column
+                title="Unassigned"
+                count={incidentsByState.unassigned.length}
+                colorDot="bg-blue-500"
+                icon="unassigned"
+                help="Incidents that haven't been assigned to anyone yet. These need immediate attention."
+                items={incidentsByState.unassigned}
+                empty={{
+                  icon: "person_off",
+                  title: "No unassigned incidents",
+                  subtitle: "Drag incidents here to unassign",
+                }}
+                canUpdateIncidents={canUpdateIncidents}
+                onDropColumn={handleDropOnColumn}
+                userById={userById}
+                openIncidentModal={openIncidentModal}
+                setIncidentModalTab={setIncidentModalTab}
+                handleUnhideIncident={handleUnhideIncident}
+                dropping={dropping}
+              />
 
-                <Column
-                  title="Assigned Active"
-                  count={incidentsByState.assigned.length}
-                  colorDot="bg-green-500"
-                  icon="assigned"
-                  help="Incidents that have been assigned to someone and are currently being worked on."
-                  items={incidentsByState.assigned}
-                  empty={{ icon: 'engineering', title: 'No active incidents', subtitle: 'Assigned incidents in progress' }}
-                  canUpdateIncidents={canUpdateIncidents}
-                  onDropColumn={handleDropOnColumn}
-                  userById={userById}
-                  openIncidentModal={openIncidentModal}
-                  setIncidentModalTab={setIncidentModalTab}
-                  handleUnhideIncident={handleUnhideIncident}
-                  dropping={dropping}
-                />
+              <Column
+                title="Assigned Active"
+                count={incidentsByState.assigned.length}
+                colorDot="bg-green-500"
+                icon="assigned"
+                help="Incidents that have been assigned to someone and are currently being worked on."
+                items={incidentsByState.assigned}
+                empty={{
+                  icon: "engineering",
+                  title: "No active incidents",
+                  subtitle: "Assigned incidents in progress",
+                }}
+                canUpdateIncidents={canUpdateIncidents}
+                onDropColumn={handleDropOnColumn}
+                userById={userById}
+                openIncidentModal={openIncidentModal}
+                setIncidentModalTab={setIncidentModalTab}
+                handleUnhideIncident={handleUnhideIncident}
+                dropping={dropping}
+              />
 
-                <Column
-                  title="Resolved"
-                  count={incidentsByState.resolved.length}
-                  colorDot="bg-purple-500"
-                  icon="resolved"
-                  help="Incidents that have been resolved and closed. These may be hidden by default."
-                  items={incidentsByState.resolved}
-                  empty={{ icon: 'check_circle', title: 'No resolved incidents', subtitle: 'Completed incident responses' }}
-                  canUpdateIncidents={canUpdateIncidents}
-                  onDropColumn={handleDropOnColumn}
-                  userById={userById}
-                  openIncidentModal={openIncidentModal}
-                  setIncidentModalTab={setIncidentModalTab}
-                  handleUnhideIncident={handleUnhideIncident}
-                  dropping={dropping}
-                />
-              </>
+              <Column
+                title="Resolved"
+                count={incidentsByState.resolved.length}
+                colorDot="bg-purple-500"
+                icon="resolved"
+                help="Incidents that have been resolved and closed. These may be hidden by default."
+                items={incidentsByState.resolved}
+                empty={{
+                  icon: "check_circle",
+                  title: "No resolved incidents",
+                  subtitle: "Completed incident responses",
+                }}
+                canUpdateIncidents={canUpdateIncidents}
+                onDropColumn={handleDropOnColumn}
+                userById={userById}
+                openIncidentModal={openIncidentModal}
+                setIncidentModalTab={setIncidentModalTab}
+                handleUnhideIncident={handleUnhideIncident}
+                dropping={dropping}
+              />
+            </>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 px-6">
             <div className="p-6  mb-6">
-              <span className="material-icons text-6xl text-sre-text-muted/50">assignment_turned_in</span>
+              <span className="material-icons text-6xl text-sre-text-muted/50">
+                assignment_turned_in
+              </span>
             </div>
-            <h3 className="text-xl font-semibold text-sre-text mb-2">No incidents found</h3>
+            <h3 className="text-xl font-semibold text-sre-text mb-2">
+              No incidents found
+            </h3>
             <p className="text-sre-text-muted text-center max-w-md">
-              Ensure you have the permissions to view incidents and that your filters are set correctly. Try adjusting the visibility or group filters, or check back later when new incidents are created.
+              Ensure you have the permissions to view incidents and that your
+              filters are set correctly. Try adjusting the visibility or group
+              filters, or check back later when new incidents are created.
             </p>
           </div>
         )}
 
-      {activeIncident && (
-        <Modal
-          isOpen={incidentModal.isOpen}
-          onClose={() => {
-            setIncidentModal({ isOpen: false, incident: null })
-            setAssigneeSearch('')
-          }}
-          title={`Update Incident: ${activeIncident.alertName}`}
-          size="lg"
-          closeOnOverlayClick={false}
-        >
-          <div className="space-y-6">
-            <div className="mb-4">
-              <div className="flex items-center justify-between gap-4 pb-3 border-b border-sre-border/60">
-                <div className="min-w-0">
-                  <h3 className="text-2xl font-bold text-sre-text truncate">{activeIncident.alertName}</h3>
-                  <p className="text-xs text-sre-text-muted mt-1 truncate">{activeIncident.fingerprint ? `Fingerprint: ${activeIncident.fingerprint}` : activeIncident.alertName}</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Badge variant={activeIncident.severity === 'critical' ? 'error' : activeIncident.severity === 'warning' ? 'warning' : 'info'} className="text-xs px-2 py-0.5 rounded-full font-semibold">
-                    <span className="uppercase">{activeIncident.severity}</span>
-                  </Badge>
-
-                  <div className={`px-2 py-0.5 rounded-full border border-sre-border text-xs ${activeIncident.status === 'resolved' ? 'bg-sre-success/5 text-sre-success' : 'bg-sre-warning/5 text-sre-warning'}`}>
-                    {activeIncident.status}
+        {activeIncident && (
+          <Modal
+            isOpen={incidentModal.isOpen}
+            onClose={() => {
+              setIncidentModal({ isOpen: false, incident: null });
+              setAssigneeSearch("");
+            }}
+            title={`Update Incident: ${activeIncident.alertName}`}
+            size="lg"
+            closeOnOverlayClick={false}
+          >
+            <div className="space-y-6">
+              <div className="mb-4">
+                <div className="flex items-center justify-between gap-4 pb-3 border-b border-sre-border/60">
+                  <div className="min-w-0">
+                    <h3 className="text-2xl font-bold text-sre-text truncate">
+                      {activeIncident.alertName}
+                    </h3>
+                    <p className="text-xs text-sre-text-muted mt-1 truncate">
+                      {activeIncident.fingerprint
+                        ? `Fingerprint: ${activeIncident.fingerprint}`
+                        : activeIncident.alertName}
+                    </p>
                   </div>
 
-                  <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-sre-bg-alt border border-sre-border">
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sre-primary/10 to-sre-primary/5 text-sre-primary flex items-center justify-center text-[10px] font-semibold border border-sre-border/40 flex-shrink-0">
-                      {String((userById[activeIncident.assignee]?.username || activeIncident.assignee || 'U') || '')
-                        .split(' ')
-                        .map(s => s[0])
-                        .slice(0,2)
-                        .join('')
-                        .toUpperCase()}
-                    </div>
-                    <div className="text-xs text-sre-text truncate">
-                      {userById[activeIncident.assignee] ? getUserLabel(userById[activeIncident.assignee]) : (activeIncident.assignee || 'Unassigned')}
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-sre-text-muted ml-2 hidden sm:block">{new Date(activeIncident.lastSeenAt).toLocaleString()}</div>
-                </div>
-              </div>
-
-              <IncidentModalTabs tab={incidentModalTab} setTab={setIncidentModalTab} />
-              <IncidentBehavior incident={activeIncident} draft={activeIncidentDraft} setIncidentDrafts={setIncidentDrafts} />
-            </div>
-
-            {incidentModalTab === 'details' && (
-            <Card >
-              <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
-                <span className="material-icons text-base mr-2">info</span>
-                Incident Details
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Status</label>
-                  <div className="inline-flex rounded-lg bg-sre-bg-alt p-1 border border-sre-border">
-                    <button
-                      type="button"
-                      className={`px-3 py-1.5 text-sm rounded-md transition ${((activeIncidentDraft.status ?? activeIncident.status) === 'open') ? 'bg-sre-primary text-white' : 'text-sre-text-muted hover:text-sre-text'}`}
-                      aria-pressed={(activeIncidentDraft.status ?? activeIncident.status) === 'open'}
-                      onClick={() => setIncidentDrafts((prev) => ({ ...prev, [activeIncident.id]: { ...(prev[activeIncident.id] || {}), status: 'open' } }))}
+                  <div className="flex items-center gap-3">
+                    <Badge
+                      variant={
+                        activeIncident.severity === "critical"
+                          ? "error"
+                          : activeIncident.severity === "warning"
+                            ? "warning"
+                            : "info"
+                      }
+                      className="text-xs px-2 py-0.5 rounded-full font-semibold"
                     >
-                      Open
-                    </button>
-                    <button
-                      type="button"
-                      className={`ml-1 px-3 py-1.5 text-sm rounded-md transition ${((activeIncidentDraft.status ?? activeIncident.status) === 'resolved') ? 'bg-sre-success text-white' : 'text-sre-text-muted hover:text-sre-text'}`}
-                      aria-pressed={(activeIncidentDraft.status ?? activeIncident.status) === 'resolved'}
-                      onClick={() => setIncidentDrafts((prev) => ({ ...prev, [activeIncident.id]: { ...(prev[activeIncident.id] || {}), status: 'resolved' } }))}
+                      <span className="uppercase">
+                        {activeIncident.severity}
+                      </span>
+                    </Badge>
+
+                    <div
+                      className={`px-2 py-0.5 rounded-full border border-sre-border text-xs ${activeIncident.status === "resolved" ? "bg-sre-success/5 text-sre-success" : "bg-sre-warning/5 text-sre-warning"}`}
                     >
-                      Resolved
-                    </button>
-                  </div>
-                  <p className="mt-1 text-xs text-sre-text-muted">Quick toggle — resolving runs a safety check.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Visibility</label>
-                  <div className="p-2 border border-sre-border rounded bg-sre-bg-alt">
-                    <div className="text-sm text-sre-text">
-                      {activeIncident.visibility}
-                      {Array.isArray(activeIncident.sharedGroupIds) && activeIncident.sharedGroupIds.length > 0 && (
-                        <span className="text-sre-text-muted ml-2 truncate">({activeIncident.sharedGroupIds.join(', ')})</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Behavior moved under tabs */}
-              </div>
-            </Card>
-            )}
-
-            {incidentModalTab === 'assignment' && (
-            <Card>
-              <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
-                <span className="material-icons text-base mr-2">person</span>
-                Assignment
-              </h4>
-              {canReadUsers ? (
-                <div className="space-y-3">
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      className="flex-1"
-                      value={assigneeSearch}
-                      onChange={(e) => setAssigneeSearch(e.target.value)}
-                      placeholder="Search users by name, username, or email"
-                    />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setIncidentDrafts((prev) => ({
-                        ...prev,
-                        [activeIncident.id]: { ...(prev[activeIncident.id] || {}), assignee: user?.id || '' }
-                      }))}
-                      disabled={!canUpdateIncidents || !user?.id}
-                      title="Assign to me"
-                    >
-                      Assign to me
-                    </Button>
-                  </div>
-                  <div className="max-h-36 overflow-auto border border-sre-border rounded-lg bg-sre-bg-alt">
-                    <button
-                      type="button"
-                      className={`w-full text-left flex items-center gap-2 min-w-0 px-3 py-2 text-sm hover:bg-sre-surface transition-colors ${
-                        !(activeIncidentDraft.assignee ?? activeIncident.assignee) ? 'text-sre-primary bg-sre-surface' : 'text-sre-text'
-                      }`}
-                      onClick={() => setIncidentDrafts((prev) => ({
-                        ...prev,
-                        [activeIncident.id]: { ...(prev[activeIncident.id] || {}), assignee: '' }
-                      }))}
-                    >
-                      <span className="material-icons text-sm flex-shrink-0">person_off</span>
-                      <span className="truncate min-w-0">Unassigned</span>
-                    </button>
-                    {filteredIncidentUsers.map((userItem) => {
-                      const selected = (activeIncidentDraft.assignee ?? activeIncident.assignee) === userItem.id
-                      return (
-                        <button
-                          type="button"
-                          key={userItem.id}
-                          className={`w-full text-left flex items-center gap-2 min-w-0 px-3 py-2 text-sm hover:bg-sre-surface transition-colors ${selected ? 'text-sre-primary bg-sre-surface' : 'text-sre-text'}`}
-                          onClick={() => setIncidentDrafts((prev) => ({
-                            ...prev,
-                            [activeIncident.id]: { ...(prev[activeIncident.id] || {}), assignee: userItem.id }
-                          }))}
-                        >
-                          <span className="material-icons text-sm flex-shrink-0">person</span>
-                          <span className="truncate min-w-0">{getUserLabel(userItem)}</span>
-                        </button>
-                      )
-                    })}
-                    {filteredIncidentUsers.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-sre-text-muted">No users found</div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-sre-text-muted text-left p-3 bg-sre-bg-alt border border-sre-border rounded-lg">
-                  You do not have permission to list users. Assignee changes require read users access.
-                </div>
-              )}
-            </Card>
-            )}
-
-            {incidentModalTab === 'jira' && (
-            <Card>
-              <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
-                <span className="material-icons text-base mr-2">link</span>
-                Jira Integration
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  value={activeIncidentDraft.jiraSummary ?? ''}
-                  onChange={(e) => setIncidentDrafts((prev) => ({
-                    ...prev,
-                    [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraSummary: e.target.value }
-                  }))}
-                  placeholder="Optional: override ticket summary (defaults to incident title)"
-                />
-
-                {activeIncident.jiraTicketKey && (
-                  <div className="flex items-center gap-3 ml-2">
-                    <a href={activeIncident.jiraTicketUrl} target="_blank" rel="noopener noreferrer" className="text-sre-primary font-medium">
-                      {activeIncident.jiraTicketKey}
-                    </a>
-                    <span className="text-xs text-sre-text-muted">Linked ticket</span>
-                  </div>
-                )}
-              </div>
-
-              {jiraIntegrations.length > 0 ? (
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                <div>
-                  <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Jira integration</label>
-                  <Select
-                    value={activeIncidentDraft.jiraIntegrationId ?? (jiraIntegrations[0]?.id || '')}
-                    onChange={async (e) => {
-                      const nextIntegrationId = e.target.value
-                      setIncidentDrafts((prev) => ({
-                        ...prev,
-                        [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraIntegrationId: nextIntegrationId, projectKey: '' }
-                      }))
-                      try {
-                        const projectData = await listJiraProjectsByIntegration(nextIntegrationId)
-                        const projects = Array.isArray(projectData?.projects) ? projectData.projects : []
-                        setJiraProjects(projects)
-                        const firstProject = projects[0]?.key || ''
-                        if (firstProject) {
-                          setIncidentDrafts((prev) => ({
-                            ...prev,
-                            [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraIntegrationId: nextIntegrationId, projectKey: firstProject }
-                          }))
-                          await loadJiraIssueTypes(firstProject, nextIntegrationId)
-                        } else {
-                          setJiraIssueTypes([])
-                        }
-                      } catch {
-                        setJiraProjects([])
-                        setJiraIssueTypes([])
-                      }
-                    }}
-                  >
-                    {jiraIntegrations.map((item) => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Jira project</label>
-                  <Select
-                    value={activeIncidentDraft.projectKey ?? (jiraProjects[0]?.key || '')}
-                    onChange={(e) => {
-                      const nextProject = e.target.value
-                      setIncidentDrafts((prev) => ({
-                        ...prev,
-                        [activeIncident.id]: { ...(prev[activeIncident.id] || {}), projectKey: nextProject }
-                      }))
-                      loadJiraIssueTypes(nextProject, activeIncidentDraft.jiraIntegrationId)
-                    }}
-                  >
-                    {jiraProjects.length > 0 ? jiraProjects.map((project) => (
-                      <option key={project.key} value={project.key}>{project.key} — {project.name}</option>
-                    )) : (
-                      <option value="">No projects</option>
-                    )}
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Issue type</label>
-                  <Select
-                    value={activeIncidentDraft.issueType ?? 'Task'}
-                    onChange={(e) => setIncidentDrafts((prev) => ({
-                      ...prev,
-                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), issueType: e.target.value }
-                    }))}
-                  >
-                    {jiraIssueTypes.length > 0 ? jiraIssueTypes.map((issueType) => (
-                      <option key={issueType} value={issueType}>{issueType}</option>
-                    )) : (
-                      <option value="Task">Task</option>
-                    )}
-                  </Select>
-                </div>
-                <div className="md:col-span-2 flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    disabled={!!jiraCreating[activeIncident.id] || !(activeIncidentDraft.jiraIntegrationId || jiraIntegrations[0]?.id)}
-                    onClick={async () => {
-                      // create Jira ticket using server endpoint
-                      if (!canUpdateIncidents) {
-                        try { toast.error('Missing update:incidents permission') } catch (_) {}
-                        return
-                      }
-                      const draft = incidentDrafts[activeIncident.id] || {}
-                      const integrationId = (draft.jiraIntegrationId || jiraIntegrations[0]?.id || '').trim()
-                      const projectKey = (draft.projectKey || jiraProjects[0]?.key || '').trim()
-                      const issueType = (draft.issueType || 'Task').trim()
-                      const summary = (draft.jiraSummary && draft.jiraSummary.trim()) || activeIncident.alertName
-                      const description = `Incident: ${activeIncident.alertName}\n\nLabels: ${JSON.stringify(activeIncident.labels || {})}\nAnnotations: ${JSON.stringify(activeIncident.annotations || {})}`
-                      if (!integrationId) {
-                        try { toast.error('Choose a Jira integration first') } catch (_) {}
-                        return
-                      }
-                      if (!projectKey) {
-                        try { toast.error('Choose a Jira project first') } catch (_) {}
-                        return
-                      }
-                      try {
-                        setJiraCreating((s) => ({ ...s, [activeIncident.id]: true }))
-                        const updated = await createIncidentJira(activeIncident.id, { integrationId, projectKey, issueType, summary, description })
-                        // update local draft and refresh
-                        setIncidentDrafts((prev) => ({
-                          ...prev,
-                          [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraTicketKey: updated.jiraTicketKey || '', jiraTicketUrl: updated.jiraTicketUrl || '', jiraIntegrationId: integrationId }
-                        }))
-                        try { toast.success(`Jira created: ${updated.jiraTicketKey}`) } catch (_) {}
-                        await loadJiraComments(activeIncident.id)
-                        await refresh()
-                      } catch (err) {
-                        try { toast.error(err?.body?.detail || err?.message || 'Failed to create Jira ticket') } catch (_) {}
-                      } finally {
-                        setJiraCreating((s) => ({ ...s, [activeIncident.id]: false }))
-                      }
-                    }}
-                  >
-                    {jiraCreating[activeIncident.id] ? (
-                      <>
-                        <Spinner size="xs" />
-                        <span className="ml-2">Creating…</span>
-                      </>
-                    ) : (
-                      'Create Jira'
-                    )}
-                  </Button>
-                </div>
-              </div>
-              ) : (
-                <div className="mt-3 text-xs text-sre-text-muted text-left">
-                  <div className="text-left">
-                    No accessible Jira integration found.{' '}
-                    <a href="/integrations" target="_blank" rel="noopener noreferrer" className="text-sre-primary hover:underline">
-                      Create Jira integration
-                    </a>
-                  </div>
-                </div>
-              )}
-            </Card>)}
-
-            {incidentModalTab === 'notes' && (
-            <Card>
-              <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
-                <span className="material-icons text-base mr-2">notes</span>
-                Notes
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">Add note</label>
-                  <textarea
-                    value={activeIncidentDraft.note ?? ''}
-                    onChange={(e) => setIncidentDrafts((prev) => ({
-                      ...prev,
-                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: e.target.value }
-                    }))}
-                    onKeyDown={(e) => {
-                      // Ctrl/Cmd + Enter submits the note immediately
-                      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                        e.preventDefault()
-                        if (canUpdateIncidents) handleAddNote(activeIncident.id)
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
-                    rows={3}
-                    placeholder="Investigation updates, mitigation notes, root cause, handover details..."
-                  />
-
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <div className="text-xs text-sre-text-muted">Press <span className="px-1.5 py-0.5 bg-sre-surface border border-sre-border rounded">Ctrl</span> + <span className="px-1.5 py-0.5 bg-sre-surface border border-sre-border rounded">Enter</span> to add quickly</div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => setIncidentDrafts((prev) => ({
-                        ...prev,
-                        [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: '' }
-                      }))}>
-                        Clear
-                      </Button>
-                      <Button size="sm" onClick={() => handleAddNote(activeIncident.id)} disabled={!canUpdateIncidents || !(activeIncidentDraft.note || '').trim()}>
-                        Add note
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {Array.isArray(activeIncident.notes) && activeIncident.notes.length > 0 && (
-                  <div className="p-3 border border-sre-border rounded-lg bg-sre-bg-alt">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-medium text-sre-text text-left">Recent notes</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="text-xs text-sre-text-muted hover:text-sre-text flex items-center gap-2"
-                          onClick={() => {
-                            // expand/collapse all notes by note key
-                            const notes = activeIncident.notes.slice().reverse().slice(0, 10)
-                            const keys = notes.map(n => n.createdAt ? String(n.createdAt) : `${n.author}-${notes.indexOf(n)}`)
-                            const allExpanded = keys.every(k => expandedNotes.has(k))
-                            const next = new Set(expandedNotes)
-                            if (allExpanded) {
-                              keys.forEach(k => next.delete(k))
-                            } else {
-                              keys.forEach(k => next.add(k))
-                            }
-                            setExpandedNotes(next)
-                          }}
-                        >
-                          <span className="text-xs font-medium">Expand all</span>
-                          <span className="sr-only">Toggle expand notes</span>
-                          <HelpTooltip content="Expand or collapse all note details" />
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs text-sre-text-muted hover:text-sre-text flex items-center gap-2"
-                          onClick={async () => {
-                            try {
-                              const allText = activeIncident.notes.slice().reverse().slice(0, 10).map((n) => {
-                                const userItem = userById[n.author]
-                                const authorLabel = userItem ? getUserLabel(userItem) : (n.author || 'unknown')
-                                return `${authorLabel} (${formatDateTime(n.createdAt)}): ${n.text}`
-                              }).join('\n\n')
-                              await navigator.clipboard.writeText(allText)
-                              toast.success('Copied notes to clipboard')
-                            } catch (e) {
-                              toast.error('Copy failed')
-                            }
-                          }}
-                        >
-                          <span className="text-xs font-medium">Copy all</span>
-                          <span className="sr-only">Copy notes</span>
-                          <HelpTooltip content="Copy all notes to clipboard" />
-                        </button>
-                      </div>
+                      {activeIncident.status}
                     </div>
 
-                    <div className="space-y-3 max-h-44 overflow-auto pr-2">
-                      {activeIncident.notes.slice().reverse().slice(0, 10).map((note, idx) => {
-                        const key = note.createdAt ? String(note.createdAt) : `${note.author}-${idx}`
-                                const noteAuthorUser = userById[note.author]
-                        const noteAuthorLabel = noteAuthorUser ? getUserLabel(noteAuthorUser) : (note.author || 'unknown')
-                        // clean up the text itself: drop trailing suffixes from usernames
-                        // (e.g. "admin-39fd1d43" → "admin") and translate any uuids
-                        // found in the string into real people when we have them cached.
-                        let displayText = note.text || ''
-                        // replace full uuid occurrences with user labels when available
-                        displayText = displayText.replace(/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/g, (id) => {
-                          const u = userById[id]
-                          return u ? getUserLabel(u) : id
-                        })
-                        // remove any trailing dash+hex from a leading word (common system notes)
-                        displayText = displayText.replace(/^([^\s-]+)-[0-9a-f]+/, '$1')
-                        const collapsed = !expandedNotes.has(key)
-                        return (
-                          <div key={`${activeIncident.id}-modal-note-${key}`} className="p-3 bg-sre-bg rounded-lg border border-sre-border flex gap-3 items-start">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sre-primary/20 to-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold border border-sre-border/50 flex-shrink-0">
-                              {String(noteAuthorLabel || '').split(' ').map(s => s[0]).slice(0,1).join('').toUpperCase()}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="text-xs text-sre-text truncate">
-                                  <span className="font-medium text-sre-text">{noteAuthorLabel}</span>
-                                  <span className="text-sre-text-muted ml-2 text-xs">· {formatDateTime(note.createdAt)}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    title="Quote into reply"
-                                    className="text-sre-text-muted hover:text-sre-text"
-                                    onClick={() => setIncidentDrafts((prev) => ({
-                                      ...prev,
-                                      [activeIncident.id]: { ...(prev[activeIncident.id] || {}), note: `${prev[activeIncident.id]?.note || ''}"${displayText}" - ${noteAuthorLabel}\n\n` }
-                                    }))}
-                                  >
-                                    <span className="text-xs">Quote</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title="Copy note"
-                                    className="text-sre-text-muted hover:text-sre-text"
-                                    onClick={async () => {
-                                      try {
-                                        await navigator.clipboard.writeText(displayText)
-                                        toast.success('Note copied')
-                                      } catch (e) {
-                                        toast.error('Copy failed')
-                                      }
-                                    }}
-                                  >
-                                    <span className="text-xs">Copy</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title={collapsed ? 'Show more' : 'Show less'}
-                                    className="text-sre-text-muted hover:text-sre-text"
-                                    onClick={() => {
-                                      const next = new Set(expandedNotes)
-                                      if (next.has(key)) next.delete(key); else next.add(key)
-                                      setExpandedNotes(next)
-                                    }}
-                                  >
-                                    <span className="text-xs">{collapsed ? 'More' : 'Less'}</span>
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className={`mt-2 text-sm text-sre-text-muted ${collapsed ? 'line-clamp-3' : ''}`}>
-                                {displayText}
-                              </div>
-                            </div>
-                          </div>
+                    <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-sre-bg-alt border border-sre-border">
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sre-primary/10 to-sre-primary/5 text-sre-primary flex items-center justify-center text-[10px] font-semibold border border-sre-border/40 flex-shrink-0">
+                        {String(
+                          userById[activeIncident.assignee]?.username ||
+                            activeIncident.assignee ||
+                            "U" ||
+                            "",
                         )
-                      })}
+                          .split(" ")
+                          .map((s) => s[0])
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase()}
+                      </div>
+                      <div className="text-xs text-sre-text truncate">
+                        {userById[activeIncident.assignee]
+                          ? getUserLabel(userById[activeIncident.assignee])
+                          : activeIncident.assignee || "Unassigned"}
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-sre-text-muted ml-2 hidden sm:block">
+                      {new Date(activeIncident.lastSeenAt).toLocaleString()}
                     </div>
                   </div>
-                )}
+                </div>
 
-                {activeIncident.jiraTicketKey && (
-                  <div className="p-3 border border-sre-border rounded-lg bg-sre-bg-alt space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-sre-text text-left">Jira comments</p>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={async () => {
-                          try {
-                            await syncIncidentJiraComments(activeIncident.id)
-                            await refresh()
-                            await loadJiraComments(activeIncident.id)
-                            toast.success('Synced Jira comments to incident notes')
-                          } catch (e) {
-                            toast.error(e?.body?.detail || e?.message || 'Failed to sync Jira comments')
+                <IncidentModalTabs
+                  tab={incidentModalTab}
+                  setTab={setIncidentModalTab}
+                />
+                <IncidentBehavior
+                  incident={activeIncident}
+                  draft={activeIncidentDraft}
+                  setIncidentDrafts={setIncidentDrafts}
+                />
+              </div>
+
+              {incidentModalTab === "details" && (
+                <Card>
+                  <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
+                    <span className="material-icons text-base mr-2">info</span>
+                    Incident Details
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                        Status
+                      </label>
+                      <div className="inline-flex rounded-lg bg-sre-bg-alt p-1 border border-sre-border">
+                        <button
+                          type="button"
+                          className={`px-3 py-1.5 text-sm rounded-md transition ${(activeIncidentDraft.status ?? activeIncident.status) === "open" ? "bg-sre-primary text-white" : "text-sre-text-muted hover:text-sre-text"}`}
+                          aria-pressed={
+                            (activeIncidentDraft.status ??
+                              activeIncident.status) === "open"
                           }
-                        }}
-                      >
-                        Sync
-                      </Button>
-                    </div>
-
-                    {jiraCommentsLoading ? (
-                      <div className="text-xs text-sre-text-muted">Loading Jira comments…</div>
-                    ) : (
-                      <div className="space-y-2 max-h-40 overflow-auto">
-                        {jiraComments.length === 0 ? (
-                          <div className="text-xs text-sre-text-muted">No Jira comments yet.</div>
-                        ) : jiraComments.map((comment) => (
-                          <div key={comment.id || `${comment.author}-${comment.created}`} className="text-xs text-sre-text-muted text-left">
-                            <span className="font-medium text-sre-text">{comment.author}</span> · {comment.created ? formatDateTime(comment.created) : 'unknown time'}<br />
-                            {comment.body}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={activeIncidentDraft.jiraComment ?? ''}
-                        onChange={(e) => setIncidentDrafts((prev) => ({
-                          ...prev,
-                          [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraComment: e.target.value }
-                        }))}
-                        placeholder="Add Jira comment"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          const text = (activeIncidentDraft.jiraComment || '').trim()
-                          if (!text) return
-                          try {
-                            await createIncidentJiraComment(activeIncident.id, { text })
+                          onClick={() =>
                             setIncidentDrafts((prev) => ({
                               ...prev,
-                              [activeIncident.id]: { ...(prev[activeIncident.id] || {}), jiraComment: '' }
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                status: "open",
+                              },
                             }))
-                            await loadJiraComments(activeIncident.id)
-                            toast.success('Comment added to Jira')
-                          } catch (e) {
-                            toast.error(e?.body?.detail || e?.message || 'Failed to add Jira comment')
+                          }
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          className={`ml-1 px-3 py-1.5 text-sm rounded-md transition ${(activeIncidentDraft.status ?? activeIncident.status) === "resolved" ? "bg-sre-success text-white" : "text-sre-text-muted hover:text-sre-text"}`}
+                          aria-pressed={
+                            (activeIncidentDraft.status ??
+                              activeIncident.status) === "resolved"
+                          }
+                          onClick={() =>
+                            setIncidentDrafts((prev) => ({
+                              ...prev,
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                status: "resolved",
+                              },
+                            }))
+                          }
+                        >
+                          Resolved
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-sre-text-muted">
+                        Quick toggle — resolving runs a safety check.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                        Visibility
+                      </label>
+                      <div className="p-2 border border-sre-border rounded bg-sre-bg-alt">
+                        <div className="text-sm text-sre-text">
+                          {activeIncident.visibility}
+                          {Array.isArray(activeIncident.sharedGroupIds) &&
+                            activeIncident.sharedGroupIds.length > 0 && (
+                              <span className="text-sre-text-muted ml-2 truncate">
+                                ({activeIncident.sharedGroupIds.join(", ")})
+                              </span>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Behavior moved under tabs */}
+                  </div>
+                </Card>
+              )}
+
+              {incidentModalTab === "assignment" && (
+                <Card>
+                  <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
+                    <span className="material-icons text-base mr-2">
+                      person
+                    </span>
+                    Assignment
+                  </h4>
+                  {canReadUsers ? (
+                    <div className="space-y-3">
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          className="flex-1"
+                          value={assigneeSearch}
+                          onChange={(e) => setAssigneeSearch(e.target.value)}
+                          placeholder="Search users by name, username, or email"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setIncidentDrafts((prev) => ({
+                              ...prev,
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                assignee: user?.id || "",
+                              },
+                            }))
+                          }
+                          disabled={!canUpdateIncidents || !user?.id}
+                          title="Assign to me"
+                        >
+                          Assign to me
+                        </Button>
+                      </div>
+                      <div className="max-h-36 overflow-auto border border-sre-border rounded-lg bg-sre-bg-alt">
+                        <button
+                          type="button"
+                          className={`w-full text-left flex items-center gap-2 min-w-0 px-3 py-2 text-sm hover:bg-sre-surface transition-colors ${
+                            !(
+                              activeIncidentDraft.assignee ??
+                              activeIncident.assignee
+                            )
+                              ? "text-sre-primary bg-sre-surface"
+                              : "text-sre-text"
+                          }`}
+                          onClick={() =>
+                            setIncidentDrafts((prev) => ({
+                              ...prev,
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                assignee: "",
+                              },
+                            }))
+                          }
+                        >
+                          <span className="material-icons text-sm flex-shrink-0">
+                            person_off
+                          </span>
+                          <span className="truncate min-w-0">Unassigned</span>
+                        </button>
+                        {filteredIncidentUsers.map((userItem) => {
+                          const selected =
+                            (activeIncidentDraft.assignee ??
+                              activeIncident.assignee) === userItem.id;
+                          return (
+                            <button
+                              type="button"
+                              key={userItem.id}
+                              className={`w-full text-left flex items-center gap-2 min-w-0 px-3 py-2 text-sm hover:bg-sre-surface transition-colors ${selected ? "text-sre-primary bg-sre-surface" : "text-sre-text"}`}
+                              onClick={() =>
+                                setIncidentDrafts((prev) => ({
+                                  ...prev,
+                                  [activeIncident.id]: {
+                                    ...(prev[activeIncident.id] || {}),
+                                    assignee: userItem.id,
+                                  },
+                                }))
+                              }
+                            >
+                              <span className="material-icons text-sm flex-shrink-0">
+                                person
+                              </span>
+                              <span className="truncate min-w-0">
+                                {getUserLabel(userItem)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {filteredIncidentUsers.length === 0 && (
+                          <div className="px-3 py-2 text-xs text-sre-text-muted">
+                            No users found
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-sre-text-muted text-left p-3 bg-sre-bg-alt border border-sre-border rounded-lg">
+                      You do not have permission to list users. Assignee changes
+                      require read users access.
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {incidentModalTab === "jira" && (
+                <Card>
+                  <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
+                    <span className="material-icons text-base mr-2">link</span>
+                    Jira Integration
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input
+                      value={activeIncidentDraft.jiraSummary ?? ""}
+                      onChange={(e) =>
+                        setIncidentDrafts((prev) => ({
+                          ...prev,
+                          [activeIncident.id]: {
+                            ...(prev[activeIncident.id] || {}),
+                            jiraSummary: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Optional: override ticket summary (defaults to incident title)"
+                    />
+
+                    {activeIncident.jiraTicketKey && (
+                      <div className="flex items-center gap-3 ml-2">
+                        <a
+                          href={activeIncident.jiraTicketUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sre-primary font-medium"
+                        >
+                          {activeIncident.jiraTicketKey}
+                        </a>
+                        <span className="text-xs text-sre-text-muted">
+                          Linked ticket
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {jiraIntegrations.length > 0 ? (
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                      <div>
+                        <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                          Jira integration
+                        </label>
+                        <Select
+                          value={
+                            activeIncidentDraft.jiraIntegrationId ??
+                            (jiraIntegrations[0]?.id || "")
+                          }
+                          onChange={async (e) => {
+                            const nextIntegrationId = e.target.value;
+                            setIncidentDrafts((prev) => ({
+                              ...prev,
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                jiraIntegrationId: nextIntegrationId,
+                                projectKey: "",
+                              },
+                            }));
+                            try {
+                              const projectData =
+                                await listJiraProjectsByIntegration(
+                                  nextIntegrationId,
+                                );
+                              const projects = Array.isArray(
+                                projectData?.projects,
+                              )
+                                ? projectData.projects
+                                : [];
+                              setJiraProjects(projects);
+                              const firstProject = projects[0]?.key || "";
+                              if (firstProject) {
+                                setIncidentDrafts((prev) => ({
+                                  ...prev,
+                                  [activeIncident.id]: {
+                                    ...(prev[activeIncident.id] || {}),
+                                    jiraIntegrationId: nextIntegrationId,
+                                    projectKey: firstProject,
+                                  },
+                                }));
+                                await loadJiraIssueTypes(
+                                  firstProject,
+                                  nextIntegrationId,
+                                );
+                              } else {
+                                setJiraIssueTypes([]);
+                              }
+                            } catch {
+                              setJiraProjects([]);
+                              setJiraIssueTypes([]);
+                            }
+                          }}
+                        >
+                          {jiraIntegrations.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                          Jira project
+                        </label>
+                        <Select
+                          value={
+                            activeIncidentDraft.projectKey ??
+                            (jiraProjects[0]?.key || "")
+                          }
+                          onChange={(e) => {
+                            const nextProject = e.target.value;
+                            setIncidentDrafts((prev) => ({
+                              ...prev,
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                projectKey: nextProject,
+                              },
+                            }));
+                            loadJiraIssueTypes(
+                              nextProject,
+                              activeIncidentDraft.jiraIntegrationId,
+                            );
+                          }}
+                        >
+                          {jiraProjects.length > 0 ? (
+                            jiraProjects.map((project) => (
+                              <option key={project.key} value={project.key}>
+                                {project.key} — {project.name}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="">No projects</option>
+                          )}
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                          Issue type
+                        </label>
+                        <Select
+                          value={activeIncidentDraft.issueType ?? "Task"}
+                          onChange={(e) =>
+                            setIncidentDrafts((prev) => ({
+                              ...prev,
+                              [activeIncident.id]: {
+                                ...(prev[activeIncident.id] || {}),
+                                issueType: e.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          {jiraIssueTypes.length > 0 ? (
+                            jiraIssueTypes.map((issueType) => (
+                              <option key={issueType} value={issueType}>
+                                {issueType}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="Task">Task</option>
+                          )}
+                        </Select>
+                      </div>
+                      <div className="md:col-span-2 flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled={
+                            !!jiraCreating[activeIncident.id] ||
+                            !(
+                              activeIncidentDraft.jiraIntegrationId ||
+                              jiraIntegrations[0]?.id
+                            )
+                          }
+                          onClick={async () => {
+                            // create Jira ticket using server endpoint
+                            if (!canUpdateIncidents) {
+                              try {
+                                toast.error(
+                                  "Missing update:incidents permission",
+                                );
+                              } catch (_) {}
+                              return;
+                            }
+                            const draft =
+                              incidentDrafts[activeIncident.id] || {};
+                            const integrationId = (
+                              draft.jiraIntegrationId ||
+                              jiraIntegrations[0]?.id ||
+                              ""
+                            ).trim();
+                            const projectKey = (
+                              draft.projectKey ||
+                              jiraProjects[0]?.key ||
+                              ""
+                            ).trim();
+                            const issueType = (
+                              draft.issueType || "Task"
+                            ).trim();
+                            const summary =
+                              (draft.jiraSummary && draft.jiraSummary.trim()) ||
+                              activeIncident.alertName;
+                            const description = `Incident: ${activeIncident.alertName}\n\nLabels: ${JSON.stringify(activeIncident.labels || {})}\nAnnotations: ${JSON.stringify(activeIncident.annotations || {})}`;
+                            if (!integrationId) {
+                              try {
+                                toast.error("Choose a Jira integration first");
+                              } catch (_) {}
+                              return;
+                            }
+                            if (!projectKey) {
+                              try {
+                                toast.error("Choose a Jira project first");
+                              } catch (_) {}
+                              return;
+                            }
+                            try {
+                              setJiraCreating((s) => ({
+                                ...s,
+                                [activeIncident.id]: true,
+                              }));
+                              const updated = await createIncidentJira(
+                                activeIncident.id,
+                                {
+                                  integrationId,
+                                  projectKey,
+                                  issueType,
+                                  summary,
+                                  description,
+                                },
+                              );
+                              // update local draft and refresh
+                              setIncidentDrafts((prev) => ({
+                                ...prev,
+                                [activeIncident.id]: {
+                                  ...(prev[activeIncident.id] || {}),
+                                  jiraTicketKey: updated.jiraTicketKey || "",
+                                  jiraTicketUrl: updated.jiraTicketUrl || "",
+                                  jiraIntegrationId: integrationId,
+                                },
+                              }));
+                              try {
+                                toast.success(
+                                  `Jira created: ${updated.jiraTicketKey}`,
+                                );
+                              } catch (_) {}
+                              await loadJiraComments(activeIncident.id);
+                              await refresh();
+                            } catch (err) {
+                              try {
+                                toast.error(
+                                  err?.body?.detail ||
+                                    err?.message ||
+                                    "Failed to create Jira ticket",
+                                );
+                              } catch (_) {}
+                            } finally {
+                              setJiraCreating((s) => ({
+                                ...s,
+                                [activeIncident.id]: false,
+                              }));
+                            }
+                          }}
+                        >
+                          {jiraCreating[activeIncident.id] ? (
+                            <>
+                              <Spinner size="xs" />
+                              <span className="ml-2">Creating…</span>
+                            </>
+                          ) : (
+                            "Create Jira"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-sre-text-muted text-left">
+                      <div className="text-left">
+                        No accessible Jira integration found.{" "}
+                        <a
+                          href="/integrations"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sre-primary hover:underline"
+                        >
+                          Create Jira integration
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {incidentModalTab === "notes" && (
+                <Card>
+                  <h4 className="text-sm font-semibold text-sre-text text-left mb-3 flex items-center">
+                    <span className="material-icons text-base mr-2">notes</span>
+                    Notes
+                  </h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                        Add note
+                      </label>
+                      <textarea
+                        value={activeIncidentDraft.note ?? ""}
+                        onChange={(e) =>
+                          setIncidentDrafts((prev) => ({
+                            ...prev,
+                            [activeIncident.id]: {
+                              ...(prev[activeIncident.id] || {}),
+                              note: e.target.value,
+                            },
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          // Ctrl/Cmd + Enter submits the note immediately
+                          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                            e.preventDefault();
+                            if (canUpdateIncidents)
+                              handleAddNote(activeIncident.id);
                           }
                         }}
-                      >
-                        Add
-                      </Button>
+                        className="w-full px-3 py-2 bg-sre-bg border border-sre-border rounded text-sre-text"
+                        rows={3}
+                        placeholder="Investigation updates, mitigation notes, root cause, handover details..."
+                      />
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="text-xs text-sre-text-muted">
+                          Press{" "}
+                          <span className="px-1.5 py-0.5 bg-sre-surface border border-sre-border rounded">
+                            Ctrl
+                          </span>{" "}
+                          +{" "}
+                          <span className="px-1.5 py-0.5 bg-sre-surface border border-sre-border rounded">
+                            Enter
+                          </span>{" "}
+                          to add quickly
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              setIncidentDrafts((prev) => ({
+                                ...prev,
+                                [activeIncident.id]: {
+                                  ...(prev[activeIncident.id] || {}),
+                                  note: "",
+                                },
+                              }))
+                            }
+                          >
+                            Clear
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleAddNote(activeIncident.id)}
+                            disabled={
+                              !canUpdateIncidents ||
+                              !(activeIncidentDraft.note || "").trim()
+                            }
+                          >
+                            Add note
+                          </Button>
+                        </div>
+                      </div>
                     </div>
+
+                    {Array.isArray(activeIncident.notes) &&
+                      activeIncident.notes.length > 0 && (
+                        <div className="p-3 border border-sre-border rounded-lg bg-sre-bg-alt">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-medium text-sre-text text-left">
+                              Recent notes
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="text-xs text-sre-text-muted hover:text-sre-text flex items-center gap-2"
+                                onClick={() => {
+                                  // expand/collapse all notes by note key
+                                  const notes = activeIncident.notes
+                                    .slice()
+                                    .reverse()
+                                    .slice(0, 10);
+                                  const keys = notes.map((n) =>
+                                    n.createdAt
+                                      ? String(n.createdAt)
+                                      : `${n.author}-${notes.indexOf(n)}`,
+                                  );
+                                  const allExpanded = keys.every((k) =>
+                                    expandedNotes.has(k),
+                                  );
+                                  const next = new Set(expandedNotes);
+                                  if (allExpanded) {
+                                    keys.forEach((k) => next.delete(k));
+                                  } else {
+                                    keys.forEach((k) => next.add(k));
+                                  }
+                                  setExpandedNotes(next);
+                                }}
+                              >
+                                <span className="text-xs font-medium">
+                                  Expand all
+                                </span>
+                                <span className="sr-only">
+                                  Toggle expand notes
+                                </span>
+                                <HelpTooltip content="Expand or collapse all note details" />
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs text-sre-text-muted hover:text-sre-text flex items-center gap-2"
+                                onClick={async () => {
+                                  try {
+                                    const allText = activeIncident.notes
+                                      .slice()
+                                      .reverse()
+                                      .slice(0, 10)
+                                      .map((n) => {
+                                        const userItem = userById[n.author];
+                                        const authorLabel = userItem
+                                          ? getUserLabel(userItem)
+                                          : n.author || "unknown";
+                                        return `${authorLabel} (${formatDateTime(n.createdAt)}): ${n.text}`;
+                                      })
+                                      .join("\n\n");
+                                    await navigator.clipboard.writeText(
+                                      allText,
+                                    );
+                                    toast.success("Copied notes to clipboard");
+                                  } catch (e) {
+                                    toast.error("Copy failed");
+                                  }
+                                }}
+                              >
+                                <span className="text-xs font-medium">
+                                  Copy all
+                                </span>
+                                <span className="sr-only">Copy notes</span>
+                                <HelpTooltip content="Copy all notes to clipboard" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 max-h-44 overflow-auto pr-2">
+                            {activeIncident.notes
+                              .slice()
+                              .reverse()
+                              .slice(0, 10)
+                              .map((note, idx) => {
+                                const key = note.createdAt
+                                  ? String(note.createdAt)
+                                  : `${note.author}-${idx}`;
+                                const noteAuthorUser = userById[note.author];
+                                const noteAuthorLabel = noteAuthorUser
+                                  ? getUserLabel(noteAuthorUser)
+                                  : note.author || "unknown";
+                                // clean up the text itself: drop trailing suffixes from usernames
+                                // (e.g. "admin-39fd1d43" → "admin") and translate any uuids
+                                // found in the string into real people when we have them cached.
+                                let displayText = note.text || "";
+                                // replace full uuid occurrences with user labels when available
+                                displayText = displayText.replace(
+                                  /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/g,
+                                  (id) => {
+                                    const u = userById[id];
+                                    return u ? getUserLabel(u) : id;
+                                  },
+                                );
+                                // remove any trailing dash+hex from a leading word (common system notes)
+                                displayText = displayText.replace(
+                                  /^([^\s-]+)-[0-9a-f]+/,
+                                  "$1",
+                                );
+                                const collapsed = !expandedNotes.has(key);
+                                return (
+                                  <div
+                                    key={`${activeIncident.id}-modal-note-${key}`}
+                                    className="p-3 bg-sre-bg rounded-lg border border-sre-border flex gap-3 items-start"
+                                  >
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sre-primary/20 to-sre-primary/10 text-sre-primary flex items-center justify-center font-semibold border border-sre-border/50 flex-shrink-0">
+                                      {String(noteAuthorLabel || "")
+                                        .split(" ")
+                                        .map((s) => s[0])
+                                        .slice(0, 1)
+                                        .join("")
+                                        .toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-xs text-sre-text truncate">
+                                          <span className="font-medium text-sre-text">
+                                            {noteAuthorLabel}
+                                          </span>
+                                          <span className="text-sre-text-muted ml-2 text-xs">
+                                            · {formatDateTime(note.createdAt)}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            title="Quote into reply"
+                                            className="text-sre-text-muted hover:text-sre-text"
+                                            onClick={() =>
+                                              setIncidentDrafts((prev) => ({
+                                                ...prev,
+                                                [activeIncident.id]: {
+                                                  ...(prev[activeIncident.id] ||
+                                                    {}),
+                                                  note: `${prev[activeIncident.id]?.note || ""}"${displayText}" - ${noteAuthorLabel}\n\n`,
+                                                },
+                                              }))
+                                            }
+                                          >
+                                            <span className="text-xs">
+                                              Quote
+                                            </span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            title="Copy note"
+                                            className="text-sre-text-muted hover:text-sre-text"
+                                            onClick={async () => {
+                                              try {
+                                                await navigator.clipboard.writeText(
+                                                  displayText,
+                                                );
+                                                toast.success("Note copied");
+                                              } catch (e) {
+                                                toast.error("Copy failed");
+                                              }
+                                            }}
+                                          >
+                                            <span className="text-xs">
+                                              Copy
+                                            </span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            title={
+                                              collapsed
+                                                ? "Show more"
+                                                : "Show less"
+                                            }
+                                            className="text-sre-text-muted hover:text-sre-text"
+                                            onClick={() => {
+                                              const next = new Set(
+                                                expandedNotes,
+                                              );
+                                              if (next.has(key))
+                                                next.delete(key);
+                                              else next.add(key);
+                                              setExpandedNotes(next);
+                                            }}
+                                          >
+                                            <span className="text-xs">
+                                              {collapsed ? "More" : "Less"}
+                                            </span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div
+                                        className={`mt-2 text-sm text-sre-text-muted ${collapsed ? "line-clamp-3" : ""}`}
+                                      >
+                                        {displayText}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+
+                    {activeIncident.jiraTicketKey && (
+                      <div className="p-3 border border-sre-border rounded-lg bg-sre-bg-alt space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-sre-text text-left">
+                            Jira comments
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={async () => {
+                              try {
+                                await syncIncidentJiraComments(
+                                  activeIncident.id,
+                                );
+                                await refresh();
+                                await loadJiraComments(activeIncident.id);
+                                toast.success(
+                                  "Synced Jira comments to incident notes",
+                                );
+                              } catch (e) {
+                                toast.error(
+                                  e?.body?.detail ||
+                                    e?.message ||
+                                    "Failed to sync Jira comments",
+                                );
+                              }
+                            }}
+                          >
+                            Sync
+                          </Button>
+                        </div>
+
+                        {jiraCommentsLoading ? (
+                          <div className="text-xs text-sre-text-muted">
+                            Loading Jira comments…
+                          </div>
+                        ) : (
+                          <div className="space-y-2 max-h-40 overflow-auto">
+                            {jiraComments.length === 0 ? (
+                              <div className="text-xs text-sre-text-muted">
+                                No Jira comments yet.
+                              </div>
+                            ) : (
+                              jiraComments.map((comment) => (
+                                <div
+                                  key={
+                                    comment.id ||
+                                    `${comment.author}-${comment.created}`
+                                  }
+                                  className="text-xs text-sre-text-muted text-left"
+                                >
+                                  <span className="font-medium text-sre-text">
+                                    {comment.author}
+                                  </span>{" "}
+                                  ·{" "}
+                                  {comment.created
+                                    ? formatDateTime(comment.created)
+                                    : "unknown time"}
+                                  <br />
+                                  {comment.body}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={activeIncidentDraft.jiraComment ?? ""}
+                            onChange={(e) =>
+                              setIncidentDrafts((prev) => ({
+                                ...prev,
+                                [activeIncident.id]: {
+                                  ...(prev[activeIncident.id] || {}),
+                                  jiraComment: e.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Add Jira comment"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              const text = (
+                                activeIncidentDraft.jiraComment || ""
+                              ).trim();
+                              if (!text) return;
+                              try {
+                                await createIncidentJiraComment(
+                                  activeIncident.id,
+                                  { text },
+                                );
+                                setIncidentDrafts((prev) => ({
+                                  ...prev,
+                                  [activeIncident.id]: {
+                                    ...(prev[activeIncident.id] || {}),
+                                    jiraComment: "",
+                                  },
+                                }));
+                                await loadJiraComments(activeIncident.id);
+                                toast.success("Comment added to Jira");
+                              } catch (e) {
+                                toast.error(
+                                  e?.body?.detail ||
+                                    e?.message ||
+                                    "Failed to add Jira comment",
+                                );
+                              }
+                            }}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </Card>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setIncidentModal({ isOpen: false, incident: null });
+                    setAssigneeSearch("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleSaveIncident(activeIncident)}
+                  disabled={!canUpdateIncidents}
+                  title={
+                    !canUpdateIncidents
+                      ? "Missing update:incidents permission"
+                      : "Save Changes (Ctrl+S)"
+                  }
+                >
+                  Save changes
+                </Button>
               </div>
-            </Card>)}
-
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setIncidentModal({ isOpen: false, incident: null })
-                  setAssigneeSearch('')
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => handleSaveIncident(activeIncident)}
-                disabled={!canUpdateIncidents}
-                title={!canUpdateIncidents ? 'Missing update:incidents permission' : 'Save Changes (Ctrl+S)'}
-              >
-                Save changes
-              </Button>
             </div>
-          </div>
-        </Modal>
-      )}
-
+          </Modal>
+        )}
       </div>
     </div>
-  )
+  );
 }

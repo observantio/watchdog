@@ -1,28 +1,43 @@
-import PropTypes from 'prop-types'
-import DashboardsTab from './DashboardsTab'
-import DatasourcesTab from './DatasourcesTab'
-import FoldersTab from './FoldersTab'
-import { Spinner } from '../ui'
+import PropTypes from "prop-types";
+import DashboardsTab from "./DashboardsTab";
+import DatasourcesTab from "./DatasourcesTab";
+import FoldersTab from "./FoldersTab";
+import { Spinner } from "../ui";
 
 export default function GrafanaContent({
-  loading, activeTab, dashboards, datasources, folders, groups,
-  query, setQuery, filters, setFilters,
-  onSearch, onClearFilters, hasActiveFilters,
-  openDashboardEditor, onOpenGrafana, onDeleteDashboard,
+  loading,
+  activeTab,
+  dashboards,
+  datasources,
+  folders,
+  groups,
+  query,
+  setQuery,
+  filters,
+  setFilters,
+  onSearch,
+  onClearFilters,
+  hasActiveFilters,
+  openDashboardEditor,
+  onOpenGrafana,
+  onDeleteDashboard,
   onToggleDashboardHidden,
-  openDatasourceEditor, onDeleteDatasource,
+  openDatasourceEditor,
+  onDeleteDatasource,
   onToggleDatasourceHidden,
-  getDatasourceIcon, onCreateFolder, onDeleteFolder
+  getDatasourceIcon,
+  onCreateFolder,
+  onDeleteFolder,
 }) {
   if (loading) {
     return (
       <div className="py-12">
         <Spinner size="lg" />
       </div>
-    )
+    );
   }
 
-  if (activeTab === 'dashboards') {
+  if (activeTab === "dashboards") {
     return (
       <DashboardsTab
         dashboards={dashboards}
@@ -39,10 +54,10 @@ export default function GrafanaContent({
         onDeleteDashboard={onDeleteDashboard}
         onToggleHidden={onToggleDashboardHidden}
       />
-    )
+    );
   }
 
-  if (activeTab === 'datasources') {
+  if (activeTab === "datasources") {
     return (
       <DatasourcesTab
         datasources={datasources}
@@ -57,7 +72,7 @@ export default function GrafanaContent({
         onToggleHidden={onToggleDatasourceHidden}
         getDatasourceIcon={getDatasourceIcon}
       />
-    )
+    );
   }
 
   return (
@@ -66,7 +81,7 @@ export default function GrafanaContent({
       onCreateFolder={onCreateFolder}
       onDeleteFolder={onDeleteFolder}
     />
-  )
+  );
 }
 
 GrafanaContent.propTypes = {
@@ -95,4 +110,4 @@ GrafanaContent.propTypes = {
   getDatasourceIcon: PropTypes.func.isRequired,
   onCreateFolder: PropTypes.func.isRequired,
   onDeleteFolder: PropTypes.func.isRequired,
-}
+};

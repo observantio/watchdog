@@ -1,4 +1,4 @@
-import { SERVICES } from '../../constants/dashboard'
+import { SERVICES } from "../../constants/dashboard";
 
 export function ConnectedServices() {
   return (
@@ -12,7 +12,9 @@ export function ConnectedServices() {
             {service.icon}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sre-text text-left text-lg">{service.name}</div>
+            <div className="font-semibold text-sre-text text-left text-lg">
+              {service.name}
+            </div>
             <div className="text-sm text-sre-text-muted mt-1 text-left">
               {service.description}
             </div>
@@ -20,5 +22,5 @@ export function ConnectedServices() {
         </div>
       ))}
     </div>
-  )
+  );
 }

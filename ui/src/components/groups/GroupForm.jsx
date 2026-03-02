@@ -1,6 +1,6 @@
-import PropTypes from 'prop-types'
-import { Input, Textarea } from '../ui'
-import HelpTooltip from '../HelpTooltip'
+import PropTypes from "prop-types";
+import { Input, Textarea } from "../ui";
+import HelpTooltip from "../HelpTooltip";
 
 export default function GroupForm({ formData, setFormData }) {
   return (
@@ -29,7 +29,9 @@ export default function GroupForm({ formData, setFormData }) {
           <Textarea
             label="Description"
             value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, description: e.target.value })
+            }
             placeholder="Describe the group's purpose and responsibilities"
             rows={2}
           />
@@ -37,10 +39,13 @@ export default function GroupForm({ formData, setFormData }) {
         <HelpTooltip text="An optional description to explain the group's role and responsibilities." />
       </div>
     </div>
-  )
+  );
 }
 
 GroupForm.propTypes = {
-  formData: PropTypes.shape({ name: PropTypes.string, description: PropTypes.string }).isRequired,
+  formData: PropTypes.shape({
+    name: PropTypes.string,
+    description: PropTypes.string,
+  }).isRequired,
   setFormData: PropTypes.func.isRequired,
-}
+};

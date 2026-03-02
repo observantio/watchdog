@@ -1,6 +1,6 @@
-import PropTypes from 'prop-types'
-import { Spinner, Modal } from '../ui'
-import RcaTabs from './RcaTabs'
+import PropTypes from "prop-types";
+import { Spinner, Modal } from "../ui";
+import RcaTabs from "./RcaTabs";
 
 /**
  * Modal wrapper used by the RCA page.  Parent provides all of the state and
@@ -30,7 +30,8 @@ export default function RcaReportModal({
       >
         {loadingPrimaryReport || loadingReport ? (
           <div className="p-6 text-sm flex items-center justify-center">
-            <Spinner className="mr-3" /> Fetching the report... Powered By Be Certain
+            <Spinner className="mr-3" /> Fetching the report... Powered By Be
+            Certain
           </div>
         ) : hasReport ? (
           <>
@@ -46,12 +47,13 @@ export default function RcaReportModal({
           </>
         ) : (
           <p className="text-sm text-sre-text-muted">
-            Select a completed RCA job or look up a report ID to view report details.
+            Select a completed RCA job or look up a report ID to view report
+            details.
           </p>
         )}
       </Modal>
     </div>
-  )
+  );
 }
 
 RcaReportModal.propTypes = {
@@ -64,4 +66,4 @@ RcaReportModal.propTypes = {
   hasReport: PropTypes.bool,
   renderActiveTab: PropTypes.func.isRequired,
   tabs: PropTypes.array.isRequired,
-}
+};

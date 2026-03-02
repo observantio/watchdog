@@ -1,5 +1,5 @@
-import PropTypes from 'prop-types'
-import { Badge, Spinner } from '../ui'
+import PropTypes from "prop-types";
+import { Badge, Spinner } from "../ui";
 
 const AgentStatusBadges = ({ agent }) => (
   <div className="flex flex-wrap items-center justify-end gap-2">
@@ -11,7 +11,7 @@ const AgentStatusBadges = ({ agent }) => (
       {agent.active ? "Active" : "Idle"}
     </Badge>
   </div>
-)
+);
 
 AgentStatusBadges.propTypes = {
   agent: PropTypes.shape({
@@ -19,41 +19,47 @@ AgentStatusBadges.propTypes = {
     active: PropTypes.bool,
     clean: PropTypes.bool,
   }).isRequired,
-}
+};
 
 const formatActivityLabel = (agent) => {
   const parts = [
-    agent.metrics_count > 0 && `Metrics: ${agent.metrics_count}`
-  ].filter(Boolean)
+    agent.metrics_count > 0 && `Metrics: ${agent.metrics_count}`,
+  ].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(' · ') : 'No activity'
-}
+  return parts.length > 0 ? parts.join(" · ") : "No activity";
+};
 
 const AgentCard = ({ agent }) => {
-  const hostLabel = agent.host_names?.length > 0
-    ? agent.host_names.join(', ')
-    : null
-  const activityLabel = formatActivityLabel(agent)
+  const hostLabel =
+    agent.host_names?.length > 0 ? agent.host_names.join(", ") : null;
+  const activityLabel = formatActivityLabel(agent);
 
-  const displayName = agent?.name && agent.name.length > 5
-    ? agent.name.slice(0, 5) + '...'
-    : agent?.name
+  const displayName =
+    agent?.name && agent.name.length > 5
+      ? agent.name.slice(0, 5) + "..."
+      : agent?.name;
 
   return (
     <div className="rounded-lg border border-sre-border bg-sre-bg-alt px-4 py-3">
       <div className="flex items-center gap-4">
         <div className="flex-1">
-          <div className="font-semibold text-sre-text text-left">{displayName}</div>
-          <div className="text-xs text-sre-text-muted text-left">{activityLabel}</div>
+          <div className="font-semibold text-sre-text text-left">
+            {displayName}
+          </div>
+          <div className="text-xs text-sre-text-muted text-left">
+            {activityLabel}
+          </div>
           {hostLabel && (
-            <div className="text-xs text-sre-text-muted text-left">Host: {hostLabel}</div>
+            <div className="text-xs text-sre-text-muted text-left">
+              Host: {hostLabel}
+            </div>
           )}
         </div>
         <AgentStatusBadges agent={agent} />
       </div>
     </div>
-  )
-}
+  );
+};
 
 AgentCard.propTypes = {
   agent: PropTypes.shape({
@@ -64,7 +70,7 @@ AgentCard.propTypes = {
     active: PropTypes.bool,
     clean: PropTypes.bool,
   }).isRequired,
-}
+};
 
 const AgentActivityContent = ({ loading, agents }) => {
   if (loading) {
@@ -72,7 +78,7 @@ const AgentActivityContent = ({ loading, agents }) => {
       <div className="flex items-center gap-2 text-sre-text-muted text-left">
         <Spinner size="sm" /> Loading activity
       </div>
-    )
+    );
   }
 
   if (agents.length === 0) {
@@ -80,7 +86,7 @@ const AgentActivityContent = ({ loading, agents }) => {
       <div className="text-sm text-sre-text-muted text-left">
         No agent activity detected.
       </div>
-    )
+    );
   }
 
   return (
@@ -89,16 +95,14 @@ const AgentActivityContent = ({ loading, agents }) => {
         <AgentCard key={agent.name} agent={agent} />
       ))}
     </div>
-  )
-}
+  );
+};
 
 AgentActivityContent.propTypes = {
   loading: PropTypes.bool.isRequired,
   agents: PropTypes.array.isRequired,
-}
+};
 
 export function AgentActivitySection({ loading, agents }) {
-  return (
-    <AgentActivityContent loading={loading} agents={agents} />
-  )
+  return <AgentActivityContent loading={loading} agents={agents} />;
 }
