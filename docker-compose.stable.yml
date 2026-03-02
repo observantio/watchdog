@@ -1,0 +1,274 @@
+networks:
+  obs:
+    driver: bridge
+
+volumes:
+  grafana:
+  alertmanager:
+  postgres_data:
+  redis_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [obs]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beobservant"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks: [obs]
+    restart: unless-stopped
+
+  beobservant:
+    image: ${BEOBSERVANT_IMAGE:-ghcr.io/observantio/beobservant:stable}
+    env_file:
+      - .env
+    ports:
+      - "4319:4319"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      benotified:
+        condition: service_started
+      becertain:
+        condition: service_started
+    environment:
+      RATE_LIMIT_BACKEND: redis
+      RATE_LIMIT_REDIS_URL: redis://redis:6379/0
+    networks: [obs]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4319/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  benotified:
+    image: ${BENOTIFIED_IMAGE:-ghcr.io/observantio/benotified:stable}
+    env_file:
+      - .env
+    ports:
+      - "4323:4323"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+    environment:
+      PORT: 4323
+    networks: [obs]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4323/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  gateway-auth:
+    image: ${BEGATEWAY_IMAGE:-ghcr.io/observantio/begateway:stable}
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      GATEWAY_HOST: 0.0.0.0
+    networks: [obs]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4321/api/gateway/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  becertain:
+    image: ${BECERTAIN_IMAGE:-ghcr.io/observantio/becertain:stable}
+    env_file:
+      - .env         
+    networks: [obs]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      BECERTAIN_HOST: 0.0.0.0
+      BECERTAIN_PORT: 4322
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      mimir:
+        condition: service_started
+    restart: unless-stopped
+
+  otlp-gateway:
+    image: envoyproxy/envoy:v1.32-latest
+    volumes:
+      - ./configs/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      gateway-auth:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      mimir:
+        condition: service_started
+    networks: [obs]
+    ports:
+      - "4320:4320"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9901'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  otel-agent:
+    build:
+      context: ./tests
+      dockerfile: Dockerfile
+    networks: [obs]
+    environment:
+      OTEL_OTLP_TOKEN: "${DEFAULT_OTLP_TOKEN:-DAMJ8xlh9UrUgK23yYWfzvLDJYeTRfase}"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.6.5
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./configs/loki.yaml:/etc/loki/loki.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks: [obs]
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    command: -config.file=/etc/tempo/tempo.yaml
+    volumes:
+      - ./configs/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks: [obs]
+    restart: unless-stopped
+
+  mimir:
+    image: grafana/mimir:2.12.0
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    volumes:
+      - ./configs/mimir.yaml:/etc/mimir/mimir.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    depends_on:
+      - alertmanager
+    networks: [obs]
+    ports:
+      - "9009:9009"
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    env_file:
+      - .env
+    volumes:
+      - ./configs/alertmanager.yaml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager:/alertmanager
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        test -n "$${INBOUND_WEBHOOK_TOKEN:-}" &&
+        umask 077 &&
+        printf "%s" "$${INBOUND_WEBHOOK_TOKEN}" > /tmp/inbound_webhook_token &&
+        exec /bin/alertmanager \
+          --config.file=/etc/alertmanager/alertmanager.yml \
+          --storage.path=/alertmanager
+    networks: [obs]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.1
+    env_file:
+      - .env
+    volumes:
+      - ./configs/grafana/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - grafana:/var/lib/grafana
+
+    depends_on:
+      - mimir
+      - loki
+      - tempo
+    networks: [obs]
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    networks: [obs]
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+    depends_on:
+      beobservant:
+        condition: service_healthy
+
+  grafana-proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./configs/grafana-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      grafana:
+        condition: service_started
+      beobservant:
+        condition: service_healthy
+    networks: [obs]
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  
