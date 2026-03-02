@@ -83,9 +83,7 @@ services:
       start_period: 10s
 
   gateway-auth:
-    build:
-      context: ./gateway-auth-service
-      dockerfile: Dockerfile
+    image: ${BEGATEWAY_IMAGE:-ghcr.io/observantio/begateway:stable}
     env_file:
       - .env
     depends_on:

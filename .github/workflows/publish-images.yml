@@ -55,9 +55,19 @@ jobs:
       - name: Build and push beobservant
         uses: docker/build-push-action@v6
         with:
-          context: ./server
-          file: ./server/Dockerfile
+          context: ./BeObservant
+          file: ./BeObservant/Dockerfile
           push: true
           tags: |
             ghcr.io/observantio/beobservant:stable
             ghcr.io/observantio/beobservant:${{ github.event.workflow_run.id }}
+
+      - name: Build and push begateway
+        uses: docker/build-push-action@v6
+        with:
+          context: ./BeGateway
+          file: ./BeGateway/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/observantio/begateway:stable
+            ghcr.io/observantio/begateway:${{ github.event.workflow_run.id }}
