@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   ui:
@@ -25,12 +25,13 @@ jobs:
         run: |
           npm ci --include=optional
           npm ls @rollup/rollup-linux-x64-gnu >/dev/null 2>&1 || npm i --no-save @rollup/rollup-linux-x64-gnu
+
       - run: npm run lint
       - run: npm run build
       - run: npm test -- --run
 
-  server:
-    name: Gateway (pytest)
+  gateway:
+    name: Gateway tests (pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,7 +41,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -50,8 +51,8 @@ jobs:
 
       - name: Run Gateway tests
         run: pytest -q
-        server:
 
+  server:
     name: Server tests (pytest)
     runs-on: ubuntu-latest
     defaults:
@@ -62,7 +63,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
