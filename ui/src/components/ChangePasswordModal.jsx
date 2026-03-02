@@ -196,7 +196,6 @@ export default function ChangePasswordModal({
               </label>
               <HelpTooltip
                 text="Enter your current password to verify your identity before changing it."
-                autoShow={isOpen}
               />
             </div>
             <Input
