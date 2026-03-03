@@ -1089,7 +1089,6 @@ export default function AlertManagerPage() {
         </>
       )}
 
-      {/* Rule Editor Modal */}
       <Modal
         isOpen={showImportRulesModal}
         onClose={() => setShowImportRulesModal(false)}

@@ -87,7 +87,7 @@ export default function TempoPage() {
     } catch {
       // ignore malformed local storage payloads
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const prunePersistedSelectedTraceIds = useCallback((invalidIds) => {
     if (!invalidIds || invalidIds.size === 0) return;
@@ -123,6 +123,8 @@ export default function TempoPage() {
     }
   }, []);
 
+  // Run once on mount to restore persisted view/search state and initial graph hydration.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
       loadServices();
@@ -188,7 +190,7 @@ export default function TempoPage() {
     ) {
       onSearch();
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!services.length && traces?.data?.length) {

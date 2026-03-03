@@ -159,7 +159,7 @@ export default function LokiPage() {
     ) {
       executeQuery();
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadInitialData = useCallback(async () => {
     try {
