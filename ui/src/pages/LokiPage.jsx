@@ -112,6 +112,8 @@ export default function LokiPage() {
 
   const toast = useToast();
   useAutoRefresh(() => executeQuery(), refreshInterval * 1000, autoRefresh);
+  // Run once on mount to restore a saved query snapshot, without retriggering on later state updates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     try {
       const toSave = {

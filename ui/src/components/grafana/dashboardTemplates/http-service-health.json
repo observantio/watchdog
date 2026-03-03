@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 38,
+  "title": "HTTP Service Health",
+  "timezone": "browser",
+  "refresh": "30s",
+  "uid": "http-service-health",
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Rate (RPS)",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by(service) (rate(http_requests_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate % (5xx)",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "P95 Latency",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by(le,service) (rate(http_request_duration_seconds_bucket[5m])))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "4xx by Service",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by(service) (rate(http_requests_total{status=~\"4..\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx by Service",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by(service) (rate(http_requests_total{status=~\"5..\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 38,
+  "title": "Kubernetes Cluster Overview",
+  "timezone": "browser",
+  "refresh": "30s",
+  "uid": "k8s-cluster-overview",
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Ready Nodes",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "count(kube_node_status_condition{condition=\"Ready\",status=\"true\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Running Pods",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "count(kube_pod_status_phase{phase=\"Running\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Pending Pods",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "count(kube_pod_status_phase{phase=\"Pending\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "CrashLoopBackOff Containers",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "count(kube_pod_container_status_waiting_reason{reason=\"CrashLoopBackOff\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cluster CPU Usage %",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\",image!=\"\"}[5m])) / sum(machine_cpu_cores) * 100",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cluster Memory Usage %",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(container_memory_working_set_bytes{container!=\"\",image!=\"\"}) / sum(machine_memory_bytes) * 100",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod Restarts (Top 10)",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 8 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "topk(10, sum by(namespace,pod) (increase(kube_pod_container_status_restarts_total[1h])))",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
