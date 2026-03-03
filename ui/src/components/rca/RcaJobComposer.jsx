@@ -54,8 +54,8 @@ export default function RcaJobComposer({ onCreate, creating }) {
   }
 
   return (
-    <Card className="">
-      <form onSubmit={handleSubmit} className="space-y-3">
+    <Card>
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select
             label={<span className="text-sm font-medium">Time Window</span>}
@@ -98,33 +98,9 @@ export default function RcaJobComposer({ onCreate, creating }) {
           </div>
         </div>
 
-        <div>
-          <Input
-            label="Log Query (optional)"
-            placeholder='{service="api"} |= "error"'
-            value={logQuery}
-            onChange={(e) => setLogQuery(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm text-sre-text mb-2">
-            Metric Queries (optional, one per line)
-          </label>
-          <textarea
-            value={metricQueriesText}
-            onChange={(e) => setMetricQueriesText(e.target.value)}
-            className="w-full min-h-24 px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary"
-            placeholder="sum(rate(http_requests_total[5m])) by (service)"
-          />
-          <p className="text-xs text-sre-text-muted mt-1">
-            Separate queries with newlines
-          </p>
-        </div>
-
         <button
           type="button"
-          className="text-xs text-sre-primary hover:underline flex items-center gap-1"
+          className="text-xs text-sre-primary hover:text-sre-primary-light flex items-center gap-1 px-1 py-1 transition-colors"
           onClick={() => setShowAdvanced((v) => !v)}
         >
           {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
@@ -134,43 +110,68 @@ export default function RcaJobComposer({ onCreate, creating }) {
         </button>
 
         {showAdvanced && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Input
-              label="Step"
-              value={step}
-              onChange={(e) => setStep(e.target.value)}
-            />
-            <Input
-              label="Apdex Threshold (ms)"
-              type="number"
-              value={apdexThresholdMs}
-              onChange={(e) => setApdexThresholdMs(e.target.value)}
-            />
-            <Input
-              label="SLO Target"
-              type="number"
-              min="0"
-              max="1"
-              step="0.001"
-              value={sloTarget}
-              onChange={(e) => setSloTarget(e.target.value)}
-            />
-            <Input
-              label="Correlation Window (s)"
-              type="number"
-              min="10"
-              max="600"
-              value={correlationWindowSeconds}
-              onChange={(e) => setCorrelationWindowSeconds(e.target.value)}
-            />
-            <Input
-              label="Forecast Horizon (s)"
-              type="number"
-              min="60"
-              max="86400"
-              value={forecastHorizonSeconds}
-              onChange={(e) => setForecastHorizonSeconds(e.target.value)}
-            />
+          <div className="space-y-4 p-3 rounded-lg bg-sre-surface/40">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Input
+                label="Log Query (optional)"
+                placeholder='{service="api"} |= "error"'
+                value={logQuery}
+                onChange={(e) => setLogQuery(e.target.value)}
+              />
+              <div>
+                <label className="block text-sm text-sre-text mb-2">
+                  Metric Queries (optional, one per line)
+                </label>
+                <textarea
+                  value={metricQueriesText}
+                  onChange={(e) => setMetricQueriesText(e.target.value)}
+                  className="w-full min-h-24 px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary"
+                  placeholder="sum(rate(http_requests_total[5m])) by (service)"
+                />
+                <p className="text-xs text-sre-text-muted mt-1">
+                  Separate queries with newlines
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <Input
+                label="Step"
+                value={step}
+                onChange={(e) => setStep(e.target.value)}
+              />
+              <Input
+                label="Apdex Threshold (ms)"
+                type="number"
+                value={apdexThresholdMs}
+                onChange={(e) => setApdexThresholdMs(e.target.value)}
+              />
+              <Input
+                label="SLO Target"
+                type="number"
+                min="0"
+                max="1"
+                step="0.001"
+                value={sloTarget}
+                onChange={(e) => setSloTarget(e.target.value)}
+              />
+              <Input
+                label="Correlation Window (s)"
+                type="number"
+                min="10"
+                max="600"
+                value={correlationWindowSeconds}
+                onChange={(e) => setCorrelationWindowSeconds(e.target.value)}
+              />
+              <Input
+                label="Forecast Horizon (s)"
+                type="number"
+                min="60"
+                max="86400"
+                value={forecastHorizonSeconds}
+                onChange={(e) => setForecastHorizonSeconds(e.target.value)}
+              />
+            </div>
           </div>
         )}
 

@@ -52,7 +52,9 @@ function ApiKeyDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const selectableKeys = apiKeys.filter((k) => !k.is_shared || k.can_use);
+  const selectableKeys = apiKeys.filter(
+    (k) => (!k.is_shared || k.can_use) && !k.is_hidden,
+  );
 
   useEffect(() => {
     const onClick = (e) => {
@@ -133,14 +135,18 @@ export default function Header() {
   const [activeKeyId, setActiveKeyId] = useState("");
   const [switchingKey, setSwitchingKey] = useState(false);
 
+  const visibleApiKeys = (user?.api_keys || []).filter(
+    (k) => (!k.is_shared || k.can_use) && !k.is_hidden,
+  );
+
   useEffect(() => {
-    if (!user?.api_keys?.length) {
+    if (!visibleApiKeys.length) {
       setActiveKeyId("");
       return;
     }
-    const enabledKey = user.api_keys.find((k) => k.is_enabled);
+    const enabledKey = visibleApiKeys.find((k) => k.is_enabled);
     setActiveKeyId(enabledKey?.id || "");
-  }, [user]);
+  }, [visibleApiKeys]);
 
   const handleActiveKeyChange = useCallback(
     async (nextId) => {
@@ -179,10 +185,10 @@ export default function Header() {
           <div className="flex items-center gap-3">
             <ThemeToggle />
 
-            {user?.api_keys?.length > 0 && (
+            {visibleApiKeys.length > 0 && (
               <div className="hidden sm:flex items-center gap-2">
                 <ApiKeyDropdown
-                  apiKeys={user.api_keys}
+                  apiKeys={visibleApiKeys}
                   activeKeyId={activeKeyId}
                   onSelect={handleActiveKeyChange}
                   disabled={switchingKey}
@@ -212,10 +218,10 @@ export default function Header() {
         {visibleNavItems.map((item) => (
           <NavItem key={item.path} item={item} isMobile />
         ))}
-        {user?.api_keys?.length > 0 && (
+        {visibleApiKeys.length > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             <ApiKeyDropdown
-              apiKeys={user.api_keys}
+              apiKeys={visibleApiKeys}
               activeKeyId={activeKeyId}
               onSelect={handleActiveKeyChange}
               disabled={switchingKey}

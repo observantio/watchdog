@@ -279,8 +279,18 @@ export async function updateCurrentUser(updates) {
   return requestJson("/api/auth/me", { method: "PUT", payload: updates });
 }
 
-export async function listApiKeys() {
-  return request("/api/auth/api-keys");
+export async function listApiKeys({ showHidden = false } = {}) {
+  const params = new URLSearchParams();
+  if (showHidden) params.set("show_hidden", "true");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return request(`/api/auth/api-keys${qs}`);
+}
+
+export async function setApiKeyHidden(keyId, hidden = true) {
+  return requestJson(`/api/auth/api-keys/${encodeURIComponent(keyId)}/hide`, {
+    method: "POST",
+    payload: { hidden: !!hidden },
+  });
 }
 
 export async function createApiKey(payload) {

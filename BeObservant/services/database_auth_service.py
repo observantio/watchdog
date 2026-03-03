@@ -55,6 +55,7 @@ from services.auth.api_key_ops import (
     list_api_key_shares as list_api_key_shares_op,
     list_api_keys as list_api_keys_op,
     regenerate_api_key_otlp_token as regenerate_api_key_otlp_token_op,
+    set_api_key_hidden as set_api_key_hidden_op,
     replace_api_key_shares as replace_api_key_shares_op,
     update_api_key as update_api_key_op,
 )
@@ -380,14 +381,17 @@ class DatabaseAuthService:
     def update_password(self, user_id: str, password_update: UserPasswordUpdate, tenant_id: str) -> bool:
         return update_password_op(self, user_id, password_update, tenant_id)
 
-    def list_api_keys(self, user_id: str) -> List[ApiKey]:
-        return list_api_keys_op(self, user_id)
+    def list_api_keys(self, user_id: str, show_hidden: bool = False) -> List[ApiKey]:
+        return list_api_keys_op(self, user_id, show_hidden)
 
     def create_api_key(self, user_id: str, tenant_id: str, key_create: ApiKeyCreate) -> ApiKey:
         return create_api_key_op(self, user_id, tenant_id, key_create)
 
     def update_api_key(self, user_id: str, key_id: str, key_update: ApiKeyUpdate) -> ApiKey:
         return update_api_key_op(self, user_id, key_id, key_update)
+
+    def set_api_key_hidden(self, user_id: str, key_id: str, hidden: bool = True) -> bool:
+        return set_api_key_hidden_op(self, user_id, key_id, hidden)
 
     def regenerate_api_key_otlp_token(self, user_id: str, key_id: str) -> ApiKey:
         return regenerate_api_key_otlp_token_op(self, user_id, key_id)

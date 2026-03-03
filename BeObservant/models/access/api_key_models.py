@@ -46,5 +46,6 @@ class ApiKey(ApiKeyBase):
     shared_with: List[ApiKeyShareUser] = Field(default_factory=list)
     is_default: bool = False
     is_enabled: bool = True
+    is_hidden: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None

@@ -227,6 +227,20 @@ class ApiKeyShare(Base):
     )
 
 
+class HiddenApiKey(Base):
+    __tablename__ = "hidden_api_keys"
+
+    id:         Mapped[str]      = mapped_column(String,  primary_key=True, default=_uuid)
+    tenant_id:  Mapped[str]      = mapped_column(String,  ForeignKey(_FK_TENANTS, ondelete="CASCADE"), nullable=False, index=True)
+    user_id:    Mapped[str]      = mapped_column(String,  ForeignKey(_FK_USERS, ondelete="CASCADE"), nullable=False, index=True)
+    api_key_id: Mapped[str]      = mapped_column(String,  ForeignKey("user_api_keys.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "api_key_id", name="uq_hidden_api_keys_user_key"),
+    )
+
+
 class Permission(Base):
     __tablename__ = "permissions"
 

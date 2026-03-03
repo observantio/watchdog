@@ -448,7 +448,7 @@ async def create_folder(
     payload: GrafanaCreateFolderRequest,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.CREATE_FOLDERS, "grafana")),
 ):
-    result = await proxy.create_folder(title=payload.title, user_id=current_user.user_id, tenant_id=current_user.tenant_id)
+    result = await proxy.create_folder(title=payload.title)
     if not result:
         raise HTTPException(status_code=500, detail="Failed to create folder")
     return result
@@ -460,7 +460,7 @@ async def delete_folder(
     uid: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.DELETE_FOLDERS, "grafana")),
 ):
-    ok = await proxy.delete_folder(uid=uid, user_id=current_user.user_id, tenant_id=current_user.tenant_id)
+    ok = await proxy.delete_folder(uid=uid)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Folder {uid} not found or delete failed")
     return {"status": "success", "message": f"Folder {uid} deleted"}

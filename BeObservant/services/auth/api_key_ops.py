@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from database import get_db_session
-from db_models import ApiKeyShare, Group, User, UserApiKey
+from db_models import ApiKeyShare, Group, HiddenApiKey, User, UserApiKey
 from models.access.api_key_models import ApiKey, ApiKeyCreate, ApiKeyShareUser, ApiKeyUpdate
 
 BACKFILL_BATCH_SIZE = 500
@@ -89,6 +89,7 @@ def _api_key_to_schema(
     is_shared: bool,
     can_use: bool,
     viewer_enabled: bool,
+    is_hidden: bool = False,
     revealed_otlp_token: Optional[str] = None,
 ) -> ApiKey:
     shared_with: List[ApiKeyShareUser] = []
@@ -126,13 +127,14 @@ def _api_key_to_schema(
         "shared_with": [s.model_dump() if hasattr(s, "model_dump") else s for s in shared_with],
         "is_default": bool(getattr(api_key, "is_default", False)),
         "is_enabled": bool(viewer_enabled),
+        "is_hidden": bool(is_hidden),
         "created_at": getattr(api_key, "created_at", None),
         "updated_at": getattr(api_key, "updated_at", None),
     }
     return ApiKey.model_validate(payload)
 
 
-def list_api_keys(service, user_id: str) -> List[ApiKey]:
+def list_api_keys(service, user_id: str, show_hidden: bool = False) -> List[ApiKey]:
     service._lazy_init()
     with get_db_session() as db:
         viewer = db.query(User).filter_by(id=user_id).first()
@@ -160,14 +162,29 @@ def list_api_keys(service, user_id: str) -> List[ApiKey]:
         output: List[ApiKey] = []
         seen_ids = set()
         has_enabled_owned_key = any(bool(getattr(k, "is_enabled", False)) for k in own_keys)
+        hidden_key_ids = {
+            row.api_key_id
+            for row in (
+                db.query(HiddenApiKey.api_key_id)
+                .filter(
+                    HiddenApiKey.tenant_id == viewer.tenant_id,
+                    HiddenApiKey.user_id == user_id,
+                )
+                .all()
+            )
+        }
 
         for key in own_keys:
+            is_hidden = getattr(key, "id", None) in hidden_key_ids
+            if is_hidden and not show_hidden:
+                continue
             output.append(
                 _api_key_to_schema(
                     key,
                     is_shared=False,
                     can_use=True,
                     viewer_enabled=bool(getattr(key, "is_enabled", False)),
+                    is_hidden=is_hidden,
                 )
             )
             seen_ids.add(getattr(key, "id", None))
@@ -186,12 +203,81 @@ def list_api_keys(service, user_id: str) -> List[ApiKey]:
                 and (not has_enabled_owned_key)
                 and (str(viewer.org_id or "") == str(getattr(key, "key", None) or ""))
             )
-
-            output.append(_api_key_to_schema(key, is_shared=True, can_use=can_use, viewer_enabled=viewer_enabled))
+            is_hidden = key_id in hidden_key_ids
+            if is_hidden and not show_hidden:
+                continue
+            output.append(
+                _api_key_to_schema(
+                    key,
+                    is_shared=True,
+                    can_use=can_use,
+                    viewer_enabled=viewer_enabled,
+                    is_hidden=is_hidden,
+                )
+            )
             seen_ids.add(key_id)
 
         output.sort(key=lambda item: item.created_at)
         return output
+
+
+def set_api_key_hidden(service, user_id: str, key_id: str, hidden: bool) -> bool:
+    service._lazy_init()
+    with get_db_session() as db:
+        viewer = _require_user(db, user_id)
+        api_key = _require_api_key_in_tenant(db, key_id, viewer.tenant_id)
+
+        is_owner = str(getattr(api_key, "user_id", "")) == str(user_id)
+        if is_owner:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot hide your own API key",
+            )
+
+        share_link = (
+            db.query(ApiKeyShare)
+            .filter_by(
+                api_key_id=key_id,
+                shared_user_id=user_id,
+                tenant_id=viewer.tenant_id,
+            )
+            .first()
+        )
+        if not share_link:
+            raise ValueError("API key not found")
+
+        existing = (
+            db.query(HiddenApiKey)
+            .filter_by(
+                tenant_id=viewer.tenant_id,
+                user_id=user_id,
+                api_key_id=key_id,
+            )
+            .first()
+        )
+        if hidden:
+            if not existing:
+                db.add(
+                    HiddenApiKey(
+                        tenant_id=viewer.tenant_id,
+                        user_id=user_id,
+                        api_key_id=key_id,
+                    )
+                )
+        elif existing:
+            db.delete(existing)
+
+        service._log_audit(
+            db,
+            viewer.tenant_id,
+            user_id,
+            "api_key.hide" if hidden else "api_key.unhide",
+            "api_keys",
+            key_id,
+            {"hidden": bool(hidden)},
+        )
+        db.commit()
+        return True
 
 
 def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCreate) -> ApiKey:

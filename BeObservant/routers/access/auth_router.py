@@ -18,6 +18,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import aliased
 
 from config import config
@@ -61,6 +62,10 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 notification_service = NotificationService()
 
 rtp = run_in_threadpool
+
+
+class HideTogglePayload(BaseModel):
+    hidden: bool = True
 
 
 
@@ -244,8 +249,11 @@ async def admin_reset_user_mfa(
 
 
 @router.get("/api-keys", response_model=List[ApiKey])
-async def list_api_keys(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_API_KEYS, "auth"))):
-    return await rtp(auth_service.list_api_keys, current_user.user_id)
+async def list_api_keys(
+    show_hidden: bool = Query(False),
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_API_KEYS, "auth")),
+):
+    return await rtp(auth_service.list_api_keys, current_user.user_id, show_hidden)
 
 
 @router.post("/api-keys", response_model=ApiKey)
@@ -285,6 +293,17 @@ async def delete_api_key(
     if not await rtp(auth_service.delete_api_key, current_user.user_id, key_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "API key not found")
     return {"message": "API key deleted"}
+
+
+@router.post("/api-keys/{key_id}/hide")
+@handle_route_errors()
+async def hide_api_key(
+    key_id: str,
+    payload: HideTogglePayload,
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_API_KEYS, "auth")),
+):
+    await rtp(auth_service.set_api_key_hidden, current_user.user_id, key_id, bool(payload.hidden))
+    return {"status": "success", "hidden": bool(payload.hidden)}
 
 
 @router.get("/api-keys/{key_id}/shares", response_model=List[ApiKeyShareUser])

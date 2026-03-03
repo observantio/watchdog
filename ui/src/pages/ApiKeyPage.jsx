@@ -32,10 +32,13 @@ export default function ApiKeyPage() {
   const [selectedShareUserIds, setSelectedShareUserIds] = useState([]);
   const [selectedShareGroupIds, setSelectedShareGroupIds] = useState([]);
   const [revealedOtlpTokens, setRevealedOtlpTokens] = useState({});
+  const [showHidden, setShowHidden] = useState(false);
 
   useEffect(() => {
     if (user) {
-      setApiKeys(user.api_keys || []);
+      if (!showHidden) {
+        setApiKeys(user.api_keys || []);
+      }
       setRevealedOtlpTokens((prev) => {
         const next = { ...prev };
         (user.api_keys || []).forEach((key) => {
@@ -50,22 +53,31 @@ export default function ApiKeyPage() {
         defaultKey || (user.api_keys || []).find((k) => k.key === user.org_id);
       setOrgId(orgKey?.id || "");
     }
-  }, [user]);
+  }, [user, showHidden]);
 
   const refreshUser = async () => {
-    const [updatedUser, listedKeys] = await Promise.all([
+    const [updatedUser, visibleKeys, displayKeys] = await Promise.all([
       api.getCurrentUser(),
       api.listApiKeys().catch(() => null),
+      api.listApiKeys({ showHidden }).catch(() => null),
     ]);
     const mergedUser = {
       ...updatedUser,
-      api_keys: Array.isArray(listedKeys)
-        ? listedKeys
+      api_keys: Array.isArray(visibleKeys)
+        ? visibleKeys
         : (updatedUser.api_keys || []),
     };
     updateUser(mergedUser);
-    setApiKeys(mergedUser.api_keys || []);
+    setApiKeys(
+      Array.isArray(displayKeys) ? displayKeys : (mergedUser.api_keys || []),
+    );
   };
+
+  useEffect(() => {
+    if (!user) return;
+    refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHidden]);
 
   const inferSelectedGroupsFromShares = (
     key,
@@ -187,6 +199,16 @@ export default function ApiKeyPage() {
       }
       const msg = err.body?.detail || err.message || "Failed to delete API key";
       toast.error(msg);
+    }
+  };
+
+  const handleToggleHiddenKey = async (key) => {
+    try {
+      await api.setApiKeyHidden(key.id, !key.is_hidden);
+      await refreshUser();
+      toast.success(key.is_hidden ? "API key unhidden" : "API key hidden");
+    } catch (err) {
+      toast.error(err.body?.detail || err.message || "Failed to update API key visibility");
     }
   };
 
@@ -512,6 +534,17 @@ export default function ApiKeyPage() {
           subtitle={`Enabled: ${enabledCount}`}
           className="p-4 rounded-lg border border-sre-border shadow-sm bg-sre-surface"
         >
+          <div className="flex justify-end mt-1">
+            <label className="inline-flex items-center gap-2 text-xs text-sre-text-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(e) => setShowHidden(e.target.checked)}
+                className="rounded border-sre-border"
+              />
+              Show hidden
+            </label>
+          </div>
           <p className="text-xs text-sre-text-muted mt-2">
             These API keys are local to your tenant and may be shared with other
             teams in your organization, since they scope to your tenant. Default
@@ -564,6 +597,9 @@ export default function ApiKeyPage() {
                           <div className="text-xs text-sre-text-muted">
                             Shared by {key.owner_username}
                           </div>
+                        )}
+                        {key.is_hidden && (
+                          <div className="text-xs text-amber-600">Hidden</div>
                         )}
                         {!key.is_shared &&
                           Array.isArray(key.shared_with) &&
@@ -650,6 +686,16 @@ export default function ApiKeyPage() {
                               aria-label={`Delete ${key.name}`}
                             >
                               Delete
+                            </Button>
+                          )}
+                          {key.is_shared && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleToggleHiddenKey(key)}
+                              aria-label={key.is_hidden ? `Unhide ${key.name}` : `Hide ${key.name}`}
+                            >
+                              {key.is_hidden ? "Unhide" : "Hide"}
                             </Button>
                           )}
                         </div>
