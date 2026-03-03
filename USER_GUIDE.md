@@ -12,7 +12,7 @@ Be Observant supports three deployment paths. **Note:** These are intended for *
 
 #### Option A: Quick Mode
 
-Best for rapid setups. This script creates a workspace that either clones the services or installs the Docker Compose file based on your choice.
+Best for rapid setups. This script creates a workspace and clones the services and runs docker compose
 
 ```bash
 # direct executions

@@ -531,7 +531,6 @@ export default function ApiKeyPage() {
 
         <Card
           title={`API Keys (${apiKeys.length})`}
-          subtitle={`Enabled: ${enabledCount}`}
           className="p-4 rounded-lg border border-sre-border shadow-sm bg-sre-surface"
         >
           <div className="flex justify-end mt-1">

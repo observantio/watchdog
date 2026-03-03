@@ -15,10 +15,8 @@ from typing import Iterable, List, Sequence
 REPO_URL = "https://github.com/observantio/beobservant.git"
 BECERTAIN_REPO_URL = "https://github.com/observantio/becertain.git"
 BENOTIFIED_REPO_URL = "https://github.com/observantio/benotified.git"
-STABLE_COMPOSE_GH_URL = "https://raw.githubusercontent.com/observantio/beobservant/main/docker-compose.stable.yml"
 
 _PASSWORD_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-_GH_BLOB_RE = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$")
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
@@ -154,22 +152,6 @@ def fernet_key() -> str:
     except Exception:
         raw = secrets.token_bytes(32)
         return base64.urlsafe_b64encode(raw).decode("ascii")
-
-
-def to_raw_github_url(url: str) -> str:
-    m = _GH_BLOB_RE.match(url)
-    if not m:
-        return url
-    org, repo, branch, path = m.groups()
-    return f"https://raw.githubusercontent.com/{org}/{repo}/{branch}/{path}"
-
-
-def download_file(url: str, out: Path) -> None:
-    require_cmd("curl")
-    raw = to_raw_github_url(url)
-    info(f"Downloading: {raw}")
-    run(["curl", "-fsSL", raw, "-o", str(out)])
-    ok(f"Saved: {out}")
 
 
 def clone_repo_if_missing(url: str, dir_path: Path) -> None:
@@ -408,19 +390,16 @@ def choose_mode_or_quit() -> str:
         hr()
         say("Choose install mode")
         say("  1) dev   (clone repos + build locally)")
-        say("  2) demo  (download stable compose only)")
-        say("  3) stop  (stop an existing compose stack)")
+        say("  2) stop  (stop an existing compose stack)")
         say("  q) quit")
         hr()
         say()
-        choice = ask_line("Select 1, 2, 3, or q: ").lower()
+        choice = ask_line("Select 1, 2, or q: ").lower()
         if choice in ("q", "quit"):
             return "quit"
         if choice == "1":
             return "dev"
         if choice == "2":
-            return "demo"
-        if choice == "3":
             return "stop"
         warn("Invalid selection.")
 
@@ -455,34 +434,6 @@ def setup_dev() -> Path:
     return target
 
 
-def setup_demo() -> Path:
-    hr()
-    say("Demo setup")
-    say("No repos will be cloned.")
-    say("We will only download 'docker-compose.stable.yml' into a folder.")
-    hr()
-
-    while True:
-        target = Path(ask_non_empty("Demo directory (will be created)")).expanduser().resolve()
-        if not target.exists():
-            break
-        warn(f"Target already exists: {target}")
-        if ask_yes_no("Override existing directory (delete and recreate)?", default_yes=False):
-            if target.is_dir():
-                shutil.rmtree(target)
-            else:
-                target.unlink()
-            break
-        warn("Please choose a different destination.")
-
-    target.mkdir(parents=True, exist_ok=True)
-    ok(f"Created: {target}")
-
-    compose_path = target / "docker-compose.stable.yml"
-    download_file(STABLE_COMPOSE_GH_URL, compose_path)
-    return target
-
-
 def require_acceptance() -> None:
     os.system("clear" if os.name != "nt" else "cls")
     say(INTRO_TEXT)
@@ -496,7 +447,6 @@ def main() -> int:
 
     say()
     say("1) Development - clone full repo + dependencies, build locally")
-    say("2) Demo        - download stable compose only")
     say()
 
     require_cmd("docker")
@@ -515,13 +465,9 @@ def main() -> int:
                 stop_stack(workdir, compose_file, compose_cmd)
                 return 0
 
-            if mode == "demo":
-                workdir = setup_demo()
-                compose_file = workdir / "docker-compose.stable.yml"
-            else:
-                require_cmd("git")
-                workdir = setup_dev()
-                compose_file = workdir / "docker-compose.yml"
+            require_cmd("git")
+            workdir = setup_dev()
+            compose_file = workdir / "docker-compose.yml"
 
             api_host = choose_api_service_host(workdir, compose_file)
             ok(f"Detected API service host: {api_host}")
@@ -534,7 +480,7 @@ def main() -> int:
             admin_pass = ask_password()
 
             info("Writing .env")
-            prepare_env(workdir / ".env", mode, admin_user, admin_email, admin_pass, api_host)
+            prepare_env(workdir / ".env", "dev", admin_user, admin_email, admin_pass, api_host)
 
             say()
             if ask_yes_no("Start containers now?", default_yes=True):

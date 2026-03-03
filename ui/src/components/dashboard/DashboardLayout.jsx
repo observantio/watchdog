@@ -1,7 +1,6 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Card } from "../ui";
-import { ConnectedServices } from "./ConnectedServices";
 import { AgentActivitySection } from "./AgentActivitySection";
 import { DataVolume } from "./DataVolume";
 import { SystemMetricsCard } from "./SystemMetricsCard";
@@ -12,17 +11,34 @@ export function DashboardLayout({ dashboardData, agentData }) {
 
   const layoutComponents = [
     {
-      id: "connected-services",
-      title: "Powered By",
-      subtitle: "Observability stack components",
-      className: "lg:col-span-2",
-      content: <ConnectedServices />,
+      id: "notice",
+      className: "lg:col-span-1",
+      renderAsNotice: true,
+      content: (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-xl mb-3 font-semibold text-sre-text">
+              Welcome to Observantio
+            </h2>
+            <p className="text-sm text-sre-text-muted mt-1 leading-relaxed">
+              Full-stack observability platform with metrics, logs, traces,
+              alerting, incident response, Grafana integration, RCA workflows,
+              and enterprise-grade RBAC for secure multi-tenant operations.
+            </p>
+            <p className="text-xs text-sre-text-muted mt-3">
+              Licensed under Apache License 2.0. You are free to use, modify,
+              and distribute with proper attribution and required NOTICE/
+              license credit.
+            </p>
+          </div>
+        </div>
+      ),
     },
     {
       id: "active-otel-agents",
       title: "Active OTEL Agents",
       subtitle: "Agents Activity",
-      className: "lg:col-span-2",
+      className: "",
       content: (
         <AgentActivitySection
           loading={agentData.loadingAgents}
@@ -42,7 +58,7 @@ export function DashboardLayout({ dashboardData, agentData }) {
     },
     {
       id: "server-metrics",
-      title: "BeObservant Plane",
+      title: "Proxy Plane",
       subtitle:
         dashboardData.systemMetrics?.stress?.message ||
         "Process resource utilization",
@@ -113,32 +129,53 @@ export function DashboardLayout({ dashboardData, agentData }) {
         return (
           <div
             key={component.id}
-            className={`transition-transform duration-200 ease-out will-change-transform ${
+            className={`${component.className || ""} transition-transform duration-200 ease-out will-change-transform ${
               draggedIndex === displayIndex
                 ? "opacity-50 scale-95 shadow-xl"
                 : ""
             }`}
           >
-            <Card
-              title={component.title}
-              subtitle={component.subtitle}
-              className={`${component.className} cursor-move relative`}
-              draggable
-              onDragStart={(e) => handleLayoutDragStart(e, displayIndex)}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleLayoutDrop(e, displayIndex)}
-              onDragEnd={handleDragEnd}
-            >
-              <div className="absolute top-4 right-4 text-sre-text-muted hover:text-sre-text transition-colors z-10">
-                <span
-                  className="material-icons text-sm drag-handle"
-                  aria-hidden
-                >
-                  drag_indicator
-                </span>
+            {component.renderAsNotice ? (
+              <div
+                className="relative rounded-xl border border-sre-border bg-gradient-to-r from-sre-surface to-sre-bg-alt p-5 cursor-move"
+                draggable
+                onDragStart={(e) => handleLayoutDragStart(e, displayIndex)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleLayoutDrop(e, displayIndex)}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="absolute top-4 right-4 text-sre-text-muted hover:text-sre-text transition-colors z-10">
+                  <span
+                    className="material-icons text-sm drag-handle"
+                    aria-hidden
+                  >
+                    drag_indicator
+                  </span>
+                </div>
+                {component.content}
               </div>
-              {component.content}
-            </Card>
+            ) : (
+              <Card
+                title={component.title}
+                subtitle={component.subtitle}
+                className="cursor-move relative"
+                draggable
+                onDragStart={(e) => handleLayoutDragStart(e, displayIndex)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleLayoutDrop(e, displayIndex)}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="absolute top-4 right-4 text-sre-text-muted hover:text-sre-text transition-colors z-10">
+                  <span
+                    className="material-icons text-sm drag-handle"
+                    aria-hidden
+                  >
+                    drag_indicator
+                  </span>
+                </div>
+                {component.content}
+              </Card>
+            )}
           </div>
         );
       })}

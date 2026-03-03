@@ -10,6 +10,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { usePermissions } from "../hooks/usePermissions";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 import HelpTooltip from "../components/HelpTooltip";
 import MemberList from "../components/groups/MemberList";
 import RuleEditorWizard from "../components/alertmanager/RuleEditorWizard";
@@ -25,6 +26,7 @@ import * as api from "../api";
 
 export default function GroupsPage() {
   const { canManageGroups } = usePermissions();
+  const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
@@ -102,7 +104,14 @@ export default function GroupsPage() {
       if (groupPermissions?.length > 0) {
         await api.updateGroupPermissions(newGroup.id, groupPermissions);
       }
-      await api.updateGroupMembers(newGroup.id, selectedMembers);
+      const creatorId = String(user?.id || user?.user_id || "").trim();
+      const membersWithOwner = Array.from(
+        new Set([
+          ...selectedMembers.map((id) => String(id || "").trim()).filter(Boolean),
+          ...(creatorId ? [creatorId] : []),
+        ]),
+      );
+      await api.updateGroupMembers(newGroup.id, membersWithOwner);
 
       toast.success("Group created successfully");
       setShowCreateModal(false);

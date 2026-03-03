@@ -350,7 +350,6 @@ export default function UsersPage() {
                     </div>
 
                     <div className="flex items-center justify-between mb-4">
-                      {/* wrap badges to avoid overflowing the card when there are many */}
                       <div className="flex flex-wrap items-center gap-3">
                         <Badge
                           variant={roleVariant}
@@ -358,7 +357,6 @@ export default function UsersPage() {
                         >
                           {u.role}
                         </Badge>
-                        {/* show counts for groups & permissions */}
                         {!u.is_active && (
                           <Badge
                             variant="warning"
@@ -392,7 +390,7 @@ export default function UsersPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 items-center border-sre-border/30">
+                    <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-sre-border/30">
                       <Button
                         variant="ghost"
                         size="sm"
