@@ -109,7 +109,7 @@ describe("IncidentBoardPage — UI refresh & persistence", () => {
     await findByText("Alert 1");
 
     fireEvent.click(getByTitle("View notes"));
-    // open notes so we can later verify note text transformation
+    
     fireEvent.click(getByText("Assignment"));
     fireEvent.click(getByText("Assign to me"));
     fireEvent.click(getByText("Save changes"));
@@ -123,12 +123,12 @@ describe("IncidentBoardPage — UI refresh & persistence", () => {
     await waitFor(() =>
       expect(api.getIncidents.mock.calls.length).toBeGreaterThanOrEqual(2),
     );
-    // ensure we display the user's full_name rather than raw id
+    
     await waitFor(() => expect(screen.getByText(/Alice Example/)).toBeTruthy());
   });
 
   it("renders note text with IDs replaced by user labels", async () => {
-    // prepare incident with existing note containing uuid
+    
     const noteId = "123e4567-e89b-12d3-a456-426614174000";
     const initial = {
       id: "i1",
@@ -153,7 +153,7 @@ describe("IncidentBoardPage — UI refresh & persistence", () => {
     const { findByText } = render(<IncidentBoardPage />);
     await findByText("Alert 1");
     fireEvent.click(screen.getByTitle("View notes"));
-    // note should show 'bob' rather than the raw uuid
+    
     await waitFor(() =>
       expect(screen.queryByText(noteId)).not.toBeInTheDocument(),
     );
@@ -201,7 +201,7 @@ describe("IncidentBoardPage — UI refresh & persistence", () => {
     const { findByText, getByText } = render(<IncidentBoardPage />);
     await findByText("Alert 1");
 
-    // open incident modal via edit icon so tab controls are available
+    
     fireEvent.click(screen.getByText("edit").closest("button"));
     await screen.findByRole("button", { name: /Details/i });
 

@@ -1,4 +1,4 @@
-// API Configuration
+
 function resolveDefaultApiBase() {
   if (typeof globalThis === "undefined" || !globalThis.location) {
     return "http://localhost:4319";
@@ -11,7 +11,7 @@ export const API_BASE = import.meta.env.VITE_API_URL || resolveDefaultApiBase();
 export const GRAFANA_URL =
   import.meta.env.VITE_GRAFANA_URL || "http://localhost:8080/grafana";
 export const OIDC_PROVIDER_LABEL = "SSO";
-// External service endpoints (configurable via Vite env)
+
 export const LOKI_OTLP_ENDPOINT =
   import.meta.env.VITE_LOKI_OTLP_ENDPOINT || "http://loki:3100/otlp";
 export const LOKI_BASE = import.meta.env.VITE_LOKI_URL || "http://loki:3100";
@@ -22,11 +22,11 @@ export const MIMIR_PROMETHEUS_URL =
 export const TEMPO_URL = import.meta.env.VITE_TEMPO_URL || "http://tempo:3200";
 export const TEMPO_OTLP_ENDPOINT =
   import.meta.env.VITE_TEMPO_OTLP_ENDPOINT || "tempo:4317";
-// OTLP Gateway host used by UI when generating agent configs
+
 export const OTLP_GATEWAY_HOST =
   import.meta.env.VITE_OTLP_GATEWAY_HOST || "http://localhost:4320";
 
-// Time ranges (in minutes)
+
 export const TIME_RANGES = [
   { value: 5, label: "Last 5 minutes" },
   { value: 15, label: "Last 15 minutes" },
@@ -37,7 +37,7 @@ export const TIME_RANGES = [
   { value: 1440, label: "Last 24 hours" },
 ];
 
-// Log levels
+
 export const LOG_LEVELS = {
   ERROR: {
     text: "ERROR",
@@ -71,14 +71,14 @@ export const LOG_LEVELS = {
   },
 };
 
-// Alert severities
+
 export const ALERT_SEVERITIES = [
   { value: "info", label: "Info" },
   { value: "warning", label: "Warning" },
   { value: "critical", label: "Critical" },
 ];
 
-// Datasource types
+
 export const DATASOURCE_TYPES = [
   { value: "prometheus", label: "Mimir (Prometheus-compatible)" },
   { value: "loki", label: "Loki" },
@@ -88,7 +88,7 @@ export const DATASOURCE_TYPES = [
   { value: "elasticsearch", label: "Elasticsearch" },
 ];
 
-// Notification channel types
+
 export const NOTIFICATION_CHANNEL_TYPES = [
   { value: "email", label: "Email" },
   { value: "slack", label: "Slack" },
@@ -97,7 +97,6 @@ export const NOTIFICATION_CHANNEL_TYPES = [
   { value: "pagerduty", label: "PagerDuty" },
 ];
 
-// Status variants
 export const STATUS_VARIANTS = {
   healthy: "success",
   degraded: "warning",
@@ -105,7 +104,6 @@ export const STATUS_VARIANTS = {
   unknown: "default",
 };
 
-// Refresh intervals (in seconds)
 export const REFRESH_INTERVALS = [
   { value: 10, label: "10s" },
   { value: 30, label: "30s" },
@@ -114,21 +112,19 @@ export const REFRESH_INTERVALS = [
   { value: 600, label: "10m" },
 ];
 
-// Default query limits
 export const DEFAULT_QUERY_LIMITS = {
   logs: 100,
   traces: 100,
   alerts: 1000,
 };
 
-// Duration range defaults (in nanoseconds)
 export const DEFAULT_DURATION_RANGE = {
-  min: 0, // 0ms (allow timeline minimum to be zero)
-  max: 5000000000, // 5s
-  step: 50000000, // 50ms
+  min: 0, 
+  max: 5000000000, 
+  step: 50000000, 
 };
 
-// Navigation labels
+
 export const NAV_ITEMS = {
   DASHBOARD: {
     label: "Dashboard",
@@ -174,10 +170,8 @@ export const NAV_ITEMS = {
   },
 };
 
-// View mode options for logs
 export const LOG_VIEW_MODES = ["table", "compact", "raw"];
 
-// User roles
 export const USER_ROLES = [
   {
     value: "provisioning",
@@ -188,7 +182,6 @@ export const USER_ROLES = [
   { value: "admin", label: "Admin - Full access" },
 ];
 
-// UI Messages
 export const MESSAGES = {
   NO_ACCESS: "You don't have access to this page.",
   NO_RESULTS: "No results found",
@@ -201,13 +194,9 @@ export const MESSAGES = {
   COPY_FAILED: "Failed to copy to clipboard",
 };
 
-// Max logs options for Loki query
 export const MAX_LOG_OPTIONS = [20, 50, 100, 200];
-
-// Maximum number of items to request for paginated searches (traces, logs, etc.)
 export const TRACE_LIMIT_OPTIONS = [20, 50, 100, 200];
 
-// Auto-refresh intervals for Loki
 export const LOKI_REFRESH_INTERVALS = [
   { value: 10, label: "10s" },
   { value: 30, label: "30s" },
@@ -215,21 +204,18 @@ export const LOKI_REFRESH_INTERVALS = [
   { value: 300, label: "5m" },
 ];
 
-// Trace status filter options
 export const TRACE_STATUS_OPTIONS = [
   { value: "all", label: "All" },
   { value: "ok", label: "Success Only" },
   { value: "error", label: "Errors Only" },
 ];
 
-// Dashboard visibility options
 export const VISIBILITY_OPTIONS = [
   { value: "private", label: "Private (Only me)" },
   { value: "group", label: "Shared with Groups" },
   { value: "tenant", label: "Tenant-wide (Everyone in organization)" },
 ];
 
-// Grafana dashboard auto-refresh intervals
 export const GRAFANA_REFRESH_INTERVALS = [
   { value: "", label: "No auto-refresh" },
   { value: "5s", label: "5 seconds" },
@@ -242,7 +228,6 @@ export const GRAFANA_REFRESH_INTERVALS = [
   { value: "1h", label: "1 hour" },
 ];
 
-// Alert severity options
 export const ALERT_SEVERITY_OPTIONS = [
   { value: "all", label: "All Severities" },
   { value: "critical", label: "Critical" },
@@ -250,7 +235,6 @@ export const ALERT_SEVERITY_OPTIONS = [
   { value: "info", label: "Info" },
 ];
 
-// Loki time range options
 export const LOKI_TIME_RANGES = [
   { value: 5, label: "Last 5 minutes" },
   { value: 15, label: "Last 15 minutes" },

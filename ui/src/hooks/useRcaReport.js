@@ -102,7 +102,6 @@ export function useRcaReport(
   const [loadingPrimaryReport, setLoadingPrimaryReport] = useState(false);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [reportError, setReportError] = useState(null);
-  // track HTTP status for convenience (e.g. 404 not found)
   const [reportErrorStatus, setReportErrorStatus] = useState(null);
   const [report, setReport] = useState(null);
   const [reportMeta, setReportMeta] = useState(null);

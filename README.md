@@ -1,6 +1,6 @@
-=# 🔭 Be Observant
+# 🔭 Be Observant
 
-### The Unified Control Plane for Modern Observability.
+## The Unified Control Plane for Modern Observability.
 
 **Be Observant** is an all-in-one observability platform that eliminates "swivel-chair" monitoring. By unifying metrics, logs, traces, AiOps and intelligent alerting into a single, secure control plane, it allows SREs and Developers to focus on resolving issues rather than stitching data together. We built this to make observability free and while this relies on LGTM stack, you can easily swtich to Victoria metrics and you don't have to pay for enterprise licenses for Grafana as we try to cover as much of the features, to ensure a complete free observability tool.
 
@@ -8,7 +8,7 @@
 
 Built on the industry-standard **LGTM stack** (Loki, Grafana, Tempo, Mimir), Be Observant adds a sophisticated layer of security, multi-tenancy, and AI-driven analysis.
 
-[Explore Docs](https://www.google.com/search?q=./USER_GUIDE.md) | [Report Issue](https://www.google.com/search?q=https://github.com/observantio/beobservant/issues) | [BeNotified](https://github.com/observantio/benotified) | [BeCertain](https://github.com/observantio/becertain)
+[Report Issue](https://github.com/observantio/beobservant/issues) | [BeNotified](https://github.com/observantio/benotified) | [BeCertain](https://github.com/observantio/becertain)
 
 ---
 
@@ -38,7 +38,14 @@ Be Observant acts as the orchestrator for several specialized internal services:
 
 ## 🚀 Quick Start
 
-Get your environment up and running in less than 5 minutes.
+Get your environment up and running in less than 5 minutes. You can use:
+
+```bash
+# direct executions
+curl -fsSL https://raw.githubusercontent.com/observantio/beobservant/main/install.py | python3
+```
+
+This will run a minimal setup to test out observantio
 
 ### 1. Environment Setup
 
@@ -65,7 +72,6 @@ Choose the mode that fits your workflow:
 # Clone sibling repos first
 git clone https://github.com/observantio/becertain BeCertain
 git clone https://github.com/observantio/benotified BeNotified
-
 docker compose up -d --build
 ```
 

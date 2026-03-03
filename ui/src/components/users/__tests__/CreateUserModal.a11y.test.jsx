@@ -1,4 +1,3 @@
-import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen, within } from "@testing-library/react";
 import { axe, toHaveNoViolations } from "jest-axe";
@@ -31,22 +30,22 @@ describe("CreateUserModal — accessibility & keyboard interactions", () => {
       />,
     );
 
-    // find the group card by visible name and locate the role=checkbox wrapper
+    
     const labelEl = screen.getByText("Group One");
     const card = labelEl.closest('[role="checkbox"]');
     expect(card).toBeInTheDocument();
     expect(card).toHaveAttribute("tabindex");
 
-    // checkbox inside the card should start unchecked
+    
     const innerCheckbox = within(card).getByRole("checkbox");
     expect(innerCheckbox).not.toBeChecked();
 
-    // press Enter to toggle
+    
     card.focus();
     fireEvent.keyDown(card, { key: "Enter", code: "Enter", charCode: 13 });
     expect(innerCheckbox).toBeChecked();
 
-    // press Space to toggle off
+    
     fireEvent.keyDown(card, { key: " ", code: "Space", charCode: 32 });
     expect(innerCheckbox).not.toBeChecked();
 

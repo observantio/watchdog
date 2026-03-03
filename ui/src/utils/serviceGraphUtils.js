@@ -269,8 +269,6 @@ export function buildServiceGraphInsights(graphData) {
 }
 
 export function buildServiceGraphEdges(graphData, activeEdgeId, activeNodeId) {
-  // If per-trace edges are present, emit one edge per trace to visually
-  // separate connections originating from different traces.
   if (graphData.traceEdges && graphData.traceEdges.length) {
     return graphData.traceEdges.map((te, idx) => {
       const { source, target, count, durations, errors, traceId } = te;
@@ -284,7 +282,6 @@ export function buildServiceGraphEdges(graphData, activeEdgeId, activeNodeId) {
         : true;
       const fade = activeNodeId && !isConnectedToActive && !isActive;
 
-      // Use a small variety of dash patterns to visually separate parallel edges.
       const dashPatterns = ["0", "4 2", "6 3", "2 2"];
       const dash = dashPatterns[idx % dashPatterns.length];
 
@@ -415,8 +412,6 @@ export function layoutServiceGraph(nodes, edges) {
 
   dagre.layout(graph);
 
-  // Detect connected components so we can vertically separate disconnected
-  // subgraphs and avoid nodes collapsing into a single horizontal line.
   const adj = new Map();
   nodes.forEach((n) => adj.set(n.id, new Set()));
   edges.forEach((e) => {
@@ -441,9 +436,6 @@ export function layoutServiceGraph(nodes, edges) {
     }
     components.push(comp);
   }
-
-  // Compute layouted nodes from dagre and then offset each component vertically
-  // so disconnected services are shown on separate rows.
   const nodePosMap = new Map();
   nodes.forEach((node) => {
     const pos = graph.node(node.id) || { x: 0, y: 0 };
@@ -456,7 +448,6 @@ export function layoutServiceGraph(nodes, edges) {
   const compOffsets = new Map();
   const verticalGap = Math.max(80, graph.graph().ranksep || 140);
   components.forEach((comp, idx) => {
-    // Compute min Y for the component
     let minY = Infinity;
     comp.forEach((nid) => {
       const p = nodePosMap.get(nid);
@@ -468,7 +459,6 @@ export function layoutServiceGraph(nodes, edges) {
     compOffsets.set(idx, offset);
   });
 
-  // Map node id -> component index
   const nodeToComp = new Map();
   components.forEach((comp, idx) =>
     comp.forEach((nid) => nodeToComp.set(nid, idx)),

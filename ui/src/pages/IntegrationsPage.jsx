@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getNotificationChannels,
   createNotificationChannel,
@@ -15,15 +15,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import PageHeader from "../components/ui/PageHeader";
-import {
-  Button,
-  Card,
-  Input,
-  Modal,
-  Select,
-  Spinner,
-  Alert,
-} from "../components/ui";
+import { Button, Card, Input, Modal, Select, Spinner, Alert } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import ChannelEditor from "../components/alertmanager/ChannelEditor";
 
@@ -37,7 +29,6 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
   const next = (patch) => onChange({ ...value, ...patch });
   return (
     <div className="space-y-6">
-      {/* Basic Information Section */}
       <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">info</span>
@@ -46,9 +37,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-sre-text">
-              Integration Name
-            </label>
+            <label className="block text-sm font-medium text-sre-text">Integration Name</label>
             <Input
               value={value.name || ""}
               onChange={(e) => next({ name: e.target.value })}
@@ -58,9 +47,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-sre-text">
-              Authentication Mode
-            </label>
+            <label className="block text-sm font-medium text-sre-text">Authentication Mode</label>
             <Select
               value={value.authMode || "api_token"}
               onChange={(e) => next({ authMode: e.target.value })}
@@ -68,15 +55,12 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
             >
               <option value="api_token">Email + API token</option>
               <option value="bearer">Bearer token</option>
-              {canUseSso && (
-                <option value="sso">SSO available (token-based)</option>
-              )}
+              {canUseSso && <option value="sso">SSO available (token-based)</option>}
             </Select>
           </div>
         </div>
       </div>
 
-      {/* Configuration Section */}
       <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">settings</span>
@@ -96,8 +80,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
               className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
             />
             <p className="text-xs text-sre-text-muted mt-1">
-              Required. Your Jira instance URL (e.g.,
-              https://yourcompany.atlassian.net)
+              Required. Your Jira instance URL (e.g., https://yourcompany.atlassian.net)
             </p>
           </div>
 
@@ -114,9 +97,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-sre-text mb-2">
-                  API Token
-                </label>
+                <label className="block text-sm font-medium text-sre-text mb-2">API Token</label>
                 <Input
                   type="password"
                   value={value.apiToken || ""}
@@ -130,9 +111,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
           {(value.authMode || "api_token") !== "api_token" && (
             <div>
               <label className="block text-sm font-medium text-sre-text mb-2">
-                {(value.authMode || "api_token") === "sso"
-                  ? "SSO Access Token"
-                  : "Bearer Token"}
+                {(value.authMode || "api_token") === "sso" ? "SSO Access Token" : "Bearer Token"}
               </label>
               <Input
                 type="password"
@@ -145,7 +124,6 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
         </div>
       </div>
 
-      {/* Settings Section */}
       <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">tune</span>
@@ -161,9 +139,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
               className="w-5 h-5 text-sre-primary border-sre-border rounded focus:ring-sre-primary focus:ring-2"
             />
             <div className="flex-1">
-              <div className="font-medium text-sre-text">
-                Enable this integration
-              </div>
+              <div className="font-medium text-sre-text">Enable this integration</div>
               <div className="text-sm text-sre-text-muted">
                 Only enabled integrations will be available for use
               </div>
@@ -177,7 +153,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
 
 export default function IntegrationsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
+  const toast = useToast();
 
   const formatApiError = (err) => {
     if (!err) return "API error";
@@ -186,9 +162,7 @@ export default function IntegrationsPage() {
     if (typeof body === "string") {
       try {
         body = JSON.parse(body);
-      } catch (_) {
-        // leave as string and fall through to message handling below
-      }
+      } catch (_) {}
     }
 
     if (body) {
@@ -207,9 +181,7 @@ export default function IntegrationsPage() {
       if (typeof body.message === "string") return body.message;
       try {
         return JSON.stringify(body);
-      } catch (_) {
-        /* fallthrough */
-      }
+      } catch (_) {}
     }
 
     const m = err && err.message;
@@ -244,6 +216,10 @@ export default function IntegrationsPage() {
   const [showTestModal, setShowTestModal] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
+
+  const suppressDeleteConfirmUntilRef = useRef(0);
+
   const [jiraForm, setJiraForm] = useState({
     name: "",
     visibility: "private",
@@ -266,38 +242,36 @@ export default function IntegrationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [channelsData, allowedTypesData, jiraData, authModeData] =
-        await Promise.all([
-          getNotificationChannels().catch(() => []),
-          getAllowedChannelTypes().catch(() => ({ allowedTypes: [] })),
-          listJiraIntegrations().catch(() => ({ items: [] })),
-          getAuthMode().catch(() => ({ oidc_enabled: false })),
-        ]);
+      const [channelsData, allowedTypesData, jiraData, authModeData] = await Promise.all([
+        getNotificationChannels().catch(() => []),
+        getAllowedChannelTypes().catch(() => ({ allowedTypes: [] })),
+        listJiraIntegrations().catch(() => ({ items: [] })),
+        getAuthMode().catch(() => ({ oidc_enabled: false })),
+      ]);
+
       setChannels(
         Array.isArray(channelsData)
           ? channelsData.map((channel) => ({
               ...channel,
-              sharedGroupIds:
-                channel?.sharedGroupIds || channel?.shared_group_ids || [],
+              sharedGroupIds: channel?.sharedGroupIds || channel?.shared_group_ids || [],
             }))
-          : [],
+          : []
       );
+
       setAllowedChannelTypes(
-        Array.isArray(allowedTypesData?.allowedTypes)
-          ? allowedTypesData.allowedTypes
-          : [],
+        Array.isArray(allowedTypesData?.allowedTypes) ? allowedTypesData.allowedTypes : []
       );
+
       setJiraIntegrations(
         Array.isArray(jiraData?.items)
           ? jiraData.items.map((integration) => ({
               ...integration,
               sharedGroupIds:
-                integration?.sharedGroupIds ||
-                integration?.shared_group_ids ||
-                [],
+                integration?.sharedGroupIds || integration?.shared_group_ids || [],
             }))
-          : [],
+          : []
       );
+
       setCanUseSso(!!authModeData?.oidc_enabled);
     } catch (e) {
       setError(e?.message || "Failed to load integrations");
@@ -308,11 +282,12 @@ export default function IntegrationsPage() {
 
   const visibleChannels = useMemo(
     () => channels.filter((channel) => channel.visibility === activeTab),
-    [channels, activeTab],
+    [channels, activeTab]
   );
+
   const visibleJiraIntegrations = useMemo(
     () => jiraIntegrations.filter((item) => item.visibility === activeTab),
-    [jiraIntegrations, activeTab],
+    [jiraIntegrations, activeTab]
   );
 
   const channelIconForType = (type) => {
@@ -368,8 +343,7 @@ export default function IntegrationsPage() {
     setJiraForm({
       name: integration.name || "",
       visibility: integration.visibility || "private",
-      sharedGroupIds:
-        integration.sharedGroupIds || integration.shared_group_ids || [],
+      sharedGroupIds: integration.sharedGroupIds || integration.shared_group_ids || [],
       enabled: !!integration.enabled,
       baseUrl: integration.baseUrl || "",
       email: integration.email || "",
@@ -380,16 +354,51 @@ export default function IntegrationsPage() {
     setShowJiraModal(true);
   };
 
-  /* Local presentational components to reduce duplication and improve readability */
+  const closeDeleteConfirmSafely = () => {
+    suppressDeleteConfirmUntilRef.current = Date.now() + 900;
+    window.setTimeout(() => {
+      setDeleteConfirm(null);
+    }, 160);
+  };
+
+  const requestDeleteConfirm = (target) => {
+    const now = Date.now();
+    if (deleteInProgress) return;
+    if (now < suppressDeleteConfirmUntilRef.current) return;
+
+    const stillExists =
+      target?.type === "channel"
+        ? channels.some((c) => c.id === target.id)
+        : target?.type === "Jira integration"
+          ? jiraIntegrations.some((j) => j.id === target.id)
+          : false;
+    if (!stillExists) return;
+
+    setDeleteConfirm(target);
+  };
+
+  useEffect(() => {
+    if (!deleteConfirm) return;
+
+    const exists =
+      deleteConfirm.type === "channel"
+        ? channels.some((c) => c.id === deleteConfirm.id)
+        : deleteConfirm.type === "Jira integration"
+          ? jiraIntegrations.some((j) => j.id === deleteConfirm.id)
+          : false;
+
+    if (!exists) {
+      setDeleteConfirm(null);
+    }
+  }, [deleteConfirm, channels, jiraIntegrations]);
+
   function ChannelCard({ channel }) {
     const isOwner = channel.createdBy === userId;
     const typeIcon = channelIconForType(channel.type);
     const colorClasses = channelColorForType(channel.type);
 
     const hasConfig =
-      channel.config &&
-      typeof channel.config === "object" &&
-      Object.keys(channel.config).length > 0;
+      channel.config && typeof channel.config === "object" && Object.keys(channel.config).length > 0;
 
     return (
       <div className="group relative p-4 rounded-xl border border-sre-border bg-gradient-to-br from-white/3 to-white/6 shadow-sm hover:shadow-lg transition-all transform hover:-translate-y-0.5">
@@ -397,37 +406,37 @@ export default function IntegrationsPage() {
           <div
             className={`w-12 h-12 rounded-lg flex items-center justify-center bg-gradient-to-br ${colorClasses} font-semibold`}
           >
-            <span className="material-icons text-lg leading-none">
-              {typeIcon}
-            </span>
+            <span className="material-icons text-lg leading-none">{typeIcon}</span>
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <div className="font-semibold text-sre-text truncate">
-                    {channel.name}
-                  </div>
+                  <div className="font-semibold text-sre-text truncate">{channel.name}</div>
                   <div className="text-xs text-sre-text-muted rounded px-2 py-1 bg-sre-surface/40 border border-sre-border/30">
                     {channel.visibility || "private"}
                   </div>
                 </div>
                 <div className="text-xs text-sre-text-muted mt-2 truncate">
                   {hasConfig
-                    ? channel.config.url ||
-                      channel.config.webhook_url ||
-                      channel.config.to
+                    ? channel.config.url || channel.config.webhook_url || channel.config.to
                     : "You have no access to view the resource config"}
                 </div>
               </div>
 
               <div className="flex flex-col items-end gap-2">
                 <div
-                  className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs font-medium ${channel.enabled ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}
+                  className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs font-medium ${
+                    channel.enabled
+                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                  }`}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full ${channel.enabled ? "bg-green-600" : "bg-gray-400"}`}
+                    className={`w-2 h-2 rounded-full ${
+                      channel.enabled ? "bg-green-600" : "bg-gray-400"
+                    }`}
                   />
                   {channel.enabled ? "Enabled" : "Disabled"}
                 </div>
@@ -442,11 +451,10 @@ export default function IntegrationsPage() {
                       onClick={() => handleTestChannel(channel.id)}
                       className="p-1 hover:bg-sre-primary/10"
                     >
-                      <span className="material-icons text-base">
-                        play_arrow
-                      </span>
+                      <span className="material-icons text-base">play_arrow</span>
                     </Button>
                   )}
+
                   {isOwner && (
                     <Button
                       size="sm"
@@ -459,19 +467,26 @@ export default function IntegrationsPage() {
                       <span className="material-icons text-base">edit</span>
                     </Button>
                   )}
+
                   {isOwner && (
                     <Button
                       size="sm"
                       variant="ghost"
                       aria-label="Delete channel"
                       title="Delete channel"
-                      onClick={() =>
-                        setDeleteConfirm({
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        requestDeleteConfirm({
                           type: "channel",
                           id: channel.id,
                           name: channel.name,
-                        })
-                      }
+                        });
+                      }}
                       className="p-1 hover:bg-sre-primary/10"
                     >
                       <span className="material-icons text-base">delete</span>
@@ -488,6 +503,7 @@ export default function IntegrationsPage() {
 
   function JiraCard({ integration }) {
     const isOwner = integration.createdBy === userId;
+
     return (
       <div className="p-4 rounded-xl border border-sre-border bg-white/3 shadow-sm hover:shadow-md transition-all hover:border-sre-primary/30">
         <div className="flex items-start gap-4">
@@ -497,16 +513,11 @@ export default function IntegrationsPage() {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <div className="font-semibold text-sre-text truncate">
-                {integration.name}
-              </div>
-              <div className="text-xs text-sre-text-muted">
-                {integration.visibility || "private"}
-              </div>
+              <div className="font-semibold text-sre-text truncate">{integration.name}</div>
+              <div className="text-xs text-sre-text-muted">{integration.visibility || "private"}</div>
             </div>
-            <div className="text-sm text-sre-text-muted truncate mb-3">
-              {integration.baseUrl}
-            </div>
+
+            <div className="text-sm text-sre-text-muted truncate mb-3">{integration.baseUrl}</div>
 
             <div className="flex items-center gap-2 justify-end">
               {isOwner && (
@@ -521,19 +532,26 @@ export default function IntegrationsPage() {
                   <span className="material-icons text-base">edit</span>
                 </Button>
               )}
+
               {isOwner && (
                 <Button
                   size="sm"
                   variant="ghost"
                   aria-label="Delete integration"
                   title="Delete integration"
-                  onClick={() =>
-                    setDeleteConfirm({
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    requestDeleteConfirm({
                       type: "Jira integration",
                       id: integration.id,
                       name: integration.name,
-                    })
-                  }
+                    });
+                  }}
                   className="p-1 hover:bg-sre-primary/10"
                 >
                   <span className="material-icons text-base">delete</span>
@@ -548,19 +566,16 @@ export default function IntegrationsPage() {
 
   async function handleSaveChannel(payload) {
     try {
-      const visibilityToUse =
-        payload?.visibility || editingChannel?.visibility || activeTab;
+      const visibilityToUse = payload?.visibility || editingChannel?.visibility || activeTab;
       const finalPayload = {
         ...payload,
         visibility: visibilityToUse,
-        sharedGroupIds:
-          visibilityToUse === "group" ? payload.sharedGroupIds || [] : [],
+        sharedGroupIds: visibilityToUse === "group" ? payload.sharedGroupIds || [] : [],
       };
-      if (editingChannel?.id) {
-        await updateNotificationChannel(editingChannel.id, finalPayload);
-      } else {
-        await createNotificationChannel(finalPayload);
-      }
+
+      if (editingChannel?.id) await updateNotificationChannel(editingChannel.id, finalPayload);
+      else await createNotificationChannel(finalPayload);
+
       setShowChannelModal(false);
       await loadAll();
       toast.success("Channel saved");
@@ -574,8 +589,10 @@ export default function IntegrationsPage() {
       await deleteNotificationChannel(channelId);
       await loadAll();
       toast.success("Channel deleted");
+      return true;
     } catch (e) {
       toast.error(formatApiError(e) || "Failed to delete channel");
+      return false;
     }
   }
 
@@ -594,12 +611,11 @@ export default function IntegrationsPage() {
       toast.error("Jira Base URL is required");
       return;
     }
+
     try {
       new URL(jiraForm.baseUrl.trim());
-    } catch (e) {
-      toast.error(
-        "Jira Base URL must be a valid URL (https://company.atlassian.net)",
-      );
+    } catch (_) {
+      toast.error("Jira Base URL must be a valid URL (https://company.atlassian.net)");
       return;
     }
 
@@ -615,14 +631,12 @@ export default function IntegrationsPage() {
         baseUrl: jiraForm.baseUrl.trim(),
         name: jiraForm.name.trim(),
         visibility: visibilityToUse,
-        sharedGroupIds:
-          visibilityToUse === "group" ? jiraForm.sharedGroupIds || [] : [],
+        sharedGroupIds: visibilityToUse === "group" ? jiraForm.sharedGroupIds || [] : [],
       };
-      if (editingJira?.id) {
-        await updateJiraIntegration(editingJira.id, payload);
-      } else {
-        await createJiraIntegration(payload);
-      }
+
+      if (editingJira?.id) await updateJiraIntegration(editingJira.id, payload);
+      else await createJiraIntegration(payload);
+
       setShowJiraModal(false);
       await loadAll();
       toast.success("Jira integration saved");
@@ -636,8 +650,10 @@ export default function IntegrationsPage() {
       await deleteJiraIntegration(integrationId);
       await loadAll();
       toast.success("Jira integration deleted");
+      return true;
     } catch (e) {
       toast.error(formatApiError(e) || "Failed to delete Jira integration");
+      return false;
     }
   }
 
@@ -678,16 +694,12 @@ export default function IntegrationsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Notification Channels */}
         <Card className="py-6 px-0">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-sre-text">
-                Notification Channels
-              </h2>
+              <h2 className="text-xl font-semibold text-sre-text">Notification Channels</h2>
               <p className="text-sm text-sre-text-muted mt-1">
-                Create and manage channels to receive alerts via Email, Slack,
-                Webhooks and more.
+                Create and manage channels to receive alerts via Email, Slack, Webhooks and more.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -711,22 +723,14 @@ export default function IntegrationsPage() {
                     notifications_off
                   </span>
                 </div>
-                <h3 className="text-lg font-semibold text-sre-text mb-2">
-                  No channels in this scope
-                </h3>
+                <h3 className="text-lg font-semibold text-sre-text mb-2">No channels in this scope</h3>
                 <p className="text-sm text-sre-text-muted max-w-[34rem] mx-auto mb-6">
-                  No notification channels are configured for this scope yet.
-                  Create a channel to start sending alerts to Slack, Email,
-                  Webhooks or other destinations.
+                  No notification channels are configured for this scope yet. Create a channel to
+                  start sending alerts to Slack, Email, Webhooks or other destinations.
                 </p>
                 <div className="flex items-center justify-center gap-3">
-                  <Button
-                    onClick={openCreateChannel}
-                    variant="primary"
-                    className="px-4 py-2"
-                  >
-                    <span className="material-icons mr-2">add</span>Create
-                    channel
+                  <Button onClick={openCreateChannel} variant="primary" className="px-4 py-2">
+                    <span className="material-icons mr-2">add</span>Create channel
                   </Button>
                 </div>
               </div>
@@ -742,16 +746,12 @@ export default function IntegrationsPage() {
 
         <hr className="border-sre-border" />
 
-        {/* Jira Integrations */}
         <Card className="py-6 px-0">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-sre-text">
-                Jira Integrations
-              </h2>
+              <h2 className="text-xl font-semibold text-sre-text">Jira Integrations</h2>
               <p className="text-sm text-sre-text-muted mt-1">
-                Connect Jira to create and sync issues and comments from
-                incidents.
+                Connect Jira to create and sync issues and comments from incidents.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -779,8 +779,8 @@ export default function IntegrationsPage() {
                   No Jira integrations in this scope
                 </h3>
                 <p className="text-sm text-sre-text-muted max-w-[28rem] mx-auto mb-4">
-                  Add a Jira integration to enable creating issues directly from
-                  incidents and syncing comments.
+                  Add a Jira integration to enable creating issues directly from incidents and
+                  syncing comments.
                 </p>
               </div>
             ) : (
@@ -813,19 +813,12 @@ export default function IntegrationsPage() {
       <Modal
         isOpen={showJiraModal}
         onClose={() => setShowJiraModal(false)}
-        title={
-          editingJira ? "Edit Jira Integration" : "Create Jira Integration"
-        }
+        title={editingJira ? "Edit Jira Integration" : "Create Jira Integration"}
         size="lg"
         closeOnOverlayClick={false}
       >
-        <JiraIntegrationForm
-          value={jiraForm}
-          onChange={setJiraForm}
-          canUseSso={canUseSso}
-        />
+        <JiraIntegrationForm value={jiraForm} onChange={setJiraForm} canUseSso={canUseSso} />
 
-        {/* Action Buttons */}
         <div className="flex justify-end gap-3 pt-4 border-t border-sre-border/50 mt-6">
           <Button
             type="button"
@@ -863,24 +856,39 @@ export default function IntegrationsPage() {
 
       <ConfirmModal
         isOpen={!!deleteConfirm}
-        onCancel={() => setDeleteConfirm(null)}
+        onCancel={() => {
+          if (deleteInProgress) return;
+          closeDeleteConfirmSafely();
+        }}
         onConfirm={async () => {
+          if (deleteInProgress || !deleteConfirm) return;
+
+          suppressDeleteConfirmUntilRef.current = Date.now() + 2000;
+
           const target = deleteConfirm;
-          setDeleteConfirm(null);
+          setDeleteInProgress(true);
 
           try {
+            let ok = false;
+
             if (target.type === "channel") {
-              await handleDeleteChannel(target.id);
+              ok = await handleDeleteChannel(target.id);
             } else if (target.type === "Jira integration") {
-              await handleDeleteJiraIntegration(target.id);
+              ok = await handleDeleteJiraIntegration(target.id);
             }
-          } catch (e) {
-            setDeleteConfirm(target);
+
+            if (ok) {
+              closeDeleteConfirmSafely();
+            } else {
+              suppressDeleteConfirmUntilRef.current = Date.now() + 300;
+            }
+          } finally {
+            setDeleteInProgress(false);
           }
         }}
         title="Confirm Delete"
         message={`Are you sure you want to delete the ${deleteConfirm?.type} "${deleteConfirm?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
+        confirmText={deleteInProgress ? "Deleting..." : "Delete"}
         cancelText="Cancel"
         variant="danger"
       />

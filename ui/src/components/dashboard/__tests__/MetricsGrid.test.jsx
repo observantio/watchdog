@@ -24,7 +24,7 @@ describe("MetricsGrid", () => {
         icon: null,
       },
     ];
-    const metricOrder = [0, 1, 2]; // stale index 2 from previously longer config
+    const metricOrder = [0, 1, 2]; 
 
     const { getByText } = render(
       <MetricsGrid

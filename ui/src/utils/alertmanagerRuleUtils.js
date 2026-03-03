@@ -1,9 +1,3 @@
-export function shouldIgnoreAlertManagerError(error) {
-  if (!error) return true;
-  if (error.status === 403) return true;
-  if (error.message?.includes("Error sending test notification")) return true;
-  return false;
-}
 
 export function normalizeRuleForUI(rule) {
   if (!rule) return rule;

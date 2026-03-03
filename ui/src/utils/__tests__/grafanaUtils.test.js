@@ -38,8 +38,6 @@ describe("overrideDashboardDatasource", () => {
     ];
 
     const out = overrideDashboardDatasource(dashboard, "new-uid", datasources);
-
-    // templating updated
     expect(out.templating).toBeDefined();
     expect(
       out.templating.list.find((i) => i.type === "datasource").current.value,
@@ -48,7 +46,6 @@ describe("overrideDashboardDatasource", () => {
       out.templating.list.find((i) => i.type === "datasource").current.text,
     ).toBe("New DS");
 
-    // panel-level datasource strings/objects replaced
     expect(out.panels[0].datasource).toBe("new-uid");
     expect(out.panels[0].targets[0].datasource).toBe("new-uid");
     expect(out.panels[1].datasource).toBe("new-uid");
@@ -68,10 +65,7 @@ describe("overrideDashboardDatasource", () => {
       false,
     );
 
-    // templating should not be created/modified
     expect(out.templating).toBeUndefined();
-
-    // panel-level datasource should still be applied
     expect(out.panels[0].datasource).toBe("prom-uid");
     expect(out.panels[0].targets[0].datasource).toBe("prom-uid");
   });

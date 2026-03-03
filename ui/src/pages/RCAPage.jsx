@@ -317,7 +317,7 @@ export default function RCAPage() {
       },
       warnings: () => (
         <RcaWarningsPanel report={report} compact={opts.compact} />
-      ), // no async logic
+      ), 
     };
 
     const renderer = tabMap[activeTab] || tabMap.summary;

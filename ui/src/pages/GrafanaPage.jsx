@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocalStorage } from "../hooks";
 import {
   searchDashboards,
@@ -54,22 +54,25 @@ export default function GrafanaPage() {
   });
 
   const toast = useToast();
+  const lastErrorToastRef = useRef({ key: "", ts: 0 });
 
   const handleApiError = useCallback(
     (e) => {
       if (!e) return;
-
-      if (e && typeof e.status === "number") {
+      const msg =
+        e?.body?.detail ||
+        e?.body?.message ||
+        e?.message ||
+        String(e || "Request failed");
+      const key = `${e?.status || "x"}:${msg}`;
+      const now = Date.now();
+      if (
+        lastErrorToastRef.current.key === key &&
+        now - lastErrorToastRef.current.ts < 2000
+      ) {
         return;
       }
-
-      const msg = e.message || String(e || "");
-      const lower = msg.toLowerCase();
-      if (
-        lower.includes("not found") &&
-        (lower.includes("access denied") || lower.includes("update failed"))
-      )
-        return;
+      lastErrorToastRef.current = { key, ts: now };
       toast.error(msg);
     },
     [toast],

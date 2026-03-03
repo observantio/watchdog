@@ -1,12 +1,6 @@
 """
 Middleware and helpers for request auditing and security headers.
 
-This module centralises the logic that was previously embedded in
-``server/main.py``. It exposes a ``security_headers_middleware`` function that
-can be registered with the FastAPI app. The middleware records `resource.view`
-entries for authenticated GET requests and appends standard security headers to
-all responses. Sensitive query parameters are redacted before logging.
-
 The constants and helper functions are also available for tests and other
 modules.
 

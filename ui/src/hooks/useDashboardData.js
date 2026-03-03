@@ -16,33 +16,19 @@ export function useDashboardData() {
   const canReadAlerts = hasPermission("read:alerts");
   const canReadDashboards = hasPermission("read:dashboards");
   const canReadLogs = hasPermission("read:logs");
-
-  // Health state
   const [health, setHealth] = useState(null);
   const [loadingHealth, setLoadingHealth] = useState(true);
-
-  // Alerts state
   const [alertCount, setAlertCount] = useState(null);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
-
-  // Logs state
   const [logVolume, setLogVolume] = useState(null);
   const [logVolumeSeries, setLogVolumeSeries] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
-
-  // Dashboards state
   const [dashboardCount, setDashboardCount] = useState(null);
   const [loadingDashboards, setLoadingDashboards] = useState(true);
-
-  // Silences state
   const [silenceCount, setSilenceCount] = useState(null);
   const [loadingSilences, setLoadingSilences] = useState(true);
-
-  // Datasources state
   const [datasourceCount, setDatasourceCount] = useState(null);
   const [loadingDatasources, setLoadingDatasources] = useState(true);
-
-  // System metrics state
   const [systemMetrics, setSystemMetrics] = useState(null);
   const [loadingSystemMetrics, setLoadingSystemMetrics] = useState(true);
 
@@ -65,7 +51,6 @@ export function useDashboardData() {
     const endNs = nowMs * 1000000;
     const startNs = endNs - 60 * 60 * 1000000000;
 
-    // Fetch health
     (async () => {
       try {
         const res = await fetchHealth();
@@ -77,7 +62,6 @@ export function useDashboardData() {
       }
     })();
 
-    // Fetch alerts
     (async () => {
       if (!canReadAlerts) {
         if (active) setLoadingAlerts(false);
@@ -93,7 +77,6 @@ export function useDashboardData() {
       }
     })();
 
-    // Fetch logs
     (async () => {
       if (!canReadLogs) {
         if (active) {
@@ -113,12 +96,10 @@ export function useDashboardData() {
         try {
           total = computeLogTotal(vol);
         } catch {
-          // If computing the total fails, default to 0 so the metric displays "0"
           total = 0;
         }
         if (active) {
           setLogVolume(total);
-          // store series for LogVolume sparkline
           try {
             const series = getVolumeValues(vol);
             setLogVolumeSeries(series);
@@ -128,7 +109,6 @@ export function useDashboardData() {
         }
       } catch (e) {
         void e;
-        // On error fetching logs, show 0 instead of leaving the metric as N/A
         if (active) {
           setLogVolume(0);
           setLogVolumeSeries([]);
@@ -138,7 +118,6 @@ export function useDashboardData() {
       }
     })();
 
-    // Fetch dashboards
     (async () => {
       if (!canReadDashboards) {
         if (active) setLoadingDashboards(false);
@@ -154,7 +133,6 @@ export function useDashboardData() {
       }
     })();
 
-    // Fetch silences
     (async () => {
       if (!canReadAlerts) {
         if (active) setLoadingSilences(false);
@@ -170,7 +148,6 @@ export function useDashboardData() {
       }
     })();
 
-    // Fetch datasources
     (async () => {
       if (!canReadDashboards) {
         if (active) setLoadingDatasources(false);
@@ -186,7 +163,6 @@ export function useDashboardData() {
       }
     })();
 
-    // Fetch system metrics
     (async () => {
       try {
         const data = await fetchSystemMetrics();
@@ -204,32 +180,19 @@ export function useDashboardData() {
   }, [canReadAlerts, canReadDashboards, canReadLogs]);
 
   return {
-    // Health
     health,
     loadingHealth,
-
-    // Alerts
     alertCount,
     loadingAlerts,
-
-    // Logs
     logVolume,
     logVolumeSeries,
     loadingLogs,
-
-    // Dashboards
     dashboardCount,
     loadingDashboards,
-
-    // Silences
     silenceCount,
     loadingSilences,
-
-    // Datasources
     datasourceCount,
     loadingDatasources,
-
-    // System metrics
     systemMetrics,
     loadingSystemMetrics,
   };

@@ -1,8 +1,6 @@
-import React from "react";
 import { render } from "@testing-library/react";
 import TraceResults from "../TraceResults";
 
-// simple wrapper to create a trace object with given spans
 function makeTrace(id, spans) {
   return { traceID: id, spans };
 }
@@ -28,9 +26,7 @@ describe("TraceResults / TraceCard counts", () => {
         handleTraceClick={() => {}}
       />,
     );
-    // spans badge (allow whitespace)
     expect(getByText((c) => /1\s*span/i.test(c))).toBeInTheDocument();
-    // service badge
     expect(getByText((c) => /1\s*service/i.test(c))).toBeInTheDocument();
   });
 

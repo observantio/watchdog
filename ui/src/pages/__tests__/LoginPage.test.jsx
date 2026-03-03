@@ -1,4 +1,3 @@
-import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, vi, beforeEach } from "vitest";
 
@@ -12,7 +11,7 @@ vi.mock("../../contexts/ToastContext", () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }));
 
-// mock auth context so the page shows password login
+
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
     login: vi
@@ -29,7 +28,7 @@ vi.mock("../../contexts/AuthContext", () => ({
   }),
 }));
 
-// react-router hooks used by LoginPage; mock navigate to avoid Router in tests
+
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
 
 import * as api from "../../api";
@@ -44,13 +43,13 @@ describe("LoginPage MFA setup flow", () => {
     api.enrollMFA.mockResolvedValue({ secret: "s", otpauth_url: "otpauth://" });
     api.verifyMFA.mockResolvedValue({ recovery_codes: ["r1", "r2"] });
 
-    // mock clipboard
+    
     const write = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText: write } });
 
     render(<LoginPage />);
 
-    // fill login form and submit — our mocked login will trigger MFA setup required
+    
     fireEvent.change(screen.getByLabelText(/username/i), {
       target: { value: "alice" },
     });
@@ -59,17 +58,17 @@ describe("LoginPage MFA setup flow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    // after login rejection we should see MFA setup UI
+    
     await waitFor(() =>
       expect(
         screen.getByText(/Set up two-factor authentication/i),
       ).toBeInTheDocument(),
     );
 
-    // start setup
+    
     fireEvent.click(screen.getByRole("button", { name: /Start MFA setup/i }));
 
-    // verify step 1 -> enter code and verify
+    
     await waitFor(() =>
       expect(screen.getByLabelText(/Authentication code/i)).toBeInTheDocument(),
     );
@@ -78,14 +77,14 @@ describe("LoginPage MFA setup flow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Verify/i }));
 
-    // now recovery codes should be visible
+    
     await waitFor(() =>
       expect(
         screen.getByText(/Recovery codes — save these now/i),
       ).toBeInTheDocument(),
     );
 
-    // click Copy codes — should call clipboard
+    
     fireEvent.click(screen.getByRole("button", { name: /Copy codes/i }));
     await waitFor(() => expect(write).toHaveBeenCalled());
   });

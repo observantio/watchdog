@@ -59,19 +59,14 @@ class OIDCService:
         self._jwks_cache_at: float = 0.0
         self._jwks_by_kid: Dict[str, Dict[str, Any]] = {}
         self._verification_key_cache: Dict[Tuple[str, str], Any] = {}
-
         self._admin_token_cache: Optional[str] = None
         self._admin_token_expires_at: float = 0.0
-
         self._cache_lock = threading.RLock()
-
         self._cache_ttl_seconds = 600
         self._tx_ttl_seconds = max(60, int(getattr(config, "OIDC_TRANSACTION_TTL_SECONDS", 600) or 600))
         self._timeout = max(float(config.DEFAULT_TIMEOUT), 5.0)
-
         self._http = httpx.Client(timeout=self._timeout)
         self._ttl_cache = TTLCache()
-
         self._bg_loop: Optional[asyncio.AbstractEventLoop] = None
         self._bg_thread: Optional[threading.Thread] = None
         self._bg_ready = threading.Event()

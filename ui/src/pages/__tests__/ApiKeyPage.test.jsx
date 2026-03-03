@@ -13,7 +13,7 @@ vi.mock("../../api", () => ({
 const toastMock = { success: vi.fn(), error: vi.fn() };
 vi.mock("../../contexts/ToastContext", () => ({ useToast: () => toastMock }));
 
-// provide AuthContext via a mutable user object so tests can update it
+
 let currentUser = { id: "u2", username: "me", api_keys: [] };
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -71,10 +71,10 @@ beforeEach(() => {
 
 describe("ApiKeyPage (shared-key UX)", () => {
   it("shows owner username for a shared key", async () => {
-    // make the auth context user include the shared key
+    
     vi.mocked(api.listApiKeys).mockResolvedValue([sharedKey]);
 
-    // populate auth context user for this test
+    
     currentUser.api_keys = [sharedKey];
     const Page = (await import("../ApiKeyPage")).default;
 
@@ -97,7 +97,7 @@ describe("ApiKeyPage (shared-key UX)", () => {
   });
 
   it("shows permission-specific toast when delete returns 403", async () => {
-    // shared key is shown to current user but delete will be forbidden by backend
+    
     vi.mocked(api.listApiKeys).mockResolvedValue([sharedKey]);
     vi.mocked(api.deleteApiKey).mockRejectedValue(
       Object.assign(new Error("Forbidden"), {
@@ -111,13 +111,13 @@ describe("ApiKeyPage (shared-key UX)", () => {
 
     render(<Page />);
 
-    // click row Delete — opens confirm modal
+    
     const rowDelete = await screen.findByRole("button", {
       name: `Delete ${sharedKey.name}`,
     });
     fireEvent.click(rowDelete);
 
-    // confirm in modal — target the button inside the dialog
+    
     const dialog = await screen.findByRole("dialog");
     const { within } = await import("@testing-library/react");
     const confirmBtn = within(dialog).getByRole("button", { name: "Delete" });

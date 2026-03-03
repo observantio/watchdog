@@ -1,9 +1,7 @@
-import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { vi, describe, it, beforeEach, expect } from "vitest";
 import { useAuth } from "../../../contexts/AuthContext";
 
-// basic UI components are mocked to avoid importing tailwind/etc
 vi.mock("../../ui", () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   Input: (props) => <input {...props} />,
@@ -14,15 +12,11 @@ vi.mock("../../ui", () => ({
   ),
 }));
 vi.mock("../../HelpTooltip", () => ({ default: () => <span /> }));
-
-// we will provide a fake AuthContext with configurable permission
 vi.mock("../../../contexts/AuthContext", () => ({
   useAuth: vi.fn(() => ({ hasPermission: vi.fn() })),
 }));
 
 import RuleEditor from "../RuleEditor";
-
-// minimal props
 const noop = () => {};
 const baseRule = {
   id: "rule-1",

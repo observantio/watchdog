@@ -1,4 +1,3 @@
-import React from "react";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 import TempoPage from "../TempoPage";
 import * as api from "../../api";
@@ -44,7 +43,7 @@ describe("TempoPage — fetch limit and pagination", () => {
 
     const { getByText } = render(<TempoPage />);
 
-    // change Search Limit to 50 and submit
+    
     const limitLabel = getByText(/Search Limit/i);
     const limitSelect = limitLabel.parentElement.querySelector("select");
     fireEvent.change(limitSelect, { target: { value: "50" } });
@@ -60,7 +59,7 @@ describe("TempoPage — fetch limit and pagination", () => {
 
   it("calculates total pages based on pageSize and shows pagination info", async () => {
     api.fetchTempoServices.mockResolvedValue([]);
-    // create 45 fake traces
+    
     const fakeTraces = Array.from({ length: 45 }, (_, i) => ({
       traceID: `t${i}`,
     }));
@@ -72,14 +71,14 @@ describe("TempoPage — fetch limit and pagination", () => {
 
     await waitFor(() => expect(api.searchTraces).toHaveBeenCalled());
 
-    // default pageSize is 20 so we expect 3 pages; wait for the pagination text to appear
+    
     await waitFor(() => {
       expect(getByText(/Page 1 of 3/)).toBeInTheDocument();
     });
   });
 
   it("restores filters and triggers search from localStorage on mount", async () => {
-    // store a saved state containing a service filter (no traceId) before rendering
+    
     const saved = {
       service: "svc",
       viewMode: "list",
@@ -91,14 +90,14 @@ describe("TempoPage — fetch limit and pagination", () => {
 
     render(<TempoPage />);
 
-    // on mount the component should perform a search due to saved service filter
+    
     await waitFor(() => expect(api.searchTraces).toHaveBeenCalled());
     const call = api.searchTraces.mock.calls[0][0];
     expect(call.service).toBe("svc");
   });
 
   it("silently clears a saved trace id if the trace no longer exists", async () => {
-    // prepare saved state with a nonexistent trace
+    
     const saved = { selectedTrace: "missing" };
     localStorage.setItem("tempoPageState", JSON.stringify(saved));
 
@@ -109,7 +108,7 @@ describe("TempoPage — fetch limit and pagination", () => {
     api.getTrace.mockRejectedValue(err);
 
     const { queryByText } = render(<TempoPage />);
-    // component should attempt to load and then clear state
+    
     await waitFor(() => expect(api.getTrace).toHaveBeenCalledWith("missing"));
     expect(queryByText(/Failed to load trace/)).not.toBeInTheDocument();
 

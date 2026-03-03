@@ -7,6 +7,42 @@ export function getUserLabel(userItem) {
   return `${name}${email}`;
 }
 
+function looksLikeUuid(value) {
+  const s = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    s,
+  );
+}
+
+function getIncidentAssigneeLabel(incident, userById = {}, currentUser = null) {
+  const assignee = String(incident?.assignee || "").trim();
+  if (!assignee) return "Unassigned";
+
+  const mapped = userById[assignee];
+  if (mapped) return getUserLabel(mapped);
+
+  const explicitName =
+    incident?.assignee_username ||
+    incident?.assigneeUsername ||
+    incident?.assignee_name ||
+    incident?.assigneeName ||
+    "";
+  if (String(explicitName || "").trim()) return String(explicitName).trim();
+
+  const currentUserId = String(
+    currentUser?.id || currentUser?.user_id || "",
+  ).trim();
+  if (currentUserId && assignee === currentUserId) {
+    return getUserLabel(currentUser);
+  }
+
+  return looksLikeUuid(assignee) ? "Unknown user" : assignee;
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 import {
   updateIncident,
   getGroups,
@@ -50,15 +86,13 @@ const IncidentCard = memo(function IncidentCard({
   incident,
   canUpdateIncidents,
   userById,
+  currentUser,
   onOpenModal,
   onSetModalTab,
   onUnhide,
   droppingState,
 }) {
-  const assigneeUser = incident.assignee ? userById[incident.assignee] : null;
-  const assigneeLabel = assigneeUser
-    ? getUserLabel(assigneeUser)
-    : incident.assignee || "Unassigned";
+  const assigneeLabel = getIncidentAssigneeLabel(incident, userById, currentUser);
 
   return (
     <div
@@ -254,6 +288,7 @@ const Column = memo(function Column({
   canUpdateIncidents,
   onDropColumn,
   userById,
+  currentUser,
   openIncidentModal,
   setIncidentModalTab,
   handleUnhideIncident,
@@ -298,6 +333,7 @@ const Column = memo(function Column({
                 incident={it}
                 canUpdateIncidents={canUpdateIncidents}
                 userById={userById}
+                currentUser={currentUser}
                 onOpenModal={openIncidentModal}
                 onSetModalTab={setIncidentModalTab}
                 onUnhide={handleUnhideIncident}
@@ -348,7 +384,7 @@ export default function IncidentBoardPage() {
   const [jiraIssueTypes, setJiraIssueTypes] = useState([]);
   const [jiraComments, setJiraComments] = useState([]);
   const [jiraCommentsLoading, setJiraCommentsLoading] = useState(false);
-  const { toast } = useToast();
+  const toast = useToast();
 
   const canReadUsers =
     hasPermission("read:users") || hasPermission("manage:users");
@@ -557,6 +593,46 @@ export default function IncidentBoardPage() {
       return String(iso);
     }
   };
+
+  const resolveAuthorLabel = useCallback(
+    (author) => {
+      const raw = String(author || "").trim();
+      if (!raw) return "Unknown user";
+
+      const userItem = userById[raw];
+      if (userItem) return getUserLabel(userItem);
+
+      const meId = String(user?.id || user?.user_id || "").trim();
+      if (meId && raw === meId) {
+        return getUserLabel(user || { id: meId, username: "me" });
+      }
+
+      const looksLikeId = /^[0-9a-f-]{20,}$/i.test(raw);
+      return looksLikeId ? "Unknown user" : raw;
+    },
+    [userById, user],
+  );
+
+  const replaceUserIdsInText = useCallback(
+    (text) => {
+      let out = String(text || "");
+      if (!out) return out;
+
+      out = out.replace(
+        /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+        (id) => resolveAuthorLabel(id),
+      );
+
+      Object.entries(userById).forEach(([id, userItem]) => {
+        const label = getUserLabel(userItem);
+        const rx = new RegExp(`\\b${escapeRegExp(id)}\\b`, "g");
+        out = out.replace(rx, label);
+      });
+
+      return out;
+    },
+    [userById, resolveAuthorLabel],
+  );
 
   const openIncidentModal = (incident) => {
     const defaultIntegrationId =
@@ -926,6 +1002,9 @@ export default function IncidentBoardPage() {
   const activeIncidentDraft = activeIncident
     ? incidentDrafts[activeIncident.id] || {}
     : {};
+  const activeIncidentAssigneeLabel = activeIncident
+    ? getIncidentAssigneeLabel(activeIncident, userById, user)
+    : "Unassigned";
   const stats = {
     totalIncidents: incidents.length,
     unresolved: incidentsByState.unresolved.length,
@@ -1085,6 +1164,7 @@ export default function IncidentBoardPage() {
                 canUpdateIncidents={canUpdateIncidents}
                 onDropColumn={handleDropOnColumn}
                 userById={userById}
+                currentUser={user}
                 openIncidentModal={openIncidentModal}
                 setIncidentModalTab={setIncidentModalTab}
                 handleUnhideIncident={handleUnhideIncident}
@@ -1106,6 +1186,7 @@ export default function IncidentBoardPage() {
                 canUpdateIncidents={canUpdateIncidents}
                 onDropColumn={handleDropOnColumn}
                 userById={userById}
+                currentUser={user}
                 openIncidentModal={openIncidentModal}
                 setIncidentModalTab={setIncidentModalTab}
                 handleUnhideIncident={handleUnhideIncident}
@@ -1127,6 +1208,7 @@ export default function IncidentBoardPage() {
                 canUpdateIncidents={canUpdateIncidents}
                 onDropColumn={handleDropOnColumn}
                 userById={userById}
+                currentUser={user}
                 openIncidentModal={openIncidentModal}
                 setIncidentModalTab={setIncidentModalTab}
                 handleUnhideIncident={handleUnhideIncident}
@@ -1202,10 +1284,7 @@ export default function IncidentBoardPage() {
                     <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-sre-bg-alt border border-sre-border">
                       <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sre-primary/10 to-sre-primary/5 text-sre-primary flex items-center justify-center text-[10px] font-semibold border border-sre-border/40 flex-shrink-0">
                         {String(
-                          userById[activeIncident.assignee]?.username ||
-                            activeIncident.assignee ||
-                            "U" ||
-                            "",
+                          activeIncidentAssigneeLabel || "U" || "",
                         )
                           .split(" ")
                           .map((s) => s[0])
@@ -1214,9 +1293,7 @@ export default function IncidentBoardPage() {
                           .toUpperCase()}
                       </div>
                       <div className="text-xs text-sre-text truncate">
-                        {userById[activeIncident.assignee]
-                          ? getUserLabel(userById[activeIncident.assignee])
-                          : activeIncident.assignee || "Unassigned"}
+                        {activeIncidentAssigneeLabel}
                       </div>
                     </div>
 
@@ -1840,11 +1917,10 @@ export default function IncidentBoardPage() {
                                       .reverse()
                                       .slice(0, 10)
                                       .map((n) => {
-                                        const userItem = userById[n.author];
-                                        const authorLabel = userItem
-                                          ? getUserLabel(userItem)
-                                          : n.author || "unknown";
-                                        return `${authorLabel} (${formatDateTime(n.createdAt)}): ${n.text}`;
+                                        const authorLabel = resolveAuthorLabel(
+                                          n.author,
+                                        );
+                                        return `${authorLabel} (${formatDateTime(n.createdAt)}): ${replaceUserIdsInText(n.text)}`;
                                       })
                                       .join("\n\n");
                                     await navigator.clipboard.writeText(
@@ -1874,21 +1950,11 @@ export default function IncidentBoardPage() {
                                 const key = note.createdAt
                                   ? String(note.createdAt)
                                   : `${note.author}-${idx}`;
-                                const noteAuthorUser = userById[note.author];
-                                const noteAuthorLabel = noteAuthorUser
-                                  ? getUserLabel(noteAuthorUser)
-                                  : note.author || "unknown";
-                                let displayText = note.text || "";
-                                displayText = displayText.replace(
-                                  /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/g,
-                                  (id) => {
-                                    const u = userById[id];
-                                    return u ? getUserLabel(u) : id;
-                                  },
+                                const noteAuthorLabel = resolveAuthorLabel(
+                                  note.author,
                                 );
-                                displayText = displayText.replace(
-                                  /^([^\s-]+)-[0-9a-f]+/,
-                                  "$1",
+                                const displayText = replaceUserIdsInText(
+                                  note.text,
                                 );
                                 const collapsed = !expandedNotes.has(key);
                                 return (

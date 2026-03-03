@@ -23,6 +23,7 @@ export function useToast() {
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const recentErrorsRef = useRef(new Map());
+  const recentToastsRef = useRef(new Map());
   const toastTimersRef = useRef(new Map());
 
   const removeToast = useCallback((id) => {
@@ -83,8 +84,20 @@ export function ToastProvider({ children }) {
 
   const showToast = useCallback(
     (message, type = "info", duration = 4000) => {
-      const id = Date.now() + Math.random();
       const text = formatMessage(message);
+      const dedupeKey = `${type}:${text}`;
+      const now = Date.now();
+      const lastShownAt = recentToastsRef.current.get(dedupeKey);
+      if (lastShownAt && now - lastShownAt < 2000) {
+        return null;
+      }
+      recentToastsRef.current.set(dedupeKey, now);
+      setTimeout(() => {
+        const at = recentToastsRef.current.get(dedupeKey);
+        if (at === now) recentToastsRef.current.delete(dedupeKey);
+      }, 2500);
+
+      const id = Date.now() + Math.random();
       const toast = { id, message: text, type, duration };
 
       setToasts((prev) => [...prev, toast]);
@@ -146,10 +159,12 @@ export function ToastProvider({ children }) {
           if (recentErrorsRef.current.has(key)) return;
           recentErrorsRef.current.set(key, Date.now());
           setTimeout(() => recentErrorsRef.current.delete(key), 5000);
-          error(msg);
+          // Most pages already handle errors locally and show toasts.
+          // Skip global duplicate error toasts here.
+          return;
         } catch (ex) {
           console.error("Toast handler error:", ex);
-          error(msg);
+          return;
         }
       }
     };
@@ -162,10 +177,12 @@ export function ToastProvider({ children }) {
   useEffect(() => {
     const timers = toastTimersRef.current;
     const recentErrors = recentErrorsRef.current;
+    const recentToasts = recentToastsRef.current;
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
       timers.clear();
       recentErrors.clear();
+      recentToasts.clear();
     };
   }, []);
 

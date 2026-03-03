@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   createSilence,
   deleteSilence,
@@ -22,7 +22,6 @@ import {
   DEFAULT_ALERTMANAGER_METRIC_KEYS,
 } from "../utils/alertmanagerChannelUtils";
 import {
-  shouldIgnoreAlertManagerError,
   buildRulePayload,
 } from "../utils/alertmanagerRuleUtils";
 
@@ -57,7 +56,8 @@ export default function AlertManagerPage() {
   const [importRunning, setImportRunning] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [importFileName, setImportFileName] = useState("");
-  const { toast } = useToast();
+  const toast = useToast();
+  const lastErrorToastRef = useRef({ key: "", ts: 0 });
 
   const {
     alerts,
@@ -83,8 +83,27 @@ export default function AlertManagerPage() {
   }, [metricOrder, setMetricOrder]);
 
   function handleApiError(e) {
-    if (shouldIgnoreAlertManagerError(e)) return;
-    setHookError(e.message || String(e));
+    const msg =
+      e?.body?.detail ||
+      e?.body?.message ||
+      e?.message ||
+      String(e || "Request failed");
+    const isPermissionDenied =
+      Number(e?.status) === 403 ||
+      String(msg).toLowerCase().includes("you do not have permission");
+    if (!isPermissionDenied) {
+      setHookError(msg);
+    }
+    const key = `${e?.status || "x"}:${msg}`;
+    const now = Date.now();
+    if (
+      lastErrorToastRef.current.key === key &&
+      now - lastErrorToastRef.current.ts < 2000
+    ) {
+      return;
+    }
+    lastErrorToastRef.current = { key, ts: now };
+    toast.error(msg);
   }
 
   useEffect(() => {
@@ -197,7 +216,6 @@ export default function AlertManagerPage() {
     return alerts.filter((a) => a.labels?.severity === filterSeverity);
   }, [alerts, filterSeverity]);
 
-  // Map org_id (API key value) → key name for display in rules list
   const orgIdToName = useMemo(() => {
     const map = {};
     for (const k of apiKeys) {

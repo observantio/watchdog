@@ -1,7 +1,5 @@
-import React from "react";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 
-// mocks similar to other page tests
 vi.mock("../../hooks", async () => {
   const actual = await vi.importActual("../../hooks");
   return {
@@ -42,7 +40,6 @@ vi.mock("../components/alertmanager/SilenceForm", () => ({
   default: () => <div />,
 }));
 
-// ensure our simple useLocalStorage returns state that updates localStorage correctly
 let realUseLocalStorage;
 beforeAll(async () => {
   const actual = await vi.importActual("../../hooks");

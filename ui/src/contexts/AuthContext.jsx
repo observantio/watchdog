@@ -104,9 +104,16 @@ export function AuthProvider({ children }) {
 
   const loadUser = useCallback(async () => {
     try {
-      const userData = await api.getCurrentUserNoRedirect();
-      setUser(userData);
-      api.setUserOrgIds(resolveActiveOrgId(userData));
+      const [userData, apiKeys] = await Promise.all([
+        api.getCurrentUserNoRedirect(),
+        api.listApiKeys().catch(() => null),
+      ]);
+      const mergedUser = {
+        ...userData,
+        api_keys: Array.isArray(apiKeys) ? apiKeys : (userData?.api_keys || []),
+      };
+      setUser(mergedUser);
+      api.setUserOrgIds(resolveActiveOrgId(mergedUser));
     } catch {
       setUser(null);
     } finally {
@@ -121,9 +128,16 @@ export function AuthProvider({ children }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const userData = await api.getCurrentUser();
-      setUser(userData);
-      api.setUserOrgIds(resolveActiveOrgId(userData));
+      const [userData, apiKeys] = await Promise.all([
+        api.getCurrentUser(),
+        api.listApiKeys().catch(() => null),
+      ]);
+      const mergedUser = {
+        ...userData,
+        api_keys: Array.isArray(apiKeys) ? apiKeys : (userData?.api_keys || []),
+      };
+      setUser(mergedUser);
+      api.setUserOrgIds(resolveActiveOrgId(mergedUser));
     } catch (e) {
       console.error("Failed to refresh user:", e);
       setUser(null);

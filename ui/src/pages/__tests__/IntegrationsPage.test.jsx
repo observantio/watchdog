@@ -2,14 +2,14 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, vi, beforeEach } from "vitest";
 
-// mock API calls used by the page
+
 vi.mock("../../api", () => ({
   getNotificationChannels: vi.fn(),
   deleteNotificationChannel: vi.fn(),
   getAllowedChannelTypes: vi.fn(),
   listJiraIntegrations: vi.fn(),
   getAuthMode: vi.fn(),
-  // some of the other helpers are imported by the page but not exercised here
+  
   createNotificationChannel: vi.fn(),
   updateNotificationChannel: vi.fn(),
   testNotificationChannel: vi.fn(),
@@ -63,10 +63,10 @@ describe("IntegrationsPage deletion flow", () => {
 
     render(<IntegrationsPage />);
 
-    // wait for the channel to render
+    
     expect(await screen.findByText("ADMIN")).toBeInTheDocument();
 
-    // open the delete confirmation
+    
     const rowDelete = screen.getByRole("button", { name: /Delete channel/i });
     fireEvent.click(rowDelete);
 
@@ -75,7 +75,7 @@ describe("IntegrationsPage deletion flow", () => {
     const confirmBtn = within(dialog).getByRole("button", { name: "Delete" });
     fireEvent.click(confirmBtn);
 
-    // confirm button click should trigger API and hide the dialog
+    
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.deleteNotificationChannel).toHaveBeenCalledWith("c1");
   });
@@ -92,7 +92,7 @@ describe("IntegrationsPage deletion flow", () => {
     const confirmBtn = within(dialog).getByRole("button", { name: "Delete" });
     fireEvent.click(confirmBtn);
 
-    // ensure API was attempted and dialog remains open
+    
     await waitFor(() =>
       expect(api.deleteNotificationChannel).toHaveBeenCalledWith("c1"),
     );

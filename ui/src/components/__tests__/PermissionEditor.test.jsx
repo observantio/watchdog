@@ -6,7 +6,6 @@ import * as api from "../../api";
 import { USER_ROLES } from "../../utils/constants";
 import { ToastProvider } from "../../contexts/ToastContext";
 
-// mock the API module methods used by PermissionEditor
 vi.mock("../../api", () => ({
   getPermissions: vi.fn(),
   getRoleDefaults: vi.fn(),
@@ -27,7 +26,6 @@ describe("PermissionEditor", () => {
       group_ids: [],
       direct_permissions: [],
     };
-    // wrap component with toast provider because it uses useToast internally
     render(
       <ToastProvider>
         <PermissionEditor
@@ -39,10 +37,7 @@ describe("PermissionEditor", () => {
       </ToastProvider>,
     );
 
-    // the component fetches permissions on mount, ensure that happens
     await waitFor(() => expect(api.getPermissions).toHaveBeenCalled());
-
-    // confirm the dropdown exists and the expected options are present
     const roleSelect = screen.getByLabelText(/Role/i);
     expect(roleSelect).toBeInTheDocument();
 
@@ -50,8 +45,6 @@ describe("PermissionEditor", () => {
       const opt = screen.getByRole("option", { name: r.label });
       expect(opt).toHaveValue(r.value);
     });
-
-    // the select should default to the user's current role
     expect(roleSelect).toHaveValue("user");
   });
 });

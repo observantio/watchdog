@@ -106,16 +106,11 @@ describe("RCAPage", () => {
     expect(getByText("42")).toBeInTheDocument();
   });
   it("clears a lookup id from storage when the report cannot be found", async () => {
-    // start with a lookup value persisted
     localStorage.setItem("rcaPage.reportLookupId", JSON.stringify("bad-id"));
     reportState.reportError = "Report not found";
     reportState.reportErrorStatus = 404;
 
     render(<RCAPage />);
-    // the component should react to the error by clearing both the stored
-    // input and the internal id state so that subsequent mounts are quiet
-    // the value should be reset to an empty string (stored as JSON) rather
-    // than left as the invalid ID
     await waitFor(() => {
       expect(localStorage.getItem("rcaPage.reportLookupId")).toBe(
         JSON.stringify(""),

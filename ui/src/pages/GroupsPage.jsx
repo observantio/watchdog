@@ -541,31 +541,13 @@ export default function GroupsPage() {
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center">
             <div className="flex items-center gap-2">
               <div className="text-sm text-sre-text-muted">
                 {groupPermissions.length} permission
                 {groupPermissions.length === 1 ? "" : "s"} selected
               </div>
               <HelpTooltip text="Total number of permissions currently assigned to this group." />
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setGroupPermissions(permissions.map((p) => p.name))
-                }
-                className="text-sm text-sre-primary hover:text-sre-primary-light"
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupPermissions([])}
-                className="text-sm text-sre-text-muted hover:text-sre-text"
-              >
-                Clear All
-              </button>
             </div>
           </div>
 

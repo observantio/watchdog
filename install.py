@@ -15,7 +15,7 @@ from typing import Iterable, List, Sequence
 REPO_URL = "https://github.com/observantio/beobservant.git"
 BECERTAIN_REPO_URL = "https://github.com/observantio/becertain.git"
 BENOTIFIED_REPO_URL = "https://github.com/observantio/benotified.git"
-STABLE_COMPOSE_GH_URL = "https://github.com/observantio/beobservant/blob/main/docker-compose.stable.yml"
+STABLE_COMPOSE_GH_URL = "https://raw.githubusercontent.com/observantio/beobservant/main/docker-compose.stable.yml"
 
 _PASSWORD_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _GH_BLOB_RE = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$")

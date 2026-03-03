@@ -28,8 +28,6 @@ export function usePersistentOrder(key, length) {
         }
       }
     }
-
-    // Append missing indices
     for (let i = 0; i < max; i++) {
       if (!seen.has(i)) result.push(i);
     }

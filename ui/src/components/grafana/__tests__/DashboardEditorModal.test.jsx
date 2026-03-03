@@ -93,37 +93,26 @@ describe("DashboardEditorModal — JSON sample loader", () => {
 
     const saveBtn = screen.getByText("Create Dashboard");
     fireEvent.click(saveBtn);
-
-    // prompt should appear
     expect(screen.getByText("JSON content detected")).toBeInTheDocument();
-
-    // merge option
     const mergeBtn = screen.getByTestId("json-conflict-merge");
     fireEvent.click(mergeBtn);
-    // should have updated json content via setJsonContent
     expect(setJsonContent).toHaveBeenCalled();
-    // modal should request parent save with merged JSON
     expect(onSave).toHaveBeenCalled();
     const mergedArg = onSave.mock.calls[0][0];
     const mergedObj = JSON.parse(mergedArg);
     expect(mergedObj.title).toBe("Form Title");
     expect(Array.isArray(mergedObj.panels)).toBe(true);
     expect(mergedObj.panels[0].id).toBe(1);
-
-    // override option
     fireEvent.click(saveBtn);
     const overrideBtn = screen.getByTestId("json-conflict-override");
     fireEvent.click(overrideBtn);
     expect(setJsonContent).toHaveBeenCalled();
-    // override should also request parent save with the new JSON
     expect(onSave.mock.calls.length).toBeGreaterThanOrEqual(2);
     const overrideArg = onSave.mock.calls[1][0];
     const overrideObj = JSON.parse(overrideArg);
     expect(overrideObj.title).toBe("Form Title");
     expect(Array.isArray(overrideObj.panels)).toBe(true);
     expect(overrideObj.panels.length).toBe(0);
-
-    // cancel option hides the prompt
     fireEvent.click(saveBtn);
     const cancelBtn = screen.getByTestId("json-conflict-cancel");
     fireEvent.click(cancelBtn);

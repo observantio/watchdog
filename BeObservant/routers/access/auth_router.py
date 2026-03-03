@@ -181,7 +181,9 @@ async def get_current_user_info(current_user: TokenData = Depends(require_authen
     user = await rtp(auth_service.get_user_by_id, current_user.user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND)
-    return await rtp(auth_service.build_user_response, user, current_user.permissions)
+    user_response = await rtp(auth_service.build_user_response, user, current_user.permissions)
+    user_response.api_keys = await rtp(auth_service.list_api_keys, current_user.user_id)
+    return user_response
 
 
 @router.put("/me", response_model=UserResponse)
@@ -196,7 +198,9 @@ async def update_current_user_info(
                         current_user.tenant_id, current_user.user_id)
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND)
-    return await rtp(auth_service.build_user_response, updated, current_user.permissions)
+    user_response = await rtp(auth_service.build_user_response, updated, current_user.permissions)
+    user_response.api_keys = await rtp(auth_service.list_api_keys, current_user.user_id)
+    return user_response
 
 
 @router.post("/mfa/enroll", response_model=TotpEnrollResponse)

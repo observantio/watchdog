@@ -188,10 +188,8 @@ export default function DashboardEditorModal({
       if (db && Array.isArray(db.panels) && db.panels.length > 0) return true;
       if (db && typeof db.title === "string" && db.title.trim().length > 0)
         return true;
-      // otherwise treat as non-meaningful (e.g. default empty object)
       return false;
     } catch (e) {
-      // invalid JSON — consider it meaningful so user can choose what to do
       return true;
     }
   };
@@ -201,7 +199,6 @@ export default function DashboardEditorModal({
     try {
       parsed = JSON.parse(rawJson);
     } catch (e) {
-      // if JSON invalid, fall back to building a fresh dashboard object
       parsed = {};
     }
 
@@ -214,8 +211,6 @@ export default function DashboardEditorModal({
     const selectedDatasource = datasources.find(
       (ds) => ds.uid === dashboardForm.datasourceUid,
     );
-
-    // update the dashboard-level settings while preserving panels/layout
     db.title = dashboardForm.title;
     db.refresh = dashboardForm.refresh;
     db.tags = tags;
@@ -239,7 +234,6 @@ export default function DashboardEditorModal({
           }
         : db.templating || { list: [] };
 
-    // preserve wrapper shape if original had one
     if (parsed.dashboard) {
       parsed.dashboard = db;
       return parsed;
@@ -286,29 +280,21 @@ export default function DashboardEditorModal({
 
     const str = JSON.stringify(dashboardObj, null, 2);
     setJsonContent(str);
-    // request parent to save using JSON payload (pass the JSON string to avoid state race)
     onSave(str);
   };
 
-  // renamed to avoid React hook naming convention
   const updateJsonWithForm = () => {
     const merged = mergeFormIntoJson(jsonContent || "{}");
     const str = JSON.stringify(merged, null, 2);
     setJsonContent(str);
-    // request parent to save using JSON payload (pass the JSON string to avoid state race)
     onSave(str);
   };
 
   const handleSave = () => {
-    // If user is saving via the form but there's an existing meaningful JSON
-    // (either previously uploaded or an existing dashboard JSON), ask first.
     if (editorTab === "form" && _jsonLooksMeaningful(jsonContent)) {
       setShowJsonConflict(true);
       return;
     }
-
-    // parent save accepts optional jsonOverride when the modal needs to save
-    // using the current JSON payload immediately.
     onSave();
   };
 

@@ -44,7 +44,7 @@ def _extract_bearer_token(
 
 async def resolve_tenant_id(request: Request, current_user: TokenData) -> str:
     default_org_id = getattr(current_user, "org_id", config.DEFAULT_ORG_ID)
-    header_value = request.headers.get("x-scope-orgid") or request.headers.get("X-Scope-OrgID")
+    header_value = request.headers.get("x-scope-orgid")
     if not header_value:
         return default_org_id
 

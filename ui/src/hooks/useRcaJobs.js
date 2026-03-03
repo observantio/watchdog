@@ -27,7 +27,6 @@ function mergeJobs(authoritative, local = []) {
   for (const job of local || []) {
     if (!job?.job_id) continue;
     if (byId.has(job.job_id)) continue;
-    // Keep optimistic/active local jobs when the upstream list lags behind.
     if (!isTerminalStatus(job.status)) byId.set(job.job_id, job);
   }
 

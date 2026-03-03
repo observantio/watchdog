@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "./ui";
 
@@ -13,35 +13,62 @@ export default function ConfirmModal({
   variant = "danger",
 }) {
   const modalRef = useRef(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       modalRef.current?.focus();
+      setConfirming(false);
     }
   }, [isOpen]);
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) {
+      if (e.key === "Escape" && isOpen && !confirming) {
         onCancel();
       }
     };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onCancel]);
+  }, [confirming, isOpen, onCancel]);
+
+  const safeCancel = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (confirming) return;
+    onCancel();
+  };
+
+  const safeConfirm = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await onConfirm();
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   if (!isOpen) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
-      onClick={onCancel}
+      onMouseDown={safeCancel}
+      onClick={safeCancel}
       role="button"
       tabIndex="-1"
     >
       <div
         ref={modalRef}
         className="bg-sre-bg border border-sre-border rounded-lg shadow-2xl w-full max-w-md animate-slide-up"
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-labelledby="modal-title"
@@ -56,10 +83,10 @@ export default function ConfirmModal({
             {message}
           </p>
           <div className="flex gap-3 justify-end">
-            <Button onClick={onCancel} variant="ghost" size="md">
+            <Button type="button" onClick={safeCancel} variant="ghost" size="md" disabled={confirming}>
               {cancelText}
             </Button>
-            <Button onClick={onConfirm} variant={variant} size="md">
+            <Button type="button" onClick={safeConfirm} variant={variant} size="md" loading={confirming}>
               {confirmText}
             </Button>
           </div>

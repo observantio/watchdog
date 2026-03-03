@@ -23,8 +23,6 @@ export function MetricsGrid({ metrics, metricOrder, onMetricOrderChange }) {
     const draggedItem = newOrder[draggedIndex];
     newOrder.splice(draggedIndex, 1);
     newOrder.splice(dropIndex, 0, draggedItem);
-
-    // MetricsGrid is a presentational component; persist changes in the parent
     onMetricOrderChange(newOrder);
     setDraggedIndex(null);
   };

@@ -125,18 +125,16 @@ def reset_user_password_temp(service, actor_user_id: str, target_user_id: str, t
                 detail="Admin account passwords cannot be reset",
             )
 
-        auth_provider = str(getattr(target, "auth_provider", "local") or "local")
-        if auth_provider != "local":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Password reset is managed by the external identity provider",
-            )
+        previous_auth_provider = str(getattr(target, "auth_provider", "local") or "local")
 
         length = getattr(config, "TEMP_PASSWORD_LENGTH", 20)
         temporary_password = _generate_temp_password(length)
 
         now = datetime.now(timezone.utc)
         target.hashed_password = hash_password(service, temporary_password)
+        # Reset creates/refreshes local credentials so externally-provisioned
+        # accounts can be moved back to local-password login.
+        target.auth_provider = "local"
         target.needs_password_change = True
         target.password_changed_at = now
         target.session_invalid_before = now
@@ -151,7 +149,8 @@ def reset_user_password_temp(service, actor_user_id: str, target_user_id: str, t
             {
                 "target_user_id": target_user_id,
                 "target_username": target.username,
-                "target_auth_provider": target.auth_provider,
+                "target_auth_provider_before": previous_auth_provider,
+                "target_auth_provider_after": target.auth_provider,
             },
         )
 

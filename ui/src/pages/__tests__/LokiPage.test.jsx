@@ -1,4 +1,3 @@
-import React from "react";
 import { render, waitFor } from "@testing-library/react";
 import { vi, describe, it, beforeEach, expect } from "vitest";
 
@@ -35,7 +34,6 @@ describe("LokiPage persistence", () => {
   });
 
   it("clears saved selectedLabel when it no longer exists", async () => {
-    // previous session saved a label that isn't returned by getLabels
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({

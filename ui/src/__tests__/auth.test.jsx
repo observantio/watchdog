@@ -152,20 +152,14 @@ describe("AuthContext cookie-first behavior", () => {
         <Check />
       </AuthProvider>,
     );
-
-    // wait for login/user state to be set
     await waitFor(() =>
       expect(screen.getByTestId("auth").textContent).toBe("true"),
     );
-
-    // fire the api-error event as if server returned 401
     act(() => {
       globalThis.window.dispatchEvent(
         new CustomEvent("api-error", { detail: { status: 401, body: {} } }),
       );
     });
-
-    // after handler runs, user should be unauthenticated and location changes
     await waitFor(() => {
       expect(screen.getByTestId("auth").textContent).toBe("false");
       expect(screen.getByTestId("loc").textContent).toBe("/login");

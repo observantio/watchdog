@@ -53,27 +53,57 @@ export default function ApiKeyPage() {
   }, [user]);
 
   const refreshUser = async () => {
-    const updatedUser = await api.getCurrentUser();
-    updateUser(updatedUser);
-    setApiKeys(updatedUser.api_keys || []);
+    const [updatedUser, listedKeys] = await Promise.all([
+      api.getCurrentUser(),
+      api.listApiKeys().catch(() => null),
+    ]);
+    const mergedUser = {
+      ...updatedUser,
+      api_keys: Array.isArray(listedKeys)
+        ? listedKeys
+        : (updatedUser.api_keys || []),
+    };
+    updateUser(mergedUser);
+    setApiKeys(mergedUser.api_keys || []);
   };
 
-  const loadUsers = async () => {
-    try {
-      const users = await api.getUsers();
-      setAllUsers(Array.isArray(users) ? users : []);
-    } catch {
-      setAllUsers([]);
-    }
-  };
+  const inferSelectedGroupsFromShares = (
+    key,
+    users,
+    groups,
+    currentUserId,
+    currentUserGroupIds,
+  ) => {
+    const sharedUserIds = new Set(
+      (key?.shared_with || [])
+        .map((item) => item?.user_id)
+        .filter(Boolean)
+        .map((id) => String(id)),
+    );
+    if (sharedUserIds.size === 0) return [];
 
-  const loadGroups = async () => {
-    try {
-      const groups = await api.getGroups();
-      setAllGroups(Array.isArray(groups) ? groups : []);
-    } catch {
-      setAllGroups([]);
+    const myGroupIdSet = new Set((currentUserGroupIds || []).map((id) => String(id)));
+    const eligibleGroups = (groups || []).filter((g) =>
+      myGroupIdSet.has(String(g?.id || "")),
+    );
+
+    const inferred = [];
+    for (const group of eligibleGroups) {
+      const gid = String(group?.id || "");
+      const members = (users || []).filter((u) => {
+        const uid = String(u?.id || "");
+        if (!uid || uid === String(currentUserId || "")) return false;
+        const userGroupIds = (u?.group_ids || []).map((id) => String(id));
+        return userGroupIds.includes(gid);
+      });
+
+      if (members.length === 0) continue;
+      const allMembersShared = members.every((m) =>
+        sharedUserIds.has(String(m?.id || "")),
+      );
+      if (allMembersShared) inferred.push(gid);
     }
+    return inferred;
   };
 
   const handleSaveOrgId = async (e) => {
@@ -165,19 +195,45 @@ export default function ApiKeyPage() {
       toast.error("Default key cannot be shared");
       return;
     }
-    setKeyToShare(key);
-    setSelectedShareUserIds(
-      (key?.shared_with || []).map((item) => item.user_id),
+    let users = allUsers;
+    let groups = allGroups;
+    if (!users.length) {
+      try {
+        const fetchedUsers = await api.getUsers();
+        users = Array.isArray(fetchedUsers) ? fetchedUsers : [];
+        setAllUsers(users);
+      } catch {
+        users = [];
+        setAllUsers([]);
+      }
+    }
+    if (!groups.length) {
+      try {
+        const fetchedGroups = await api.getGroups();
+        groups = Array.isArray(fetchedGroups) ? fetchedGroups : [];
+        setAllGroups(groups);
+      } catch {
+        groups = [];
+        setAllGroups([]);
+      }
+    }
+
+    const selectedUsers = (key?.shared_with || [])
+      .map((item) => item.user_id)
+      .filter(Boolean);
+    const inferredGroups = inferSelectedGroupsFromShares(
+      key,
+      users,
+      groups,
+      user?.id,
+      user?.group_ids || [],
     );
-    setSelectedShareGroupIds([]);
+
+    setKeyToShare(key);
+    setSelectedShareUserIds(selectedUsers);
+    setSelectedShareGroupIds(inferredGroups);
     setShareSearch("");
     setShowShareModal(true);
-    if (!allUsers.length) {
-      await loadUsers();
-    }
-    if (!allGroups.length) {
-      await loadGroups();
-    }
   };
 
   const handleSaveShares = async () => {
@@ -344,6 +400,51 @@ export default function ApiKeyPage() {
     return allGroups.filter((group) => myGroupIds.has(String(group?.id || "")));
   }, [allGroups, user]);
 
+  const getGroupMemberUserIds = (groupId) => {
+    const gid = String(groupId || "");
+    if (!gid) return [];
+    return (allUsers || [])
+      .filter((u) => String(u?.id || "") !== String(user?.id || ""))
+      .filter((u) =>
+        (u?.group_ids || []).map((id) => String(id)).includes(gid),
+      )
+      .map((u) => String(u.id));
+  };
+
+  const handleToggleShareGroup = (groupId) => {
+    const gid = String(groupId || "");
+    if (!gid) return;
+
+    const memberIds = getGroupMemberUserIds(gid);
+    const memberSet = new Set(memberIds);
+
+    setSelectedShareGroupIds((prevGroups) => {
+      const isSelected = prevGroups.includes(gid);
+      const nextGroups = isSelected
+        ? prevGroups.filter((id) => id !== gid)
+        : [...prevGroups, gid];
+
+      setSelectedShareUserIds((prevUsers) => {
+        if (!isSelected) {
+          return Array.from(new Set([...prevUsers, ...memberIds]));
+        }
+
+        const otherGroupIds = nextGroups;
+        const usersCoveredByOtherGroups = new Set(
+          otherGroupIds.flatMap((otherGid) => getGroupMemberUserIds(otherGid)),
+        );
+
+        return prevUsers.filter((uid) => {
+          const suid = String(uid);
+          if (!memberSet.has(suid)) return true;
+          return usersCoveredByOtherGroups.has(suid);
+        });
+      });
+
+      return nextGroups;
+    });
+  };
+
   function formatDisplayKey(key) {
     if (showKeyId === key.id) return key.key || "-";
     if (key.key) return `${key.key.slice(0, 6)}...${key.key.slice(-4)}`;
@@ -464,6 +565,14 @@ export default function ApiKeyPage() {
                             Shared by {key.owner_username}
                           </div>
                         )}
+                        {!key.is_shared &&
+                          Array.isArray(key.shared_with) &&
+                          key.shared_with.length > 0 && (
+                            <div className="text-xs text-sre-text-muted">
+                              Shared with {key.shared_with.length} user
+                              {key.shared_with.length === 1 ? "" : "s"}
+                            </div>
+                          )}
                       </td>
                       <td className="py-3 px-4 text-xs text-sre-text-muted break-all">
                         <div className="flex items-center gap-3">
@@ -880,13 +989,7 @@ export default function ApiKeyPage() {
                       <div className="text-sm text-sre-text">{group.name}</div>
                       <Checkbox
                         checked={selectedShareGroupIds.includes(group.id)}
-                        onChange={() =>
-                          setSelectedShareGroupIds((prev) =>
-                            prev.includes(group.id)
-                              ? prev.filter((id) => id !== group.id)
-                              : [...prev, group.id],
-                          )
-                        }
+                        onChange={() => handleToggleShareGroup(group.id)}
                       />
                     </div>
                   ))}

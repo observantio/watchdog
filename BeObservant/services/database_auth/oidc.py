@@ -230,7 +230,7 @@ def provision_oidc_user(
             email=email,
             full_name=full_name,
             org_id=config.DEFAULT_ORG_ID,
-            role=Role.VIEWER,
+            role=Role.PROVISIONING,
             is_active=True,
             is_superuser=False,
             hashed_password=service.hash_password(secrets.token_urlsafe(24)),

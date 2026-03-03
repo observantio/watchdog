@@ -3,7 +3,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import LogResults from "../LogResults";
 
 function makeStream(i) {
-  // use a valid numeric nanoseconds timestamp string
   const tsNs = String(Date.now() * 1e6 + i);
   return {
     stream: { service: `svc_${i}` },
@@ -29,20 +28,15 @@ describe("LogResults pagination", () => {
       />,
     );
 
-    // initial page shows 1-30
     expect(screen.getByText(/Showing 1–30 of 65 streams/)).toBeInTheDocument();
     expect(screen.getByText("svc_1")).toBeInTheDocument();
     expect(screen.getByText("svc_30")).toBeInTheDocument();
     expect(screen.queryByText("svc_31")).not.toBeInTheDocument();
-
-    // page forward
     fireEvent.click(screen.getByRole("button", { name: /Next/i }));
     expect(screen.getByText(/Showing 31–60 of 65 streams/)).toBeInTheDocument();
     expect(screen.getByText("svc_31")).toBeInTheDocument();
     expect(screen.getByText("svc_60")).toBeInTheDocument();
     expect(screen.queryByText("svc_61")).not.toBeInTheDocument();
-
-    // final page
     fireEvent.click(screen.getByRole("button", { name: /Next/i }));
     expect(screen.getByText(/Showing 61–65 of 65 streams/)).toBeInTheDocument();
     expect(screen.getByText("svc_61")).toBeInTheDocument();

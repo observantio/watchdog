@@ -38,7 +38,6 @@ describe("grafana launch utilities", () => {
       true,
     );
     expect(url).not.toContain("token=");
-    // next should include a leading slash (slashes preserved)
     expect(url).toContain("next=/d/xyz%3Fvar-service%3Dapi");
   });
 });

@@ -1,4 +1,3 @@
-// JSDOM doesn't provide ResizeObserver which reactflow expects
 if (typeof global.ResizeObserver === "undefined") {
   global.ResizeObserver = class {
     observe() {}
@@ -7,11 +6,9 @@ if (typeof global.ResizeObserver === "undefined") {
   };
 }
 
-import React from "react";
 import { render } from "@testing-library/react";
 import ServiceGraphAsync from "../ServiceGraphAsync.jsx";
 
-// minimal props to render without errors
 const dummyTraces = [
   {
     spans: [
