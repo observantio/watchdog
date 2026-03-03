@@ -39,7 +39,7 @@ def invalidate_grafana_proxy_auth_cache() -> None:
 
 
 def require_admin_with_audit_permission(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AUDIT_LOGS, "auth"))):
-    if str(getattr(current_user, "role", "")).lower() != Role.ADMIN.value and not getattr(current_user, "is_superuser", False):
+    if not is_admin_check(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required to view audit logs")
     return current_user
 
@@ -133,7 +133,11 @@ def perms_check(user: TokenData) -> set:
 
 
 def is_admin_check(user: TokenData) -> bool:
-    return bool(getattr(user, "is_superuser", False) or user.role == Role.ADMIN)
+    role = getattr(user, "role", None)
+    role_text = str(getattr(role, "value", role) or "").strip().lower()
+    if role_text.startswith("role."):
+        role_text = role_text.split(".", 1)[1]
+    return bool(getattr(user, "is_superuser", False) or role_text == Role.ADMIN.value)
 
 
 def apply_audit_filters_func(query, start, end, user_id, action, resource_type, q=None):

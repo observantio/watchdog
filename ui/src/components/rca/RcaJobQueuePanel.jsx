@@ -43,7 +43,7 @@ export default function RcaJobQueuePanel({
             const statusText = displayStatus(job.status);
             return (
               <div
-                key={job.job_id}
+                key={job.job_id}x
                 onClick={() => onSelectJob(job.job_id)}
                 className={`relative w-full rounded-lg border px-3 py-2 transition cursor-pointer ${
                   isSelected
@@ -52,6 +52,9 @@ export default function RcaJobQueuePanel({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-sre-text font-mono truncate">
+                    {job.job_id.slice(0, 8)}...
+                  </span>
                   {isSelected ? (
                     <div className="flex items-center gap-1 ml-2">
                       <Button
@@ -116,7 +119,7 @@ export default function RcaJobQueuePanel({
                 </div>
                 {job.report_id && (
                   <p className="text-xs text-sre-text-muted mt-1 font-mono truncate">
-                    report: {job.report_id}
+                    Report ID: {job.report_id}
                   </p>
                 )}
                 <p className="text-xs text-sre-text-muted mt-1">

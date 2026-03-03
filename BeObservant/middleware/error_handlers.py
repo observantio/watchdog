@@ -23,6 +23,16 @@ F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 logger = logging.getLogger(__name__)
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def handle_route_errors(
     *,
     bad_request_exceptions: tuple[type[Exception], ...] = (ValueError,),
@@ -66,7 +76,7 @@ def validation_exception_handler(
     logger.warning(f"Request validation error for {request.url}: {exc}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors()},
+        content={"detail": _json_safe(exc.errors())},
     )
 
 

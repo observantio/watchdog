@@ -19,6 +19,7 @@ from middleware import dependencies
 from models.access.auth_models import Role, TokenData
 from models.access.user_models import UserUpdate
 from routers.access import auth_router
+from services.auth.helper import is_admin_check
 
 
 def _token_data(*, role: Role = Role.USER, perms=None) -> TokenData:
@@ -119,6 +120,22 @@ async def test_non_admin_cannot_change_role_org_or_groups():
     with pytest.raises(HTTPException) as exc:
         await auth_router.update_user("u2", UserUpdate(role=Role.ADMIN), current_user)
     assert exc.value.status_code == 403
+
+
+def test_is_admin_check_accepts_string_role():
+    current_user = TokenData(
+        user_id="admin-user",
+        username="admin-user",
+        tenant_id="tenant-a",
+        org_id="tenant-a",
+        role="admin",
+        is_superuser=False,
+        permissions=["manage:users"],
+        group_ids=[],
+        iat=int(datetime.now(timezone.utc).timestamp()),
+        is_mfa_setup=False,
+    )
+    assert is_admin_check(current_user) is True
 
 
 @pytest.mark.asyncio

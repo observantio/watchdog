@@ -25,6 +25,7 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
   const [role, setRole] = useState(user.role);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [computedPermissions, setComputedPermissions] = useState(new Set());
+  const [groupSearch, setGroupSearch] = useState("");
 
   const getPermissionDescription = (permissionName) => {
     const descriptions = {
@@ -177,6 +178,21 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
     setRole(newRole);
   };
 
+  const filteredGroups = useMemo(() => {
+    const query = groupSearch.trim().toLowerCase();
+    if (!query) return groups;
+    return groups.filter((group) => {
+      const name = String(group?.name || "").toLowerCase();
+      const description = String(group?.description || "").toLowerCase();
+      return name.includes(query) || description.includes(query);
+    });
+  }, [groupSearch, groups]);
+
+  const visibleGroups = useMemo(
+    () => filteredGroups.slice(0, 5),
+    [filteredGroups],
+  );
+
   const togglePermission = (permId) => {
     const newPerms = new Set(selectedPermissions);
     if (newPerms.has(permId)) {
@@ -304,8 +320,19 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
               </label>
               <HelpTooltip text="Groups provide additional permissions beyond the user's role. Users inherit all permissions from their assigned groups." />
             </div>
+            {groups.length > 0 && (
+              <div className="mb-3">
+                <input
+                  type="text"
+                  value={groupSearch}
+                  onChange={(e) => setGroupSearch(e.target.value)}
+                  placeholder="Search groups..."
+                  className="w-full md:max-w-md rounded border border-sre-border bg-sre-bg px-3 py-2 text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {groups.map((group) => (
+              {visibleGroups.map((group) => (
                 <div key={group.id} className="">
                   <div className="flex items-start gap-3 p-3 bg-sre-bg-alt border border-sre-border rounded-lg">
                     <div className="flex-shrink-0 pt-1">
@@ -401,7 +428,18 @@ export default function PermissionEditor({ user, groups, onClose, onSave }) {
                   No groups available
                 </div>
               )}
+              {groups.length > 0 && filteredGroups.length === 0 && (
+                <div className="col-span-2 text-center py-4 text-sre-text-muted">
+                  No groups match your search
+                </div>
+              )}
             </div>
+            {filteredGroups.length > 5 && (
+              <p className="mt-3 text-xs text-sre-text-muted">
+                Showing first 5 of {filteredGroups.length} groups. Refine search
+                to find a specific group.
+              </p>
+            )}
           </div>
 
           {/* Permissions by Category */}
