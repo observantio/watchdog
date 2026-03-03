@@ -130,15 +130,6 @@ Be Observant is built with a "Security First" mindset:
 * **Auditability:** Immutable DB triggers ensure every configuration change is logged.
 * **Hardened Proxy:** Grafana is never exposed directly; all traffic passes through an RBAC-enforced NGINX layer.
 
-Security operations documents:
-
-* [`deployment/security/security-assessment.md`](deployment/security/security-assessment.md)
-* [`deployment/security/production-readiness-checklist.md`](deployment/security/production-readiness-checklist.md)
-* [`deployment/security/key-rotation-matrix.md`](deployment/security/key-rotation-matrix.md)
-* [`deployment/security/db-migration-runbook.md`](deployment/security/db-migration-runbook.md)
-* [`deployment/README.md`](deployment/README.md)
-
----
 
 ## ✅ Production Readiness Checklist
 
