@@ -942,7 +942,8 @@ export default function IncidentBoardPage() {
         note: draft.note || null,
         jiraTicketKey: draft.jiraTicketKey || null,
         jiraTicketUrl: draft.jiraTicketUrl || null,
-        jiraIntegrationId: draft.jiraIntegrationId || null,
+        jiraIntegrationId:
+          draft.jiraIntegrationId || incident.jiraIntegrationId || null,
         hideWhenResolved:
           typeof draft.hideWhenResolved !== "undefined"
             ? draft.hideWhenResolved

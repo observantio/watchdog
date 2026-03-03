@@ -110,7 +110,7 @@ export default function RcaJobComposer({ onCreate, creating }) {
         </button>
 
         {showAdvanced && (
-          <div className="space-y-4 p-3 rounded-lg bg-sre-surface/40">
+          <div className="space-y-4 py-3 rounded-lg bg-sre-surface/40">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
                 label="Log Query (optional)"
