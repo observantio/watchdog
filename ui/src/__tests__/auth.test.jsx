@@ -29,6 +29,18 @@ describe("AuthContext cookie-first behavior", () => {
   const renderWithRouter = (node) =>
     render(<MemoryRouter initialEntries={["/"]}>{node}</MemoryRouter>);
 
+  beforeEach(() => {
+    api.getAuthMode.mockResolvedValue({
+      provider: "local",
+      oidc_enabled: false,
+      password_enabled: true,
+      registration_enabled: true,
+      oidc_scopes: "openid profile email",
+    });
+    api.listApiKeys.mockResolvedValue([]);
+    api.setUserOrgIds.mockImplementation(() => {});
+  });
+
   it("loads user from cookie-based session (no access_token)", async () => {
     api.getCurrentUserNoRedirect.mockResolvedValue({
       username: "alice",
@@ -52,7 +64,7 @@ describe("AuthContext cookie-first behavior", () => {
     api.getCurrentUserNoRedirect.mockRejectedValue(
       new Error("Unauthenticated"),
     );
-    api.getCurrentUser.mockResolvedValue({ username: "bob" });
+    api.getCurrentUser.mockResolvedValue({ username: "bob", org_id: "org-b" });
 
     const spySet = vi.spyOn(globalThis.localStorage.__proto__, "setItem");
 
@@ -83,7 +95,10 @@ describe("AuthContext cookie-first behavior", () => {
     api.getCurrentUserNoRedirect.mockRejectedValue(
       new Error("Unauthenticated"),
     );
-    api.getCurrentUser.mockResolvedValue({ username: "charlie" });
+    api.getCurrentUser.mockResolvedValue({
+      username: "charlie",
+      org_id: "org-c",
+    });
     const spySet = vi.spyOn(globalThis.localStorage.__proto__, "setItem");
     const spySetAuth = vi.spyOn(api, "setAuthToken");
 
@@ -112,8 +127,11 @@ describe("AuthContext cookie-first behavior", () => {
   });
 
   it("refreshUser calls getCurrentUser even when in-memory token is null", async () => {
-    api.getCurrentUserNoRedirect.mockResolvedValue({ username: "seed" });
-    api.getCurrentUser.mockResolvedValue({ username: "dave" });
+    api.getCurrentUserNoRedirect.mockResolvedValue({
+      username: "seed",
+      org_id: "org-seed",
+    });
+    api.getCurrentUser.mockResolvedValue({ username: "dave", org_id: "org-d" });
 
     function Caller() {
       const { refreshUser } = useAuth();
@@ -133,8 +151,11 @@ describe("AuthContext cookie-first behavior", () => {
   });
 
   it("logs out and navigates to /login when a 401 api-error event occurs", async () => {
-    api.getCurrentUserNoRedirect.mockResolvedValue({ username: "joe" });
-    api.getCurrentUser.mockResolvedValue({ username: "joe" });
+    api.getCurrentUserNoRedirect.mockResolvedValue({
+      username: "joe",
+      org_id: "org-j",
+    });
+    api.getCurrentUser.mockResolvedValue({ username: "joe", org_id: "org-j" });
 
     function Check() {
       const { user, isAuthenticated } = useAuth();

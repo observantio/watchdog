@@ -4,6 +4,7 @@ import { describe, it, vi, beforeEach } from "vitest";
 
 vi.mock("../../api", () => ({
   listApiKeys: vi.fn(),
+  getCurrentUser: vi.fn(),
   deleteApiKey: vi.fn(),
   replaceApiKeyShares: vi.fn(),
   getUsers: vi.fn(),
@@ -67,6 +68,11 @@ const defaultOwnedKey = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getCurrentUser).mockImplementation(async () => ({
+    ...currentUser,
+    org_id: currentUser.api_keys?.find((k) => k.is_default)?.key || "org-default",
+  }));
+  vi.mocked(api.listApiKeys).mockImplementation(async () => currentUser.api_keys || []);
 });
 
 describe("ApiKeyPage (shared-key UX)", () => {

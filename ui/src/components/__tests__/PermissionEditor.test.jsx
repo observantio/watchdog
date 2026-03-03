@@ -12,6 +12,17 @@ vi.mock("../../api", () => ({
   updateUserPermissions: vi.fn(),
 }));
 
+vi.mock("../../contexts/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "admin-1",
+      role: "admin",
+      permissions: ["manage:users"],
+      is_superuser: false,
+    },
+  }),
+}));
+
 describe("PermissionEditor", () => {
   beforeEach(() => {
     api.getPermissions.mockResolvedValue([]);
