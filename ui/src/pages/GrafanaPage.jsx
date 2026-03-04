@@ -13,6 +13,7 @@ import {
   createFolder,
   updateFolder,
   deleteFolder,
+  toggleFolderHidden,
   getGroups,
   toggleDashboardHidden,
   toggleDatasourceHidden,
@@ -120,6 +121,7 @@ export default function GrafanaPage() {
   const [folderName, setFolderName] = useState("");
   const [folderVisibility, setFolderVisibility] = useState("private");
   const [folderSharedGroupIds, setFolderSharedGroupIds] = useState([]);
+  const [allowDashboardWrites, setAllowDashboardWrites] = useState(false);
 
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -186,7 +188,7 @@ export default function GrafanaPage() {
               teamId: filters.teamId || undefined,
               showHidden: filters.showHidden,
             }).catch(() => []),
-            getFolders().catch(() => []),
+            getFolders({ showHidden: filters.showHidden }).catch(() => []),
             getDatasources().catch(() => []),
           ]);
         setDashboards(dashboardsData);
@@ -201,7 +203,9 @@ export default function GrafanaPage() {
         ]);
         setDatasources(datasourcesData);
       } else if (activeTab === "folders") {
-        const foldersData = await getFolders().catch(() => []);
+        const foldersData = await getFolders({
+          showHidden: filters.showHidden,
+        }).catch(() => []);
         setFolders(foldersData);
       }
     } catch (e) {
@@ -662,11 +666,17 @@ export default function GrafanaPage() {
       setFolderName(folder.title || "");
       setFolderVisibility(folder.visibility || "private");
       setFolderSharedGroupIds(folder.sharedGroupIds || folder.shared_group_ids || []);
+      setAllowDashboardWrites(
+        Boolean(
+          folder.allowDashboardWrites ?? folder.allow_dashboard_writes ?? false,
+        ),
+      );
     } else {
       setEditingFolder(null);
       setFolderName("");
       setFolderVisibility("private");
       setFolderSharedGroupIds([]);
+      setAllowDashboardWrites(false);
     }
     setShowFolderCreator(true);
   }
@@ -685,12 +695,19 @@ export default function GrafanaPage() {
       if (editingFolder?.uid) {
         await updateFolder(
           editingFolder.uid,
-          { title: folderName.trim() },
+          {
+            title: folderName.trim(),
+            allowDashboardWrites: allowDashboardWrites,
+          },
           params.toString(),
         );
         toast.success("Folder updated successfully");
       } else {
-        await createFolder(folderName.trim(), params.toString());
+        await createFolder(
+          folderName.trim(),
+          params.toString(),
+          allowDashboardWrites,
+        );
         toast.success("Folder created successfully");
       }
       setShowFolderCreator(false);
@@ -698,6 +715,7 @@ export default function GrafanaPage() {
       setFolderName("");
       setFolderVisibility("private");
       setFolderSharedGroupIds([]);
+      setAllowDashboardWrites(false);
       loadData();
     } catch (e) {
       handleApiError(e);
@@ -714,6 +732,27 @@ export default function GrafanaPage() {
         try {
           await deleteFolder(folder.uid);
           toast.success("Folder deleted successfully");
+          loadData();
+        } catch (e) {
+          handleApiError(e);
+        }
+      },
+    });
+  }
+
+  async function handleToggleFolderHidden(folder) {
+    const nowHidden = !folder.is_hidden;
+    setConfirmDialog({
+      isOpen: true,
+      title: nowHidden ? "Hide Folder" : "Unhide Folder",
+      message: nowHidden
+        ? `Are you sure you want to hide "${folder.title}"? This will hide the folder and its dashboards for your account.`
+        : `Are you sure you want to unhide "${folder.title}"? This will make the folder visible again for your account.`,
+      variant: "danger",
+      onConfirm: async () => {
+        try {
+          await toggleFolderHidden(folder.uid, nowHidden);
+          toast.success(nowHidden ? "Folder hidden" : "Folder visible");
           loadData();
         } catch (e) {
           handleApiError(e);
@@ -774,6 +813,7 @@ export default function GrafanaPage() {
         onCreateFolder={() => openFolderEditor(null)}
         onEditFolder={openFolderEditor}
         onDeleteFolder={handleDeleteFolder}
+        onToggleFolderHidden={handleToggleFolderHidden}
       />
 
       <DashboardEditorModal
@@ -815,6 +855,7 @@ export default function GrafanaPage() {
           setFolderName("");
           setFolderVisibility("private");
           setFolderSharedGroupIds([]);
+          setAllowDashboardWrites(false);
         }}
         editingFolder={editingFolder}
         folderName={folderName}
@@ -823,6 +864,8 @@ export default function GrafanaPage() {
         setFolderVisibility={setFolderVisibility}
         folderSharedGroupIds={folderSharedGroupIds}
         setFolderSharedGroupIds={setFolderSharedGroupIds}
+        allowDashboardWrites={allowDashboardWrites}
+        setAllowDashboardWrites={setAllowDashboardWrites}
         groups={groups}
         onCreate={handleCreateFolder}
       />

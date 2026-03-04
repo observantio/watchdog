@@ -540,6 +540,7 @@ async def hide_datasource(
 
 @router.get("/folders", response_model=List[Folder])
 async def get_folders(
+    show_hidden: bool = Query(False),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_FOLDERS, "grafana")),
     db: Session = Depends(get_db),
 ):
@@ -548,6 +549,7 @@ async def get_folders(
         user_id=current_user.user_id,
         tenant_id=current_user.tenant_id,
         group_ids=user_group_ids(current_user),
+        show_hidden=show_hidden,
         is_admin=is_admin_user(current_user),
     )
 
@@ -589,6 +591,7 @@ async def create_folder(
         group_ids=user_group_ids(current_user),
         visibility=visibility,
         shared_group_ids=shared_group_ids or [],
+        allow_dashboard_writes=payload.allow_dashboard_writes,
         is_admin=is_admin_user(current_user),
     )
     if not result:
@@ -636,8 +639,31 @@ async def update_folder(
         title=payload.title,
         visibility=visibility,
         shared_group_ids=shared_group_ids,
+        allow_dashboard_writes=payload.allow_dashboard_writes,
         is_admin=is_admin_user(current_user),
     )
     if not result:
         raise HTTPException(status_code=404, detail=f"Folder {uid} not found or update failed")
     return result
+
+
+@router.post("/folders/{uid}/hide")
+async def hide_folder(
+    uid: str,
+    payload: GrafanaHiddenToggleRequest = Body(default_factory=GrafanaHiddenToggleRequest),
+    current_user: TokenData = Depends(
+        require_any_permission_with_scope([Permission.CREATE_FOLDERS, Permission.DELETE_FOLDERS], "grafana")
+    ),
+    db: Session = Depends(get_db),
+):
+    ok = await rtp(
+        proxy.toggle_folder_hidden,
+        db=db,
+        uid=uid,
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        hidden=payload.hidden,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Folder {uid} not found")
+    return {"status": "success", "hidden": payload.hidden}

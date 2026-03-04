@@ -883,7 +883,7 @@ export default function ApiKeyPage() {
                   <label className="block text-sm font-medium text-sre-text mb-2">
                     OTLP Gateway Host
                   </label>
-                  <HelpTooltip text="Enter the gateway host only. Endpoints are derived automatically." />
+                  <HelpTooltip text="Enter the gateway host only, if you are running an otel collector locally, then localhost will work, or else you need the IP/domain of the place your Observantio is hosted" />
                 </div>
                 <Input
                   value={gatewayHost}

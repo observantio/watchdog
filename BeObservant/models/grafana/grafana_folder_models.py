@@ -19,5 +19,7 @@ class Folder(BaseModel):
     created_by: Optional[str] = Field(None, description="ID of the user who created the folder")
     visibility: str = Field("tenant", description="Visibility for the folder (private|group|tenant)")
     shared_group_ids: List[str] = Field(default_factory=list, alias="sharedGroupIds")
+    allow_dashboard_writes: bool = Field(False, alias="allowDashboardWrites")
+    is_hidden: bool = Field(False, alias="isHidden")
     is_owned: bool = Field(False, description="Whether the current user owns the folder")
     model_config = ConfigDict(populate_by_name=True)

@@ -10,6 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from typing import Dict, List, Optional
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from config import config
@@ -39,9 +40,12 @@ def check_folder_access(
     *,
     require_write: bool = False,
     is_admin: bool = False,
+    include_hidden: bool = False,
 ) -> Optional[GrafanaFolder]:
     folder = _db_folder_by_uid(db, tenant_id, uid)
     if not folder:
+        return None
+    if not include_hidden and user_id in (folder.hidden_by or []):
         return None
     if folder.created_by == user_id:
         return folder
@@ -65,6 +69,7 @@ def is_folder_accessible(
     *,
     require_write: bool = False,
     is_admin: bool = False,
+    include_hidden: bool = False,
 ) -> bool:
     if not uid:
         return True
@@ -72,7 +77,14 @@ def is_folder_accessible(
     if db_folder is None:
         return False
     folder = check_folder_access(
-        db, uid, user_id, tenant_id, group_ids, require_write=require_write, is_admin=is_admin,
+        db,
+        uid,
+        user_id,
+        tenant_id,
+        group_ids,
+        require_write=require_write,
+        is_admin=is_admin,
+        include_hidden=include_hidden,
     )
     return folder is not None
 
@@ -87,6 +99,8 @@ def _folder_payload(folder_obj, *, db_folder: Optional[GrafanaFolder], user_id: 
     payload["created_by"] = db_folder.created_by if db_folder else None
     payload["visibility"] = (db_folder.visibility if db_folder else "tenant") or "tenant"
     payload["sharedGroupIds"] = [str(g.id) for g in (db_folder.shared_groups or [])] if db_folder else []
+    payload["allowDashboardWrites"] = bool(getattr(db_folder, "allow_dashboard_writes", False)) if db_folder else False
+    payload["isHidden"] = bool(db_folder and user_id in (db_folder.hidden_by or []))
     payload["is_owned"] = bool(db_folder and db_folder.created_by == user_id)
     return payload
 
@@ -98,6 +112,7 @@ async def get_folders(
     tenant_id: str,
     group_ids: List[str],
     *,
+    show_hidden: bool = False,
     is_admin: bool = False,
 ) -> List[Folder]:
     folders = await service.grafana_service.get_folders()
@@ -116,7 +131,14 @@ async def get_folders(
         if not db_folder:
             continue
         if not check_folder_access(
-            db, uid, user_id, tenant_id, group_ids, require_write=False, is_admin=is_admin,
+            db,
+            uid,
+            user_id,
+            tenant_id,
+            group_ids,
+            require_write=False,
+            is_admin=is_admin,
+            include_hidden=show_hidden,
         ):
             continue
         out.append(Folder.model_validate(_folder_payload(folder, db_folder=db_folder, user_id=user_id)))
@@ -137,7 +159,7 @@ async def get_folder(
     if not db_folder:
         return None
     if not check_folder_access(
-        db, uid, user_id, tenant_id, group_ids, require_write=False, is_admin=is_admin,
+        db, uid, user_id, tenant_id, group_ids, require_write=False, is_admin=is_admin, include_hidden=False,
     ):
         return None
     folder = await service.grafana_service.get_folder(uid)
@@ -156,6 +178,7 @@ async def create_folder(
     *,
     visibility: str = "private",
     shared_group_ids: Optional[List[str]] = None,
+    allow_dashboard_writes: bool = False,
     is_admin: bool = False,
 ) -> Optional[Folder]:
     groups = []
@@ -184,6 +207,8 @@ async def create_folder(
         grafana_id=getattr(created, "id", None),
         title=str(getattr(created, "title", title) or title),
         visibility=visibility or "private",
+        allow_dashboard_writes=bool(allow_dashboard_writes),
+        hidden_by=[],
     )
     if visibility == "group" and shared_group_ids:
         db_folder.shared_groups.extend(groups)
@@ -209,6 +234,7 @@ async def update_folder(
     title: Optional[str] = None,
     visibility: Optional[str] = None,
     shared_group_ids: Optional[List[str]] = None,
+    allow_dashboard_writes: Optional[bool] = None,
     is_admin: bool = False,
 ) -> Optional[Folder]:
     db_folder = _db_folder_by_uid(db, tenant_id, uid)
@@ -224,8 +250,6 @@ async def update_folder(
         updated = await service.grafana_service.update_folder(uid, new_title)
     except Exception as exc:
         if isinstance(exc, GrafanaAPIError) and exc.status == 412:
-            from fastapi import HTTPException
-
             raise HTTPException(
                 status_code=409,
                 detail="Folder changed by another request; reload folders and retry.",
@@ -236,6 +260,8 @@ async def update_folder(
         return None
 
     db_folder.title = str(getattr(updated, "title", new_title) or new_title)
+    if allow_dashboard_writes is not None:
+        db_folder.allow_dashboard_writes = bool(allow_dashboard_writes)
     if visibility:
         db_folder.visibility = visibility
         if visibility == "group":
@@ -290,4 +316,26 @@ async def delete_folder(
         except Exception:
             db.rollback()
             raise
+    return True
+
+
+def toggle_folder_hidden(db: Session, uid: str, user_id: str, tenant_id: str, hidden: bool) -> bool:
+    db_folder = _db_folder_by_uid(db, tenant_id, uid)
+    if not db_folder:
+        return False
+    if hidden and str(getattr(db_folder, "created_by", "")) == str(user_id):
+        raise HTTPException(status_code=400, detail="You cannot hide folders you own")
+    hidden_list = list(db_folder.hidden_by or [])
+    if hidden:
+        if user_id not in hidden_list:
+            hidden_list.append(user_id)
+    else:
+        if user_id in hidden_list:
+            hidden_list.remove(user_id)
+    db_folder.hidden_by = hidden_list
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return True

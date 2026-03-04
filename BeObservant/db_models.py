@@ -353,6 +353,8 @@ class GrafanaFolder(Base):
     grafana_id:  Mapped[Optional[int]] = mapped_column(Integer)
     title:       Mapped[str]           = mapped_column(String(200), nullable=False)
     visibility:  Mapped[str]           = mapped_column(String(20),  nullable=False, default="private", index=True)
+    allow_dashboard_writes: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    hidden_by:   Mapped[List[Any]]     = mapped_column(JSON, default=list)
     created_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, nullable=False)
     updated_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, onupdate=_now, nullable=False)
 

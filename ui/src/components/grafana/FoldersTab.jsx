@@ -4,9 +4,14 @@ import { useState, useMemo } from "react";
 
 export default function FoldersTab({
   folders,
+  filters,
+  setFilters,
+  onClearFilters,
+  hasActiveFilters,
   onCreateFolder,
   onEditFolder,
   onDeleteFolder,
+  onToggleHidden,
 }) {
   const [query, setQuery] = useState("");
 
@@ -52,6 +57,21 @@ export default function FoldersTab({
             <Button type="button" onClick={() => setQuery("")} size="sm">
               Clear
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filters?.showHidden ? "primary" : "secondary"}
+              onClick={() =>
+                setFilters((prev) => ({ ...(prev || {}), showHidden: !prev?.showHidden }))
+              }
+            >
+              {filters?.showHidden ? "Hide Hidden" : "Show Hidden"}
+            </Button>
+            {hasActiveFilters ? (
+              <Button type="button" onClick={onClearFilters} size="sm" variant="ghost">
+                Reset Filters
+              </Button>
+            ) : null}
           </form>
           {folders.length ? (
             <Button onClick={onCreateFolder} variant="primary" size="sm">
@@ -121,6 +141,11 @@ export default function FoldersTab({
                           owned
                         </span>
                       )}
+                      {folder.is_hidden && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-sre-warning/20 text-sre-warning">
+                          hidden
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1 text-sm text-sre-text-muted">
@@ -130,6 +155,19 @@ export default function FoldersTab({
                     </div>
                   </div>
                   <div className="flex gap-1 ml-4">
+                    {!folder.is_owned && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onToggleHidden(folder)}
+                        title={folder.is_hidden ? "Unhide Folder" : "Hide Folder"}
+                        className="p-2"
+                      >
+                        <span className="material-icons text-base">
+                          {folder.is_hidden ? "visibility" : "visibility_off"}
+                        </span>
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -201,7 +239,12 @@ export default function FoldersTab({
 
 FoldersTab.propTypes = {
   folders: PropTypes.arrayOf(PropTypes.object).isRequired,
+  filters: PropTypes.object,
+  setFilters: PropTypes.func,
+  onClearFilters: PropTypes.func,
+  hasActiveFilters: PropTypes.bool,
   onCreateFolder: PropTypes.func.isRequired,
   onEditFolder: PropTypes.func.isRequired,
   onDeleteFolder: PropTypes.func.isRequired,
+  onToggleHidden: PropTypes.func,
 };

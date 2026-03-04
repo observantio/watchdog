@@ -19,7 +19,7 @@ from config import config
 from db_models import GrafanaDashboard, GrafanaFolder, Group
 from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardSearchResult, DashboardUpdate
 from services.grafana.grafana_service import GrafanaAPIError
-from services.grafana.folder_ops import is_folder_accessible
+from services.grafana.folder_ops import check_folder_access, is_folder_accessible
 
 
 def _cap(limit: Optional[int], offset: int) -> tuple[int, int]:
@@ -535,10 +535,22 @@ async def create_dashboard(
 
     folder_id = getattr(dashboard_create, "folder_id", None)
     folder_uid = await _resolve_folder_uid_by_id(service, folder_id)
-    if folder_uid and not is_folder_accessible(
-        db, folder_uid, user_id, tenant_id, gids, require_write=True, is_admin=is_admin,
-    ):
+    target_folder = None
+    if folder_uid:
+        target_folder = check_folder_access(
+            db, folder_uid, user_id, tenant_id, gids, require_write=False, is_admin=is_admin,
+        )
+    if folder_uid and not target_folder:
         raise HTTPException(status_code=403, detail="Folder access denied")
+    if (
+        target_folder
+        and str(getattr(target_folder, "created_by", "")) != str(user_id)
+        and not bool(getattr(target_folder, "allow_dashboard_writes", False))
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Folder is owner-only for dashboard creation",
+        )
 
     dash_obj = getattr(dashboard_create, "dashboard", None)
     if dash_obj and not _dashboard_has_datasource(dash_obj):

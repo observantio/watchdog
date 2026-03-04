@@ -29,6 +29,7 @@ export default function GrafanaContent({
   onCreateFolder,
   onEditFolder,
   onDeleteFolder,
+  onToggleFolderHidden,
 }) {
   if (loading) {
     return (
@@ -79,9 +80,14 @@ export default function GrafanaContent({
   return (
     <FoldersTab
       folders={folders}
+      filters={filters}
+      setFilters={setFilters}
+      onClearFilters={onClearFilters}
+      hasActiveFilters={hasActiveFilters}
       onCreateFolder={onCreateFolder}
       onEditFolder={onEditFolder}
       onDeleteFolder={onDeleteFolder}
+      onToggleHidden={onToggleFolderHidden}
     />
   );
 }
@@ -113,4 +119,5 @@ GrafanaContent.propTypes = {
   onCreateFolder: PropTypes.func.isRequired,
   onEditFolder: PropTypes.func.isRequired,
   onDeleteFolder: PropTypes.func.isRequired,
+  onToggleFolderHidden: PropTypes.func,
 };

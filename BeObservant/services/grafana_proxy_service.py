@@ -51,6 +51,7 @@ from services.grafana.folder_ops import (
     get_folder,
     get_folders,
     is_folder_accessible,
+    toggle_folder_hidden,
     update_folder,
 )
 
@@ -418,12 +419,21 @@ class GrafanaProxyService:
         user_id: str,
         tenant_id: str,
         group_ids: List[str],
+        show_hidden: bool = False,
         is_admin: bool = False,
     ) -> List[Folder]:
         effective_group_ids = self._effective_group_ids(
             db, user_id=user_id, tenant_id=tenant_id, group_ids=group_ids,
         )
-        return await get_folders(self, db, user_id, tenant_id, effective_group_ids, is_admin=is_admin)
+        return await get_folders(
+            self,
+            db,
+            user_id,
+            tenant_id,
+            effective_group_ids,
+            show_hidden=show_hidden,
+            is_admin=is_admin,
+        )
 
     async def get_folder(
         self,
@@ -448,6 +458,7 @@ class GrafanaProxyService:
         group_ids: List[str],
         visibility: str = "private",
         shared_group_ids: Optional[List[str]] = None,
+        allow_dashboard_writes: bool = False,
         is_admin: bool = False,
     ) -> Optional[Folder]:
         effective_group_ids = self._effective_group_ids(
@@ -455,7 +466,10 @@ class GrafanaProxyService:
         )
         return await create_folder(
             self, db, title, user_id, tenant_id, effective_group_ids,
-            visibility=visibility, shared_group_ids=shared_group_ids, is_admin=is_admin,
+            visibility=visibility,
+            shared_group_ids=shared_group_ids,
+            allow_dashboard_writes=allow_dashboard_writes,
+            is_admin=is_admin,
         )
 
     async def delete_folder(
@@ -484,6 +498,7 @@ class GrafanaProxyService:
         title: Optional[str] = None,
         visibility: Optional[str] = None,
         shared_group_ids: Optional[List[str]] = None,
+        allow_dashboard_writes: Optional[bool] = None,
         is_admin: bool = False,
     ) -> Optional[Folder]:
         effective_group_ids = self._effective_group_ids(
@@ -491,7 +506,11 @@ class GrafanaProxyService:
         )
         return await update_folder(
             self, db, uid, user_id, tenant_id, effective_group_ids,
-            title=title, visibility=visibility, shared_group_ids=shared_group_ids, is_admin=is_admin,
+            title=title,
+            visibility=visibility,
+            shared_group_ids=shared_group_ids,
+            allow_dashboard_writes=allow_dashboard_writes,
+            is_admin=is_admin,
         )
 
     def check_folder_access(
@@ -529,3 +548,13 @@ class GrafanaProxyService:
         return is_folder_accessible(
             db, uid, user_id, tenant_id, effective_group_ids, require_write=require_write, is_admin=is_admin,
         )
+
+    def toggle_folder_hidden(
+        self,
+        db: Session,
+        uid: str,
+        user_id: str,
+        tenant_id: str,
+        hidden: bool,
+    ) -> bool:
+        return toggle_folder_hidden(db, uid, user_id, tenant_id, hidden)

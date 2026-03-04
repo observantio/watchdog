@@ -95,6 +95,31 @@ async def test_create_folder_persists_visibility_scope(db_session):
     assert db_row is not None
     assert db_row.visibility == "private"
     assert db_row.created_by == "u1"
+    assert db_row.allow_dashboard_writes is False
+
+
+@pytest.mark.asyncio
+async def test_create_folder_persists_allow_dashboard_writes_flag(db_session):
+    created = SimpleNamespace(id=12, uid="f-collab", title="Collaborative Folder")
+    service = _ProxyStub(_GrafanaServiceStub(created_folder=created))
+
+    result = await folder_ops.create_folder(
+        service,
+        db_session,
+        title="Collaborative Folder",
+        user_id="u1",
+        tenant_id="t1",
+        group_ids=[],
+        visibility="tenant",
+        shared_group_ids=[],
+        allow_dashboard_writes=True,
+        is_admin=False,
+    )
+
+    assert result is not None
+    db_row = db_session.query(GrafanaFolder).filter_by(grafana_uid="f-collab", tenant_id="t1").first()
+    assert db_row is not None
+    assert db_row.allow_dashboard_writes is True
 
 
 @pytest.mark.asyncio
@@ -233,12 +258,14 @@ async def test_update_folder_visibility_and_scope(db_session):
         title="Team Folder",
         visibility="private",
         shared_group_ids=[],
+        allow_dashboard_writes=True,
         is_admin=False,
     )
 
     assert result is not None
     db_row = db_session.query(GrafanaFolder).filter_by(grafana_uid="f-tenant").first()
     assert db_row.visibility == "private"
+    assert db_row.allow_dashboard_writes is True
 
     visible_to_other = folder_ops.is_folder_accessible(
         db_session, "f-tenant", "u2", "t1", [], require_write=False, is_admin=False

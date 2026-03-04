@@ -11,6 +11,8 @@ export default function FolderCreatorModal({
   setFolderVisibility,
   folderSharedGroupIds,
   setFolderSharedGroupIds,
+  allowDashboardWrites,
+  setAllowDashboardWrites,
   groups,
   onCreate,
 }) {
@@ -23,6 +25,7 @@ export default function FolderCreatorModal({
     setFolderName("");
     setFolderVisibility("private");
     setFolderSharedGroupIds([]);
+    setAllowDashboardWrites(false);
   };
 
   return (
@@ -75,6 +78,23 @@ export default function FolderCreatorModal({
             groups={groups || []}
           />
         </div>
+        <label className="flex items-start gap-3 rounded-lg border border-sre-border/40 p-3">
+          <input
+            type="checkbox"
+            checked={!!allowDashboardWrites}
+            onChange={(e) => setAllowDashboardWrites(e.target.checked)}
+            className="mt-0.5"
+          />
+          <div>
+            <div className="text-sm font-medium text-sre-text">
+              Allow members to add dashboards
+            </div>
+            <div className="text-xs text-sre-text-muted">
+              When enabled, users with access to this folder can upload/create dashboards inside it.
+              Folder edit/delete remains owner-only.
+            </div>
+          </div>
+        </label>
       </div>
     </Modal>
   );

@@ -284,9 +284,9 @@ export default function ChannelEditor({
   });
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6 py-4">
       {/* Basic Information Section */}
-      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+      <div>
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">info</span>
           Basic Information
@@ -338,7 +338,7 @@ export default function ChannelEditor({
 
       {/* Channel Type Preview */}
       {formData.type && (
-        <div className="bg-gradient-to-r from-sre-primary/5 to-sre-accent/5 rounded-xl p-6 border border-sre-primary/20">
+        <div class="pt-4">
           <div className="flex items-center gap-4 mb-4">
             <div className="w-12 h-12 rounded-xl bg-sre-primary/10 flex items-center justify-center">
               <span className="material-icons text-2xl text-sre-primary">
@@ -366,7 +366,7 @@ export default function ChannelEditor({
 
       {/* Configuration Section */}
       {renderConfigFields() && (
-        <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+        <div className="pt-4">
           <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
             <span className="material-icons text-sre-primary">settings</span>
             Configuration
@@ -376,14 +376,14 @@ export default function ChannelEditor({
       )}
 
       {/* Settings Section */}
-      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+      <div className="pt-4">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">tune</span>
           Settings
         </h3>
 
         <div className="space-y-4">
-          <label className="flex items-center gap-3 p-3 bg-sre-bg/50 rounded-lg border border-sre-border/30 hover:border-sre-primary/30 transition-colors cursor-pointer">
+          <label className="flex items-center gap-8 bg-sre-bg/50  hover:border-sre-primary/30 transition-colors cursor-pointer">
             <input
               type="checkbox"
               id="channel-enabled"
@@ -391,7 +391,7 @@ export default function ChannelEditor({
               onChange={(e) =>
                 setFormData({ ...formData, enabled: e.target.checked })
               }
-              className="w-5 h-5 text-sre-primary border-sre-border rounded focus:ring-sre-primary focus:ring-2"
+              className="w-5 h-5 text-sre-primary "
             />
             <div className="flex-1">
               <div className="font-medium text-sre-text">
@@ -408,7 +408,7 @@ export default function ChannelEditor({
 
       {/* Group sharing when in the 'group' tab — visibility itself is set by the Integrations page tab */}
       {formData.visibility === "group" && groups?.length > 0 && (
-        <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+        <div>
           <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
             <span className="material-icons text-sre-primary">group</span>
             Group Sharing
@@ -420,7 +420,7 @@ export default function ChannelEditor({
               channel.
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto p-3 border border-sre-border/30 rounded-lg bg-sre-bg/30">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto bg-sre-bg/30">
               {groups.map((group) => (
                 <label
                   key={group.id}

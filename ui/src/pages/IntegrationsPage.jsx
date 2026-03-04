@@ -31,7 +31,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
   const next = (patch) => onChange({ ...value, ...patch });
   return (
     <div className="space-y-6">
-      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+      <div className="pt-4">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">info</span>
           Basic Information
@@ -63,7 +63,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
         </div>
       </div>
 
-      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+      <div className="pt-4">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">settings</span>
           Configuration
@@ -115,6 +115,7 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
               <label className="block text-sm font-medium text-sre-text mb-2">
                 {(value.authMode || "api_token") === "sso" ? "SSO Access Token" : "Bearer Token"}
               </label>
+              <span className="text-xs text-sre-text-muted"> You will not see this after you save, so make sure to copy it somewhere safe! You can however override it</span>
               <Input
                 type="password"
                 value={value.bearerToken || ""}
@@ -126,14 +127,14 @@ function JiraIntegrationForm({ value, onChange, canUseSso = false }) {
         </div>
       </div>
 
-      <div className="bg-sre-surface/30 rounded-xl p-6 border border-sre-border/50">
+      <div className="pt-4">
         <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
           <span className="material-icons text-sre-primary">tune</span>
           Settings
         </h3>
 
         <div className="space-y-4">
-          <label className="flex items-center gap-3 p-3 bg-sre-bg/50 rounded-lg border border-sre-border/30 hover:border-sre-primary/30 transition-colors cursor-pointer">
+          <label className="flex items-center gap-8">
             <input
               type="checkbox"
               checked={!!value.enabled}

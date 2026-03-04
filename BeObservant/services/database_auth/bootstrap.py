@@ -179,6 +179,7 @@ def ensure_default_setup(service) -> None:
             _pg_advisory_lock(db, _BOOTSTRAP_PG_LOCK_KEY)
             try:
                 _ensure_user_security_columns(db)
+                _ensure_grafana_folder_columns(db)
                 _ensure_api_key_constraints(db)
                 _backfill_password_changed_at(db)
 
@@ -267,6 +268,24 @@ def _ensure_user_security_columns(db) -> None:
         "users",
         "session_invalid_before",
         "ALTER TABLE users ADD COLUMN session_invalid_before TIMESTAMP",
+    )
+    if changed:
+        db.flush()
+
+
+def _ensure_grafana_folder_columns(db) -> None:
+    changed = False
+    changed |= _ensure_column(
+        db,
+        "grafana_folders",
+        "allow_dashboard_writes",
+        "ALTER TABLE grafana_folders ADD COLUMN allow_dashboard_writes BOOLEAN NOT NULL DEFAULT FALSE",
+    )
+    changed |= _ensure_column(
+        db,
+        "grafana_folders",
+        "hidden_by",
+        "ALTER TABLE grafana_folders ADD COLUMN hidden_by JSON",
     )
     if changed:
         db.flush()

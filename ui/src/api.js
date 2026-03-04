@@ -998,14 +998,23 @@ export async function getDatasourceFilterMeta() {
   return request("/api/grafana/datasources/meta/filters");
 }
 
-export async function getFolders() {
-  return request("/api/grafana/folders");
+export async function getFolders({ showHidden = false } = {}) {
+  const params = new URLSearchParams();
+  if (showHidden) params.set("show_hidden", "true");
+  const qs = params.toString();
+  return request(qs ? `/api/grafana/folders?${qs}` : "/api/grafana/folders");
 }
-export async function createFolder(title, queryParams = "") {
+export async function createFolder(
+  title,
+  queryParams = "",
+  allowDashboardWrites = false,
+) {
   const url = queryParams
     ? `/api/grafana/folders?${queryParams}`
     : "/api/grafana/folders";
-  return requestJson(url, { payload: { title } });
+  return requestJson(url, {
+    payload: { title, allowDashboardWrites: !!allowDashboardWrites },
+  });
 }
 export async function deleteFolder(uid) {
   return request(`/api/grafana/folders/${encodeURIComponent(uid)}`, {
@@ -1017,6 +1026,11 @@ export async function updateFolder(uid, payload, queryParams = "") {
     ? `/api/grafana/folders/${encodeURIComponent(uid)}?${queryParams}`
     : `/api/grafana/folders/${encodeURIComponent(uid)}`;
   return requestJson(url, { method: "PUT", payload });
+}
+export async function toggleFolderHidden(uid, hidden = true) {
+  return requestJson(`/api/grafana/folders/${encodeURIComponent(uid)}/hide`, {
+    payload: { hidden },
+  });
 }
 
 export default { fetchInfo };
