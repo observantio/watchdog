@@ -105,6 +105,8 @@ class GrafanaService:
         query: Optional[str] = None,
         tag: Optional[str] = None,
         folder_ids: Optional[List[int]] = None,
+        folder_uids: Optional[List[str]] = None,
+        dashboard_uids: Optional[List[str]] = None,
         starred: Optional[bool] = None,
     ) -> List[DashboardSearchResult]:
         params: Dict[str, Any] = {"type": "dash-db"}
@@ -114,6 +116,10 @@ class GrafanaService:
             params["tag"] = tag
         if folder_ids:
             params["folderIds"] = folder_ids
+        if folder_uids:
+            params["folderUIDs"] = folder_uids
+        if dashboard_uids:
+            params["dashboardUID"] = dashboard_uids
         if starred is not None:
             params["starred"] = starred
         data = await self._safe_request("GET", "/api/search", default=[], params=params)
@@ -179,7 +185,7 @@ class GrafanaService:
     async def create_datasource(self, datasource: DatasourceCreate) -> Optional[Datasource]:
         result = await self._mutating_request(
             "POST", "/api/datasources",
-            json=datasource.model_dump(by_alias=True, exclude_none=True, exclude={"org_id"}),
+            json=datasource.model_dump(by_alias=True, exclude_none=True),
         )
         return Datasource(**result["datasource"]) if result and "datasource" in result else None
 
@@ -189,7 +195,7 @@ class GrafanaService:
         existing = await self.get_datasource(uid)
         if not existing:
             return None
-        data = datasource_update.model_dump(by_alias=True, exclude_none=True, exclude={"org_id"})
+        data = datasource_update.model_dump(by_alias=True, exclude_none=True)
         data.setdefault("type", existing.type)
         data.setdefault("name", existing.name)
         data.setdefault("url", existing.url)
@@ -215,6 +221,37 @@ class GrafanaService:
     async def create_folder(self, title: str) -> Optional[Folder]:
         data = await self._mutating_request("POST", "/api/folders", json={"title": title})
         return Folder(**data) if data else None
+
+    @with_retry()
+    @with_timeout()
+    async def get_folder(self, uid: str) -> Optional[Folder]:
+        data = await self._safe_request("GET", f"/api/folders/{uid}")
+        return Folder(**data) if data else None
+
+    @with_retry()
+    @with_timeout()
+    async def update_folder(self, uid: str, title: str) -> Optional[Folder]:
+        existing = await self.get_folder(uid)
+        if not existing:
+            return None
+        payload = {"title": title, "overwrite": True}
+        if getattr(existing, "version", None) is not None:
+            payload["version"] = existing.version
+        try:
+            data = await self._mutating_request("PUT", f"/api/folders/{uid}", json=payload)
+            return Folder(**data) if data else None
+        except GrafanaAPIError as exc:
+            if exc.status != 412:
+                raise
+            # Folder version changed server-side; fetch latest and retry once.
+            refreshed = await self.get_folder(uid)
+            if not refreshed:
+                return None
+            retry_payload = {"title": title, "overwrite": True}
+            if getattr(refreshed, "version", None) is not None:
+                retry_payload["version"] = refreshed.version
+            data = await self._mutating_request("PUT", f"/api/folders/{uid}", json=retry_payload)
+            return Folder(**data) if data else None
 
     @with_retry()
     @with_timeout()

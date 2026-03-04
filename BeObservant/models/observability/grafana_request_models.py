@@ -22,3 +22,7 @@ class GrafanaHiddenToggleRequest(BaseModel):
 
 class GrafanaCreateFolderRequest(BaseModel):
     title: str
+
+
+class GrafanaUpdateFolderRequest(BaseModel):
+    title: Optional[str] = None

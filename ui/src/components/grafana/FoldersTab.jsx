@@ -5,6 +5,7 @@ import { useState, useMemo } from "react";
 export default function FoldersTab({
   folders,
   onCreateFolder,
+  onEditFolder,
   onDeleteFolder,
 }) {
   const [query, setQuery] = useState("");
@@ -73,17 +74,71 @@ export default function FoldersTab({
         </div>
 
         {filtered.length ? (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filtered.map((folder) => (
               <div
                 key={folder.uid}
                 className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
+                        <svg
+                          className="w-6 h-6 text-yellow-600 dark:text-yellow-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                          />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sre-text text-lg">
+                          {folder.title}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-sre-surface text-sre-text-muted capitalize">
+                        {folder.visibility || "private"}
+                      </span>
+                      {Array.isArray(folder.sharedGroupIds) &&
+                        folder.sharedGroupIds.length > 0 && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                            {folder.sharedGroupIds.length} group
+                            {folder.sharedGroupIds.length !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      {folder.is_owned && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200">
+                          owned
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 text-sm text-sre-text-muted">
+                      {folder.uid && (
+                        <div className="text-xs font-mono">UID: {folder.uid}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 ml-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEditFolder(folder)}
+                      className="p-2"
+                      title="Edit Folder"
+                    >
                       <svg
-                        className="w-6 h-6 text-yellow-600 dark:text-yellow-400"
+                        className="w-4 h-4"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -92,43 +147,32 @@ export default function FoldersTab({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                         />
                       </svg>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sre-text text-lg">
-                        {folder.title}
-                      </h3>
-                      {folder.uid && (
-                        <p className="text-xs text-sre-text-muted font-mono">
-                          UID: {folder.uid}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDeleteFolder(folder)}
-                    className="p-2 text-red-500 hover:text-red-600"
-                    title="Delete Folder"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDeleteFolder(folder)}
+                      className="p-2 text-red-500 hover:text-red-600"
+                      title="Delete Folder"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </Button>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -158,5 +202,6 @@ export default function FoldersTab({
 FoldersTab.propTypes = {
   folders: PropTypes.arrayOf(PropTypes.object).isRequired,
   onCreateFolder: PropTypes.func.isRequired,
+  onEditFolder: PropTypes.func.isRequired,
   onDeleteFolder: PropTypes.func.isRequired,
 };

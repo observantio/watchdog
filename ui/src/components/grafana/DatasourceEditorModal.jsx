@@ -21,6 +21,9 @@ export default function DatasourceEditorModal({
   const defaultKey =
     (user?.api_keys || []).find((k) => k.is_default) ||
     (user?.api_keys || [])[0];
+  const isMultiTenantType = ["prometheus", "loki", "tempo"].includes(
+    datasourceForm.type,
+  );
 
   useEffect(() => {
     if (editingDatasource) return;
@@ -64,7 +67,8 @@ export default function DatasourceEditorModal({
             onClick={handleSave}
             disabled={
               !String(datasourceForm.name || "").trim() ||
-              !String(datasourceForm.url || "").trim()
+              !String(datasourceForm.url || "").trim() ||
+              (isMultiTenantType && !String(datasourceForm.apiKeyId || "").trim())
             }
           >
             {editingDatasource ? "Update Datasource" : "Create Datasource"}
@@ -164,8 +168,7 @@ export default function DatasourceEditorModal({
             </div>
           </div>
         </div>
-        {!editingDatasource &&
-          ["prometheus", "loki", "tempo"].includes(datasourceForm.type) && (
+        {isMultiTenantType && (
             <div className="space-y-4">
               <div className="pb-2 border-b border-sre-border">
                 <h3 className="text-sm font-semibold text-sre-text uppercase tracking-wide">
@@ -186,6 +189,7 @@ export default function DatasourceEditorModal({
                   }
                   required
                 >
+                  <option value="">Select API key</option>
                   {defaultKey && (
                     <option key={defaultKey.id} value={defaultKey.id}>
                       Default — {defaultKey.name}

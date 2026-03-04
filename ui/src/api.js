@@ -987,13 +987,22 @@ export async function getDatasourceFilterMeta() {
 export async function getFolders() {
   return request("/api/grafana/folders");
 }
-export async function createFolder(title) {
-  return requestJson("/api/grafana/folders", { payload: { title } });
+export async function createFolder(title, queryParams = "") {
+  const url = queryParams
+    ? `/api/grafana/folders?${queryParams}`
+    : "/api/grafana/folders";
+  return requestJson(url, { payload: { title } });
 }
 export async function deleteFolder(uid) {
   return request(`/api/grafana/folders/${encodeURIComponent(uid)}`, {
     method: "DELETE",
   });
+}
+export async function updateFolder(uid, payload, queryParams = "") {
+  const url = queryParams
+    ? `/api/grafana/folders/${encodeURIComponent(uid)}?${queryParams}`
+    : `/api/grafana/folders/${encodeURIComponent(uid)}`;
+  return requestJson(url, { method: "PUT", payload });
 }
 
 export default { fetchInfo };

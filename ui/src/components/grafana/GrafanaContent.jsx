@@ -27,6 +27,7 @@ export default function GrafanaContent({
   onToggleDatasourceHidden,
   getDatasourceIcon,
   onCreateFolder,
+  onEditFolder,
   onDeleteFolder,
 }) {
   if (loading) {
@@ -79,6 +80,7 @@ export default function GrafanaContent({
     <FoldersTab
       folders={folders}
       onCreateFolder={onCreateFolder}
+      onEditFolder={onEditFolder}
       onDeleteFolder={onDeleteFolder}
     />
   );
@@ -109,5 +111,6 @@ GrafanaContent.propTypes = {
   onEditDatasourceLabels: PropTypes.func,
   getDatasourceIcon: PropTypes.func.isRequired,
   onCreateFolder: PropTypes.func.isRequired,
+  onEditFolder: PropTypes.func.isRequired,
   onDeleteFolder: PropTypes.func.isRequired,
 };

@@ -1,5 +1,12 @@
-# routes/grafana.py  (or wherever your router lives)
+"""
+Grafana Router module defines API endpoints for Grafana-related operations, including dashboard and datasource management, folder operations, and session bootstrapping. It enforces security, handles permissions, and proxies requests to the Grafana backend while applying necessary access controls.
 
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
 import logging
 from typing import List, Optional
 
@@ -27,6 +34,7 @@ from models.observability.grafana_request_models import (
     GrafanaDashboardPayloadRequest,
     GrafanaDatasourceQueryRequest,
     GrafanaHiddenToggleRequest,
+    GrafanaUpdateFolderRequest,
 )
 from services.common.cookies import cookie_secure
 from services.database_auth_service import DatabaseAuthService
@@ -130,6 +138,10 @@ async def search_dashboards(
     query: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
     starred: Optional[bool] = Query(None),
+    folder_ids: Optional[List[int]] = Query(None, alias="folderIds"),
+    folder_uids: Optional[List[str]] = Query(None, alias="folderUIDs"),
+    dashboard_uids: Optional[List[str]] = Query(None, alias="dashboardUID"),
+    search_type: Optional[str] = Query(None, alias="type"),
     uid: Optional[str] = Query(None),
     team_id: Optional[str] = Query(None),
     show_hidden: bool = Query(False),
@@ -147,12 +159,19 @@ async def search_dashboards(
         query=query,
         tag=tag,
         starred=starred,
+        folder_ids=folder_ids,
+        folder_uids=folder_uids,
+        dashboard_uids=dashboard_uids,
         uid=uid,
         team_id=team_id,
         show_hidden=show_hidden,
         limit=limit,
         offset=offset,
         search_context=search_context,
+        is_admin=is_admin_user(current_user),
+        exclude_foldered_dashboards=bool(
+            search_type is not None and not folder_ids and not folder_uids and not dashboard_uids
+        ),
     )
 
 
@@ -168,6 +187,7 @@ async def get_dashboard(
         user_id=current_user.user_id,
         tenant_id=current_user.tenant_id,
         group_ids=user_group_ids(current_user),
+        is_admin=is_admin_user(current_user),
     )
     if not dashboard:
         raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found or access denied")
@@ -438,17 +458,56 @@ async def hide_datasource(
 @router.get("/folders", response_model=List[Folder])
 async def get_folders(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_FOLDERS, "grafana")),
+    db: Session = Depends(get_db),
 ):
-    return await proxy.get_folders()
+    return await proxy.get_folders(
+        db=db,
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        group_ids=user_group_ids(current_user),
+        is_admin=is_admin_user(current_user),
+    )
+
+
+@router.get("/folders/{uid}", response_model=Folder)
+async def get_folder_by_uid(
+    uid: str,
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_FOLDERS, "grafana")),
+    db: Session = Depends(get_db),
+):
+    folder = await proxy.get_folder(
+        db=db,
+        uid=uid,
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        group_ids=user_group_ids(current_user),
+        is_admin=is_admin_user(current_user),
+    )
+    if not folder:
+        raise HTTPException(status_code=404, detail=f"Folder {uid} not found or access denied")
+    return folder
 
 
 @router.post("/folders", response_model=Folder)
 @handle_route_errors()
 async def create_folder(
     payload: GrafanaCreateFolderRequest,
+    visibility: str = Query("private"),
+    shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.CREATE_FOLDERS, "grafana")),
+    db: Session = Depends(get_db),
 ):
-    result = await proxy.create_folder(title=payload.title)
+    validate_visibility(visibility)
+    result = await proxy.create_folder(
+        db=db,
+        title=payload.title,
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        group_ids=user_group_ids(current_user),
+        visibility=visibility,
+        shared_group_ids=shared_group_ids or [],
+        is_admin=is_admin_user(current_user),
+    )
     if not result:
         raise HTTPException(status_code=500, detail="Failed to create folder")
     return result
@@ -459,8 +518,43 @@ async def create_folder(
 async def delete_folder(
     uid: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.DELETE_FOLDERS, "grafana")),
+    db: Session = Depends(get_db),
 ):
-    ok = await proxy.delete_folder(uid=uid)
+    ok = await proxy.delete_folder(
+        db=db,
+        uid=uid,
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        group_ids=user_group_ids(current_user),
+        is_admin=is_admin_user(current_user),
+    )
     if not ok:
         raise HTTPException(status_code=404, detail=f"Folder {uid} not found or delete failed")
     return {"status": "success", "message": f"Folder {uid} deleted"}
+
+
+@router.put("/folders/{uid}", response_model=Folder)
+@handle_route_errors()
+async def update_folder(
+    uid: str,
+    payload: GrafanaUpdateFolderRequest,
+    visibility: Optional[str] = Query(None),
+    shared_group_ids: Optional[List[str]] = Query(None),
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.CREATE_FOLDERS, "grafana")),
+    db: Session = Depends(get_db),
+):
+    validate_visibility(visibility)
+    result = await proxy.update_folder(
+        db=db,
+        uid=uid,
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        group_ids=user_group_ids(current_user),
+        title=payload.title,
+        visibility=visibility,
+        shared_group_ids=shared_group_ids,
+        is_admin=is_admin_user(current_user),
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Folder {uid} not found or update failed")
+    return result

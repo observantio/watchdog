@@ -20,7 +20,7 @@ from sqlalchemy.orm import joinedload
 
 from config import config
 from database import get_db_session
-from db_models import GrafanaDashboard, GrafanaDatasource, Group, User
+from db_models import GrafanaDashboard, GrafanaDatasource, GrafanaFolder, Group, User
 from models.access.auth_models import Permission, Role, TokenData
 
 PROXY_AUTH_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -31,6 +31,12 @@ proxy_auth_cache_ops = 0
 
 HEADER_SAFE_RE = re.compile(r"[\r\n\x00]")
 STATIC_PREFIXES = ("/grafana/public/", "/grafana/public/build/")
+BLOCKED_GRAFANA_PROXY_PREFIXES = (
+    "/grafana/public-dashboards/",
+    "/grafana/dashboard/snapshot/",
+    "/grafana/api/public/dashboards/",
+    "/grafana/api/snapshots",
+)
 
 
 def _normalize_cache_path(path: str) -> str:
@@ -168,6 +174,11 @@ def _required_permissions_for_path(path: str, method: str) -> Set[str]:
     return set()
 
 
+def _is_blocked_proxy_path(path: str) -> bool:
+    p = (path or "").lower()
+    return any(p.startswith(prefix) for prefix in BLOCKED_GRAFANA_PROXY_PREFIXES)
+
+
 def _is_dashboard_save_request(path: str, method: str) -> bool:
     return (path or "").lower().startswith("/grafana/api/dashboards/db") and (method or "GET").upper() == "POST"
 
@@ -186,6 +197,12 @@ def _is_datasource_write_intent(path: str, method: str) -> bool:
     if p.startswith("/grafana/connections/datasources/edit/"):
         return True
     return False
+
+
+def _is_folder_write_intent(path: str, method: str) -> bool:
+    p = (path or "").lower()
+    m = (method or "GET").upper()
+    return p.startswith("/grafana/api/folders") and m in {"POST", "PUT", "PATCH", "DELETE"}
 
 
 async def _enforce_writable_datasource(service, datasource_uid: str) -> None:
@@ -260,6 +277,16 @@ def extract_datasource_id(path: str) -> Optional[int]:
         return None
 
 
+def extract_folder_uid(path: str) -> Optional[str]:
+    m = re.match(r"^/grafana/api/folders/([^/?]+)", path or "")
+    if not m:
+        return None
+    uid = m.group(1)
+    if uid in {"search", "id"}:
+        return None
+    return uid
+
+
 def extract_proxy_token(request, token: Optional[str] = None) -> Optional[str]:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -303,7 +330,8 @@ def _db_load_context(
     dashboard_uid: Optional[str],
     datasource_uid: Optional[str],
     datasource_id: Optional[int],
-) -> Tuple[Any, Optional[GrafanaDashboard], Optional[GrafanaDatasource], Optional[GrafanaDatasource]]:
+    folder_uid: Optional[str],
+) -> Tuple[Any, Optional[GrafanaDashboard], Optional[GrafanaDatasource], Optional[GrafanaDatasource], Optional[GrafanaFolder]]:
     with get_db_session() as s:
         orm_user = (
             s.query(User)
@@ -327,31 +355,124 @@ def _db_load_context(
         token_data.permissions = list(auth_service._collect_permissions(orm_user))
         token_data.group_ids = [g.id for g in (orm_user.groups or [])]
 
-        if not (dashboard_uid or datasource_uid or datasource_id is not None):
-            return orm_user, None, None, None
+        if not (dashboard_uid or datasource_uid or datasource_id is not None or folder_uid):
+            return orm_user, None, None, None, None
 
         dash = (
             s.query(GrafanaDashboard)
             .options(joinedload(GrafanaDashboard.shared_groups))
-            .filter(GrafanaDashboard.grafana_uid == dashboard_uid)
+            .filter(
+                GrafanaDashboard.grafana_uid == dashboard_uid,
+                GrafanaDashboard.tenant_id == token_data.tenant_id,
+            )
             .first()
         ) if dashboard_uid else None
 
         ds_uid = (
             s.query(GrafanaDatasource)
             .options(joinedload(GrafanaDatasource.shared_groups))
-            .filter(GrafanaDatasource.grafana_uid == datasource_uid)
+            .filter(
+                GrafanaDatasource.grafana_uid == datasource_uid,
+                GrafanaDatasource.tenant_id == token_data.tenant_id,
+            )
             .first()
         ) if datasource_uid else None
 
         ds_id = (
             s.query(GrafanaDatasource)
             .options(joinedload(GrafanaDatasource.shared_groups))
-            .filter(GrafanaDatasource.grafana_id == datasource_id)
+            .filter(
+                GrafanaDatasource.grafana_id == datasource_id,
+                GrafanaDatasource.tenant_id == token_data.tenant_id,
+            )
             .first()
         ) if datasource_id is not None else None
 
-        return orm_user, dash, ds_uid, ds_id
+        effective_folder_uid = folder_uid or (getattr(dash, "folder_uid", None) if dash else None)
+        folder = (
+            s.query(GrafanaFolder)
+            .options(joinedload(GrafanaFolder.shared_groups))
+            .filter(
+                GrafanaFolder.grafana_uid == effective_folder_uid,
+                GrafanaFolder.tenant_id == token_data.tenant_id,
+            )
+            .first()
+        ) if effective_folder_uid else None
+
+        return orm_user, dash, ds_uid, ds_id, folder
+
+
+def _db_load_folder(tenant_id: str, folder_uid: Optional[str]) -> Optional[GrafanaFolder]:
+    if not folder_uid:
+        return None
+    with get_db_session() as s:
+        return (
+            s.query(GrafanaFolder)
+            .options(joinedload(GrafanaFolder.shared_groups))
+            .filter(
+                GrafanaFolder.tenant_id == tenant_id,
+                GrafanaFolder.grafana_uid == str(folder_uid),
+            )
+            .first()
+        )
+
+
+def _db_load_folder_by_id(tenant_id: str, folder_id: Optional[int]) -> Optional[GrafanaFolder]:
+    if folder_id in (None, 0):
+        return None
+    with get_db_session() as s:
+        return (
+            s.query(GrafanaFolder)
+            .options(joinedload(GrafanaFolder.shared_groups))
+            .filter(
+                GrafanaFolder.tenant_id == tenant_id,
+                GrafanaFolder.grafana_id == int(folder_id),
+            )
+            .first()
+        )
+
+
+def _db_set_dashboard_folder_uid(tenant_id: str, dashboard_uid: str, folder_uid: str) -> None:
+    with get_db_session() as s:
+        dash = (
+            s.query(GrafanaDashboard)
+            .filter(
+                GrafanaDashboard.tenant_id == tenant_id,
+                GrafanaDashboard.grafana_uid == dashboard_uid,
+            )
+            .first()
+        )
+        if not dash:
+            return
+        dash.folder_uid = folder_uid
+        try:
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+
+
+def _is_safe_system_datasource(datasource: Any) -> bool:
+    return bool(
+        getattr(datasource, "is_default", False)
+        or getattr(datasource, "isDefault", False)
+        or getattr(datasource, "read_only", False)
+        or getattr(datasource, "readOnly", False)
+    )
+
+
+async def _lookup_safe_system_datasource(service, *, datasource_uid: Optional[str], datasource_id: Optional[int]) -> bool:
+    if datasource_uid:
+        ds = await service.grafana_service.get_datasource(datasource_uid)
+        return bool(ds and _is_safe_system_datasource(ds))
+
+    if datasource_id is not None:
+        datasources = await service.grafana_service.get_datasources()
+        for ds in datasources:
+            if getattr(ds, "id", None) == datasource_id and _is_safe_system_datasource(ds):
+                return True
+
+    return False
 
 
 async def authorize_proxy_request(
@@ -392,10 +513,11 @@ async def authorize_proxy_request(
     dashboard_uid = extract_dashboard_uid(original_path)
     datasource_uid = extract_datasource_uid(original_path)
     datasource_id = extract_datasource_id(original_path)
+    folder_uid = extract_folder_uid(original_path)
 
-    _, dash, ds_uid_obj, ds_id_obj = await run_in_threadpool(
+    _, dash, ds_uid_obj, ds_id_obj, folder_obj = await run_in_threadpool(
         _db_load_context,
-        auth_service, token_data, dashboard_uid, datasource_uid, datasource_id,
+        auth_service, token_data, dashboard_uid, datasource_uid, datasource_id, folder_uid,
     )
 
     user_permissions = set(token_data.permissions or [])
@@ -420,12 +542,20 @@ async def authorize_proxy_request(
     is_admin = is_admin_user(token_data)
     required_permissions = _required_permissions_for_path(original_path, original_method)
 
+    if _is_blocked_proxy_path(original_path):
+        raise HTTPException(status_code=403, detail="Public/snapshot dashboard links are disabled by policy")
+
+    if not is_admin and _is_folder_write_intent(original_path, original_method):
+        raise HTTPException(
+            status_code=403,
+            detail="Direct Grafana folder write API is disabled; use BeObservant folder endpoints",
+        )
+
     if not is_admin and _is_dashboard_save_request(original_path, original_method):
-        has_write = Permission.WRITE_DASHBOARDS.value in user_permissions
-        has_create = Permission.CREATE_DASHBOARDS.value in user_permissions
-        has_update = Permission.UPDATE_DASHBOARDS.value in user_permissions
-        if not has_write and not (has_create and has_update):
-            raise HTTPException(status_code=403, detail="Insufficient permissions for dashboard create/update")
+        raise HTTPException(
+            status_code=403,
+            detail="Direct Grafana dashboard save API is disabled; use BeObservant dashboard endpoints",
+        )
 
     if not is_admin and (not required_permissions or not _has_any_permission(token_data, required_permissions)):
         raise HTTPException(status_code=403, detail="Insufficient permissions for this Grafana action")
@@ -436,18 +566,63 @@ async def authorize_proxy_request(
     if dashboard_uid:
         if not dash or not is_resource_accessible(dash, token_data, require_write=dashboard_write_intent):
             raise HTTPException(status_code=403, detail="Dashboard access denied")
+        dash_folder_uid = str(getattr(dash, "folder_uid", "") or "")
+        dash_folder_id = None
+        if not dash_folder_uid:
+            dash_payload = await service.grafana_service.get_dashboard(dashboard_uid)
+            meta = (dash_payload or {}).get("meta") or {}
+            dash_folder_uid = str(meta.get("folderUid") or "")
+            dash_folder_id = meta.get("folderId")
+            if dash_folder_uid:
+                if not folder_obj:
+                    folder_obj = await run_in_threadpool(_db_load_folder, token_data.tenant_id, dash_folder_uid)
+                await run_in_threadpool(
+                    _db_set_dashboard_folder_uid, token_data.tenant_id, dashboard_uid, dash_folder_uid,
+                )
+            elif dash_folder_id not in (None, 0):
+                folder_obj = await run_in_threadpool(_db_load_folder_by_id, token_data.tenant_id, dash_folder_id)
+                dash_folder_uid = str(getattr(folder_obj, "grafana_uid", "") or "")
+                if dash_folder_uid:
+                    await run_in_threadpool(
+                        _db_set_dashboard_folder_uid, token_data.tenant_id, dashboard_uid, dash_folder_uid,
+                    )
+                else:
+                    raise HTTPException(status_code=403, detail="Folder access denied")
+        if dash_folder_uid:
+            if not folder_obj:
+                folder_obj = await run_in_threadpool(_db_load_folder, token_data.tenant_id, dash_folder_uid)
+            if not folder_obj:
+                raise HTTPException(status_code=403, detail="Folder access denied")
+            if not is_resource_accessible(folder_obj, token_data, require_write=False):
+                raise HTTPException(status_code=403, detail="Folder access denied")
 
     if datasource_uid:
-        if not ds_uid_obj or not is_resource_accessible(ds_uid_obj, token_data, require_write=datasource_write_intent):
+        if ds_uid_obj:
+            if not is_resource_accessible(ds_uid_obj, token_data, require_write=datasource_write_intent):
+                raise HTTPException(status_code=403, detail="Datasource access denied")
+        elif not await _lookup_safe_system_datasource(service, datasource_uid=datasource_uid, datasource_id=None):
             raise HTTPException(status_code=403, detail="Datasource access denied")
         if datasource_write_intent:
+            if not ds_uid_obj:
+                raise HTTPException(status_code=403, detail="Default/read-only datasources are view/query only")
             await _enforce_writable_datasource(service, str(getattr(ds_uid_obj, "grafana_uid", "")))
 
     if datasource_id is not None:
-        if not ds_id_obj or not is_resource_accessible(ds_id_obj, token_data, require_write=datasource_write_intent):
+        if ds_id_obj:
+            if not is_resource_accessible(ds_id_obj, token_data, require_write=datasource_write_intent):
+                raise HTTPException(status_code=403, detail="Datasource access denied")
+        elif not await _lookup_safe_system_datasource(service, datasource_uid=None, datasource_id=datasource_id):
             raise HTTPException(status_code=403, detail="Datasource access denied")
         if datasource_write_intent:
+            if not ds_id_obj:
+                raise HTTPException(status_code=403, detail="Default/read-only datasources are view/query only")
             await _enforce_writable_datasource(service, str(getattr(ds_id_obj, "grafana_uid", "")))
+
+    if folder_uid:
+        if not folder_obj:
+            raise HTTPException(status_code=403, detail="Folder access denied")
+        if not is_resource_accessible(folder_obj, token_data, require_write=False):
+            raise HTTPException(status_code=403, detail="Folder access denied")
 
     headers = _headers_for(token_data)
     _cache_set(token_to_verify, original_method, original_path, str(token_data.tenant_id), headers)

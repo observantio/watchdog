@@ -67,7 +67,7 @@ export default function ConfirmModal({
     >
       <div
         ref={modalRef}
-        className="bg-sre-bg border border-sre-border rounded-lg shadow-2xl w-full max-w-md animate-slide-up"
+        className="bg-sre-bg border border-sre-border rounded-lg shadow-2xl w-full py-4 max-w-md animate-slide-up"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         role="dialog"

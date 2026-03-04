@@ -1,10 +1,17 @@
 import { Button, Input, Modal } from "../../components/ui";
+import VisibilitySelector from "./VisibilitySelector";
 
 export default function FolderCreatorModal({
   isOpen,
   onClose,
+  editingFolder,
   folderName,
   setFolderName,
+  folderVisibility,
+  setFolderVisibility,
+  folderSharedGroupIds,
+  setFolderSharedGroupIds,
+  groups,
   onCreate,
 }) {
   const handleCreate = () => {
@@ -14,13 +21,15 @@ export default function FolderCreatorModal({
   const handleClose = () => {
     onClose();
     setFolderName("");
+    setFolderVisibility("private");
+    setFolderSharedGroupIds([]);
   };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Create New Folder"
+      title={editingFolder ? "Edit Folder" : "Create New Folder"}
       size="sm"
       footer={
         <div className="flex gap-3 justify-end">
@@ -32,12 +41,12 @@ export default function FolderCreatorModal({
             onClick={handleCreate}
             disabled={!folderName.trim()}
           >
-            Create Folder
+            {editingFolder ? "Update Folder" : "Create Folder"}
           </Button>
         </div>
       }
     >
-      <div>
+      <div className="space-y-4">
         <label className="block text-sm font-medium text-sre-text mb-2">
           Folder Name <span className="text-red-500">*</span>
         </label>
@@ -51,6 +60,21 @@ export default function FolderCreatorModal({
             if (e.key === "Enter" && folderName.trim()) handleCreate();
           }}
         />
+        <div>
+          <label className="block text-sm font-medium text-sre-text mb-2">
+            Visibility
+          </label>
+          <VisibilitySelector
+            visibility={folderVisibility}
+            onVisibilityChange={(value) => {
+              setFolderVisibility(value);
+              setFolderSharedGroupIds([]);
+            }}
+            sharedGroupIds={folderSharedGroupIds}
+            onSharedGroupIdsChange={setFolderSharedGroupIds}
+            groups={groups || []}
+          />
+        </div>
       </div>
     </Modal>
   );

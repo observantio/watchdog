@@ -45,9 +45,13 @@ from services.grafana.datasource_ops import (
     update_datasource,
 )
 from services.grafana.folder_ops import (
+    check_folder_access,
     create_folder,
     delete_folder,
+    get_folder,
     get_folders,
+    is_folder_accessible,
+    update_folder,
 )
 
 logger = logging.getLogger(__name__)
@@ -150,23 +154,39 @@ class GrafanaProxyService:
         query: Optional[str] = None,
         tag: Optional[str] = None,
         starred: Optional[bool] = None,
+        folder_ids: Optional[List[int]] = None,
+        folder_uids: Optional[List[str]] = None,
+        dashboard_uids: Optional[List[str]] = None,
         uid: Optional[str] = None,
         team_id: Optional[str] = None,
         show_hidden: bool = False,
         limit: Optional[int] = None,
         offset: int = 0,
         search_context: Optional[Dict[str, Any]] = None,
+        is_admin: bool = False,
+        exclude_foldered_dashboards: bool = False,
     ) -> List[DashboardSearchResult]:
         return await search_dashboards(
             self, db, user_id, tenant_id, group_ids,
-            query=query, tag=tag, starred=starred, uid=uid, team_id=team_id,
-            show_hidden=show_hidden, limit=limit, offset=offset, search_context=search_context,
+            query=query, tag=tag, starred=starred,
+            folder_ids=folder_ids, folder_uids=folder_uids,
+            dashboard_uids=dashboard_uids,
+            uid=uid, team_id=team_id,
+            show_hidden=show_hidden, limit=limit, offset=offset,
+            search_context=search_context, is_admin=is_admin,
+            exclude_foldered_dashboards=exclude_foldered_dashboards,
         )
 
     async def get_dashboard(
-        self, db: Session, uid: str, user_id: str, tenant_id: str, group_ids: List[str],
+        self,
+        db: Session,
+        uid: str,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        is_admin: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        return await get_dashboard(self, db, uid, user_id, tenant_id, group_ids)
+        return await get_dashboard(self, db, uid, user_id, tenant_id, group_ids, is_admin=is_admin)
 
     async def create_dashboard(
         self,
@@ -303,11 +323,99 @@ class GrafanaProxyService:
             self, db, user_id, tenant_id, group_ids, "/api/ds/query", "POST", payload,
         )
 
-    async def get_folders(self) -> List[Folder]:
-        return await get_folders(self)
+    async def get_folders(
+        self,
+        db: Session,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        is_admin: bool = False,
+    ) -> List[Folder]:
+        return await get_folders(self, db, user_id, tenant_id, group_ids, is_admin=is_admin)
 
-    async def create_folder(self, title: str) -> Optional[Folder]:
-        return await create_folder(self, title)
+    async def get_folder(
+        self,
+        db: Session,
+        uid: str,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        is_admin: bool = False,
+    ) -> Optional[Folder]:
+        return await get_folder(self, db, uid, user_id, tenant_id, group_ids, is_admin=is_admin)
 
-    async def delete_folder(self, uid: str) -> bool:
-        return await delete_folder(self, uid)
+    async def create_folder(
+        self,
+        db: Session,
+        title: str,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        visibility: str = "private",
+        shared_group_ids: Optional[List[str]] = None,
+        is_admin: bool = False,
+    ) -> Optional[Folder]:
+        return await create_folder(
+            self, db, title, user_id, tenant_id, group_ids,
+            visibility=visibility, shared_group_ids=shared_group_ids, is_admin=is_admin,
+        )
+
+    async def delete_folder(
+        self,
+        db: Session,
+        uid: str,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        is_admin: bool = False,
+    ) -> bool:
+        return await delete_folder(
+            self, db, uid, user_id, tenant_id, group_ids, is_admin=is_admin,
+        )
+
+    async def update_folder(
+        self,
+        db: Session,
+        uid: str,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        title: Optional[str] = None,
+        visibility: Optional[str] = None,
+        shared_group_ids: Optional[List[str]] = None,
+        is_admin: bool = False,
+    ) -> Optional[Folder]:
+        return await update_folder(
+            self, db, uid, user_id, tenant_id, group_ids,
+            title=title, visibility=visibility, shared_group_ids=shared_group_ids, is_admin=is_admin,
+        )
+
+    def check_folder_access(
+        self,
+        db: Session,
+        uid: str,
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        *,
+        require_write: bool = False,
+        is_admin: bool = False,
+    ):
+        return check_folder_access(
+            db, uid, user_id, tenant_id, group_ids, require_write=require_write, is_admin=is_admin,
+        )
+
+    def is_folder_accessible(
+        self,
+        db: Session,
+        uid: Optional[str],
+        user_id: str,
+        tenant_id: str,
+        group_ids: List[str],
+        *,
+        require_write: bool = False,
+        is_admin: bool = False,
+    ) -> bool:
+        return is_folder_accessible(
+            db, uid, user_id, tenant_id, group_ids, require_write=require_write, is_admin=is_admin,
+        )

@@ -94,6 +94,15 @@ datasource_groups = Table(
     Index("idx_datasource_groups_group",      "group_id"),
 )
 
+folder_groups = Table(
+    "folder_groups",
+    Base.metadata,
+    Column("folder_id", String, ForeignKey("grafana_folders.id", ondelete="CASCADE"), primary_key=True),
+    Column("group_id",  String, ForeignKey(_FK_GROUPS,            ondelete="CASCADE"), primary_key=True),
+    Index("idx_folder_groups_folder", "folder_id"),
+    Index("idx_folder_groups_group",  "group_id"),
+)
+
 
 class Tenant(Base):
     __tablename__ = "tenants"
@@ -331,4 +340,27 @@ class GrafanaDatasource(Base):
     __table_args__ = (
         Index("idx_grafana_datasources_tenant",     "tenant_id"),
         Index("idx_grafana_datasources_visibility", "visibility"),
+    )
+
+
+class GrafanaFolder(Base):
+    __tablename__ = "grafana_folders"
+
+    id:          Mapped[str]           = mapped_column(String,      primary_key=True, default=_uuid)
+    tenant_id:   Mapped[str]           = mapped_column(String,      ForeignKey(_FK_TENANTS, ondelete="CASCADE"), nullable=False, index=True)
+    created_by:  Mapped[Optional[str]] = mapped_column(String,      ForeignKey(_FK_USERS,   ondelete=_SET_NULL))
+    grafana_uid: Mapped[str]           = mapped_column(String(100), nullable=False, unique=True, index=True)
+    grafana_id:  Mapped[Optional[int]] = mapped_column(Integer)
+    title:       Mapped[str]           = mapped_column(String(200), nullable=False)
+    visibility:  Mapped[str]           = mapped_column(String(20),  nullable=False, default="private", index=True)
+    created_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, nullable=False)
+    updated_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, onupdate=_now, nullable=False)
+
+    tenant:        Mapped["Tenant"]         = relationship("Tenant")
+    creator:       Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+    shared_groups: Mapped[List["Group"]]    = relationship("Group", secondary=folder_groups)
+
+    __table_args__ = (
+        Index("idx_grafana_folders_tenant",     "tenant_id"),
+        Index("idx_grafana_folders_visibility", "visibility"),
     )

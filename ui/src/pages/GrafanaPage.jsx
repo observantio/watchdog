@@ -11,6 +11,7 @@ import {
   deleteDatasource,
   getFolders,
   createFolder,
+  updateFolder,
   deleteFolder,
   getGroups,
   toggleDashboardHidden,
@@ -109,7 +110,10 @@ export default function GrafanaPage() {
   });
 
   const [showFolderCreator, setShowFolderCreator] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(null);
   const [folderName, setFolderName] = useState("");
+  const [folderVisibility, setFolderVisibility] = useState("private");
+  const [folderSharedGroupIds, setFolderSharedGroupIds] = useState([]);
 
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -531,6 +535,13 @@ export default function GrafanaPage() {
 
   function openDatasourceEditor(datasource = null) {
     if (datasource) {
+      const currentOrg = datasource.orgId || datasource.org_id || "";
+      const matchedKey = (user?.api_keys || []).find(
+        (k) => String(k.key) === String(currentOrg),
+      );
+      const defaultKey =
+        (user?.api_keys || []).find((k) => k.is_default) ||
+        (user?.api_keys || [])[0];
       setEditingDatasource(datasource);
       setDatasourceForm({
         name: datasource.name || "",
@@ -541,7 +552,7 @@ export default function GrafanaPage() {
         visibility: datasource.visibility || datasource.visibility || "private",
         sharedGroupIds:
           datasource.sharedGroupIds || datasource.shared_group_ids || [],
-        apiKeyId: "",
+        apiKeyId: matchedKey?.id || defaultKey?.id || "",
       });
     } else {
       const dk =
@@ -566,7 +577,7 @@ export default function GrafanaPage() {
     const isMultiTenantType = ["prometheus", "loki", "tempo"].includes(
       datasourceForm.type,
     );
-    if (!editingDatasource && isMultiTenantType && !datasourceForm.apiKeyId) {
+    if (isMultiTenantType && !datasourceForm.apiKeyId) {
       toast.error(
         "API key is required for Prometheus, Loki, and Tempo datasources",
       );
@@ -583,7 +594,7 @@ export default function GrafanaPage() {
         jsonData: {},
       };
 
-      if (!editingDatasource && isMultiTenantType) {
+      if (isMultiTenantType) {
         const selectedKey = (user?.api_keys || []).find(
           (k) => k.id === datasourceForm.apiKeyId,
         );
@@ -639,13 +650,48 @@ export default function GrafanaPage() {
     });
   }
 
+  function openFolderEditor(folder = null) {
+    if (folder) {
+      setEditingFolder(folder);
+      setFolderName(folder.title || "");
+      setFolderVisibility(folder.visibility || "private");
+      setFolderSharedGroupIds(folder.sharedGroupIds || folder.shared_group_ids || []);
+    } else {
+      setEditingFolder(null);
+      setFolderName("");
+      setFolderVisibility("private");
+      setFolderSharedGroupIds([]);
+    }
+    setShowFolderCreator(true);
+  }
+
   async function handleCreateFolder() {
     if (!folderName.trim()) return;
     try {
-      await createFolder(folderName.trim());
-      toast.success("Folder created successfully");
+      const params = new URLSearchParams({
+        visibility: folderVisibility,
+      });
+      if (folderVisibility === "group" && folderSharedGroupIds.length > 0) {
+        folderSharedGroupIds.forEach((gid) =>
+          params.append("shared_group_ids", gid),
+        );
+      }
+      if (editingFolder?.uid) {
+        await updateFolder(
+          editingFolder.uid,
+          { title: folderName.trim() },
+          params.toString(),
+        );
+        toast.success("Folder updated successfully");
+      } else {
+        await createFolder(folderName.trim(), params.toString());
+        toast.success("Folder created successfully");
+      }
       setShowFolderCreator(false);
+      setEditingFolder(null);
       setFolderName("");
+      setFolderVisibility("private");
+      setFolderSharedGroupIds([]);
       loadData();
     } catch (e) {
       handleApiError(e);
@@ -719,7 +765,8 @@ export default function GrafanaPage() {
         onDeleteDatasource={handleDeleteDatasource}
         onToggleDatasourceHidden={handleToggleDatasourceHidden}
         getDatasourceIcon={getDatasourceIcon}
-        onCreateFolder={() => setShowFolderCreator(true)}
+        onCreateFolder={() => openFolderEditor(null)}
+        onEditFolder={openFolderEditor}
         onDeleteFolder={handleDeleteFolder}
       />
 
@@ -758,10 +805,19 @@ export default function GrafanaPage() {
         isOpen={showFolderCreator}
         onClose={() => {
           setShowFolderCreator(false);
+          setEditingFolder(null);
           setFolderName("");
+          setFolderVisibility("private");
+          setFolderSharedGroupIds([]);
         }}
+        editingFolder={editingFolder}
         folderName={folderName}
         setFolderName={setFolderName}
+        folderVisibility={folderVisibility}
+        setFolderVisibility={setFolderVisibility}
+        folderSharedGroupIds={folderSharedGroupIds}
+        setFolderSharedGroupIds={setFolderSharedGroupIds}
+        groups={groups}
         onCreate={handleCreateFolder}
       />
 

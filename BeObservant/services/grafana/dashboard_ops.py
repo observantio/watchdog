@@ -12,13 +12,14 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from config import config
-from db_models import GrafanaDashboard, Group
+from db_models import GrafanaDashboard, GrafanaFolder, Group
 from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardSearchResult, DashboardUpdate
 from services.grafana.grafana_service import GrafanaAPIError
+from services.grafana.folder_ops import is_folder_accessible
 
 
 def _cap(limit: Optional[int], offset: int) -> tuple[int, int]:
@@ -89,6 +90,7 @@ def _to_search_result(grafana_obj: Any, *, db_dash: Optional[GrafanaDashboard], 
 
 
 async def _has_accessible_title_conflict(
+    service,
     db: Session,
     *,
     tenant_id: str,
@@ -100,15 +102,46 @@ async def _has_accessible_title_conflict(
     target = _normalize_title(title)
     if not target:
         return False
-    q = (
-        db.query(GrafanaDashboard.grafana_uid)
-        .filter(GrafanaDashboard.tenant_id == tenant_id)
-        .filter(_visible_scope_filter(user_id, group_ids))
-        .filter(func.lower(func.trim(GrafanaDashboard.title)) == target)
+    all_dashboards = await service.grafana_service.search_dashboards()
+    live_uids = {str(d.uid) for d in all_dashboards if getattr(d, "uid", None)}
+    if not live_uids:
+        return False
+
+    q = db.query(GrafanaDashboard).filter(
+        GrafanaDashboard.tenant_id == tenant_id,
+        GrafanaDashboard.grafana_uid.in_(live_uids),
     )
-    if exclude_uid:
-        q = q.filter(GrafanaDashboard.grafana_uid != str(exclude_uid))
-    return db.query(q.exists()).scalar() is True
+    for dash in q.all():
+        if exclude_uid and dash.grafana_uid == str(exclude_uid):
+            continue
+        if _normalize_title(dash.title) != target:
+            continue
+        if check_dashboard_access(db, dash.grafana_uid, user_id, tenant_id, group_ids) is not None:
+            return True
+    return False
+
+
+def _purge_stale_dashboards(
+    db: Session,
+    *,
+    tenant_id: str,
+    live_uids: set[str],
+) -> None:
+    if not live_uids:
+        return
+    stale_rows = (
+        db.query(GrafanaDashboard)
+        .filter(
+            GrafanaDashboard.tenant_id == tenant_id,
+            ~GrafanaDashboard.grafana_uid.in_(live_uids),
+        )
+        .all()
+    )
+    if not stale_rows:
+        return
+    for row in stale_rows:
+        db.delete(row)
+    db.commit()
 
 
 def check_dashboard_access(
@@ -210,6 +243,28 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
     return not saw_query
 
 
+def _folder_uid_from_result(item: Any) -> Optional[str]:
+    if not item:
+        return None
+    if isinstance(item, dict):
+        return item.get("folderUid") or item.get("folder_uid")
+    return getattr(item, "folder_uid", None) or getattr(item, "folderUid", None)
+
+
+async def _resolve_folder_uid_by_id(service, folder_id: Optional[int]) -> Optional[str]:
+    if not folder_id:
+        return None
+    try:
+        target_id = int(folder_id)
+    except (TypeError, ValueError):
+        return None
+    folders = await service.grafana_service.get_folders()
+    for folder in folders:
+        if getattr(folder, "id", None) == target_id:
+            return str(getattr(folder, "uid", "") or "") or None
+    return None
+
+
 async def search_dashboards(
     service,
     db: Session,
@@ -219,20 +274,33 @@ async def search_dashboards(
     query: Optional[str] = None,
     tag: Optional[str] = None,
     starred: Optional[bool] = None,
+    folder_ids: Optional[List[int]] = None,
+    folder_uids: Optional[List[str]] = None,
+    dashboard_uids: Optional[List[str]] = None,
     uid: Optional[str] = None,
     team_id: Optional[str] = None,
     show_hidden: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
     search_context: Optional[Dict[str, Any]] = None,
+    is_admin: bool = False,
+    exclude_foldered_dashboards: bool = False,
 ) -> List[DashboardSearchResult]:
     capped_limit, capped_offset = _cap(limit, offset)
     gids = _group_id_strs(group_ids)
     team_id_s = str(team_id) if team_id is not None else None
+    folder_id_set = {int(fid) for fid in (folder_ids or []) if fid is not None}
+    folder_uid_set = {str(fu) for fu in (folder_uids or []) if fu}
+    dashboard_uid_set = {str(du) for du in (dashboard_uids or []) if du}
 
     if uid:
         result = await service.grafana_service.get_dashboard(uid)
         if not result:
+            return []
+        folder_uid = (result.get("meta") or {}).get("folderUid")
+        if folder_uid and not is_folder_accessible(
+            db, folder_uid, user_id, tenant_id, gids, require_write=False, is_admin=is_admin,
+        ):
             return []
         effective_context = search_context or build_dashboard_search_context(db, tenant_id=tenant_id, uid=uid)
         db_dash = effective_context.get("uid_db_dashboard")
@@ -259,7 +327,44 @@ async def search_dashboards(
         }
         return [_to_search_result(grafana_like, db_dash=db_dash, user_id=user_id)]
 
-    all_dashboards = await service.grafana_service.search_dashboards(query=query, tag=tag, starred=starred)
+    all_dashboards = await service.grafana_service.search_dashboards(
+        query=query, tag=tag, starred=starred,
+        folder_ids=list(folder_id_set) or None,
+        folder_uids=list(folder_uid_set) or None,
+        dashboard_uids=list(dashboard_uid_set) or None,
+    )
+    # Grafana search can occasionally return duplicated UIDs (e.g. transient folder indexing);
+    # keep a single entry per UID and prefer the one that carries folder context.
+    deduped: Dict[str, Any] = {}
+    for d in all_dashboards:
+        uid_val = str(getattr(d, "uid", "") or "")
+        if not uid_val:
+            continue
+        if dashboard_uid_set and uid_val not in dashboard_uid_set:
+            continue
+        current = deduped.get(uid_val)
+        d_has_folder = bool(getattr(d, "folder_uid", None) or getattr(d, "folderUid", None))
+        current_has_folder = bool(
+            current and (getattr(current, "folder_uid", None) or getattr(current, "folderUid", None))
+        )
+        if current is None or (d_has_folder and not current_has_folder):
+            deduped[uid_val] = d
+    all_dashboards = list(deduped.values())
+    should_sync_stale = (
+        query is None
+        and tag is None
+        and starred is None
+        and not folder_id_set
+        and not folder_uid_set
+        and not dashboard_uid_set
+        and not exclude_foldered_dashboards
+    )
+    if should_sync_stale:
+        _purge_stale_dashboards(
+            db,
+            tenant_id=tenant_id,
+            live_uids={str(d.uid) for d in all_dashboards if getattr(d, "uid", None)},
+        )
     accessible_uids, allow_system = get_accessible_dashboard_uids(db, user_id, tenant_id, gids)
     accessible = set(accessible_uids)
 
@@ -268,10 +373,47 @@ async def search_dashboards(
     db_dashboards = effective_context.get("db_dashboards") or {}
 
     out: List[DashboardSearchResult] = []
+    folder_updates: List[GrafanaDashboard] = []
     for d in all_dashboards:
+        db_dash = db_dashboards.get(d.uid)
+        folder_id = getattr(d, "folder_id", None) or getattr(d, "folderId", None)
+        try:
+            folder_id_int = int(folder_id) if folder_id is not None else None
+        except (TypeError, ValueError):
+            folder_id_int = None
+        folder_uid = (
+            getattr(d, "folder_uid", None)
+            or getattr(d, "folderUid", None)
+            or (getattr(db_dash, "folder_uid", None) if db_dash else None)
+        )
+        if folder_uid_set and str(folder_uid or "") not in folder_uid_set:
+            continue
+        if folder_id_set and folder_id_int not in folder_id_set:
+            continue
+        if exclude_foldered_dashboards and (folder_uid or folder_id_int not in (None, 0)):
+            continue
+        if not folder_uid and folder_id:
+            folder_by_id = (
+                db.query(GrafanaFolder)
+                .filter(
+                    GrafanaFolder.tenant_id == tenant_id,
+                    GrafanaFolder.grafana_id == folder_id,
+                )
+                .first()
+            )
+            folder_uid = getattr(folder_by_id, "grafana_uid", None)
+        # Fail closed: if Grafana says dashboard is in a folder but we cannot map folder scope, do not leak it.
+        if not folder_uid and folder_id not in (None, 0, "0"):
+            continue
+        if db_dash and folder_uid and db_dash.folder_uid != folder_uid:
+            db_dash.folder_uid = str(folder_uid)
+            folder_updates.append(db_dash)
+        if folder_uid and not is_folder_accessible(
+            db, folder_uid, user_id, tenant_id, gids, require_write=False, is_admin=is_admin,
+        ):
+            continue
         if d.uid not in accessible and not (allow_system and d.uid not in all_registered_uids):
             continue
-        db_dash = db_dashboards.get(d.uid)
         if db_dash and not show_hidden and _is_hidden_for(db_dash, user_id):
             continue
         if team_id_s:
@@ -280,6 +422,13 @@ async def search_dashboards(
             if team_id_s not in {str(g.id) for g in (db_dash.shared_groups or [])}:
                 continue
         out.append(_to_search_result(d, db_dash=db_dash, user_id=user_id))
+
+    if folder_updates:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
     return out[capped_offset: capped_offset + capped_limit]
 
@@ -291,15 +440,41 @@ async def get_dashboard(
     user_id: str,
     tenant_id: str,
     group_ids: List[str],
+    is_admin: bool = False,
 ) -> Optional[Dict[str, Any]]:
     gids = _group_id_strs(group_ids)
     db_dashboard = _db_dashboard_by_uid(db, tenant_id, uid)
     if not db_dashboard:
         return None
-    if check_dashboard_access(db, uid, user_id, tenant_id, gids) is None:
-        return None
     result = await service.grafana_service.get_dashboard(uid)
     if not result:
+        try:
+            db.delete(db_dashboard)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return None
+    meta = result.get("meta") or {}
+    folder_uid = meta.get("folderUid") or db_dashboard.folder_uid
+    folder_id = meta.get("folderId")
+    if not folder_uid and folder_id not in (None, 0):
+        folder_by_id = (
+            db.query(GrafanaFolder)
+            .filter(
+                GrafanaFolder.tenant_id == tenant_id,
+                GrafanaFolder.grafana_id == folder_id,
+            )
+            .first()
+        )
+        folder_uid = getattr(folder_by_id, "grafana_uid", None)
+    if not folder_uid and folder_id not in (None, 0):
+        return None
+    if folder_uid and not is_folder_accessible(
+        db, folder_uid, user_id, tenant_id, gids, require_write=False, is_admin=is_admin,
+    ):
+        return None
+    if check_dashboard_access(db, uid, user_id, tenant_id, gids) is None:
         return None
     sgids = _shared_group_ids(db_dashboard)
     payload = dict(result)
@@ -324,10 +499,18 @@ async def create_dashboard(
     is_admin: bool = False,
 ) -> Optional[Dict[str, Any]]:
     requested_title = str(getattr(getattr(dashboard_create, "dashboard", None), "title", "") or "").strip()
+    gids = _group_id_strs(group_ids)
     if requested_title and await _has_accessible_title_conflict(
-        db, tenant_id=tenant_id, user_id=user_id, group_ids=group_ids, title=requested_title,
+        service, db, tenant_id=tenant_id, user_id=user_id, group_ids=group_ids, title=requested_title,
     ):
         raise HTTPException(status_code=409, detail="Dashboard title already exists in your visible scope")
+
+    folder_id = getattr(dashboard_create, "folder_id", None)
+    folder_uid = await _resolve_folder_uid_by_id(service, folder_id)
+    if folder_uid and not is_folder_accessible(
+        db, folder_uid, user_id, tenant_id, gids, require_write=True, is_admin=is_admin,
+    ):
+        raise HTTPException(status_code=403, detail="Folder access denied")
 
     dash_obj = getattr(dashboard_create, "dashboard", None)
     if dash_obj and not _dashboard_has_datasource(dash_obj):
@@ -423,16 +606,24 @@ async def update_dashboard(
     shared_group_ids: Optional[List[str]] = None,
     is_admin: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    db_dashboard = check_dashboard_access(db, uid, user_id, tenant_id, group_ids, require_write=True)
+    gids = _group_id_strs(group_ids)
+    db_dashboard = check_dashboard_access(db, uid, user_id, tenant_id, gids, require_write=True)
     if not db_dashboard:
         return None
 
     requested_title = str(getattr(getattr(dashboard_update, "dashboard", None), "title", "") or "").strip()
     if requested_title and await _has_accessible_title_conflict(
-        db, tenant_id=tenant_id, user_id=user_id, group_ids=group_ids,
+        service, db, tenant_id=tenant_id, user_id=user_id, group_ids=gids,
         title=requested_title, exclude_uid=uid,
     ):
         raise HTTPException(status_code=409, detail="Dashboard title already exists in your visible scope")
+
+    target_folder_id = getattr(dashboard_update, "folder_id", None)
+    target_folder_uid = await _resolve_folder_uid_by_id(service, target_folder_id)
+    if target_folder_uid and not is_folder_accessible(
+        db, target_folder_uid, user_id, tenant_id, gids, require_write=True, is_admin=is_admin,
+    ):
+        raise HTTPException(status_code=403, detail="Folder access denied")
 
     dash_obj = getattr(dashboard_update, "dashboard", None)
     if dash_obj and not _dashboard_has_datasource(dash_obj):
