@@ -243,14 +243,6 @@ def _dashboard_has_datasource(dashboard_obj: Any) -> bool:
     return not saw_query
 
 
-def _folder_uid_from_result(item: Any) -> Optional[str]:
-    if not item:
-        return None
-    if isinstance(item, dict):
-        return item.get("folderUid") or item.get("folder_uid")
-    return getattr(item, "folder_uid", None) or getattr(item, "folderUid", None)
-
-
 def _is_general_folder_id(folder_id: Any) -> bool:
     if folder_id in ("", 0, "0"):
         return True

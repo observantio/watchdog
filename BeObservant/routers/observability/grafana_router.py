@@ -55,6 +55,28 @@ rtp = run_in_threadpool
 proxy = GrafanaProxyService()
 auth_service = DatabaseAuthService()
 
+
+def _scope(current_user: TokenData) -> tuple[str, str, List[str], bool]:
+    return (
+        current_user.user_id,
+        current_user.tenant_id,
+        user_group_ids(current_user),
+        is_admin_user(current_user),
+    )
+
+
+def _dashboard_payload(payload: GrafanaDashboardPayloadRequest) -> dict:
+    raw = payload.model_dump(exclude_none=True)
+    return raw if isinstance(raw, dict) else {}
+
+
+def _dashboard_uid(raw: dict) -> str:
+    dashboard = raw.get("dashboard")
+    if not isinstance(dashboard, dict):
+        return ""
+    return str(dashboard.get("uid") or "").strip()
+
+
 @router.get("/auth")
 async def grafana_auth(
     request: Request,
@@ -150,12 +172,13 @@ async def search_dashboards(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
 ) -> List[DashboardSearchResult]:
+    user_id, tenant_id, group_ids, is_admin = _scope(current_user)
     search_context = await rtp(proxy.build_dashboard_search_context, db, tenant_id=current_user.tenant_id, uid=uid)
     return await proxy.search_dashboards(
         db=db,
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
-        group_ids=user_group_ids(current_user),
+        user_id=user_id,
+        tenant_id=tenant_id,
+        group_ids=group_ids,
         query=query,
         tag=tag,
         starred=starred,
@@ -168,7 +191,7 @@ async def search_dashboards(
         limit=limit,
         offset=offset,
         search_context=search_context,
-        is_admin=is_admin_user(current_user),
+        is_admin=is_admin,
         exclude_foldered_dashboards=bool(
             search_type is not None and not folder_ids and not folder_uids and not dashboard_uids
         ),
@@ -181,13 +204,14 @@ async def get_dashboard(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
 ):
+    user_id, tenant_id, group_ids, is_admin = _scope(current_user)
     dashboard = await proxy.get_dashboard(
         db=db,
         uid=uid,
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
-        group_ids=user_group_ids(current_user),
-        is_admin=is_admin_user(current_user),
+        user_id=user_id,
+        tenant_id=tenant_id,
+        group_ids=group_ids,
+        is_admin=is_admin,
     )
     if not dashboard:
         raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found or access denied")
@@ -206,15 +230,17 @@ async def create_dashboard(
     db: Session = Depends(get_db),
 ):
     validate_visibility(visibility)
+    user_id, tenant_id, group_ids, is_admin = _scope(current_user)
+    raw = _dashboard_payload(payload)
     result = await proxy.create_dashboard(
         db=db,
-        dashboard_create=parse_dashboard_create_payload(payload.model_dump(exclude_none=True)),
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
-        group_ids=user_group_ids(current_user),
+        dashboard_create=parse_dashboard_create_payload(raw),
+        user_id=user_id,
+        tenant_id=tenant_id,
+        group_ids=group_ids,
         visibility=visibility,
         shared_group_ids=shared_group_ids or [],
-        is_admin=is_admin_user(current_user),
+        is_admin=is_admin,
     )
     if not result:
         raise HTTPException(status_code=500, detail="Failed to create dashboard")
@@ -234,17 +260,15 @@ async def save_dashboard_from_grafana_ui(
     ),
     db: Session = Depends(get_db),
 ):
-    raw = payload.model_dump(exclude_none=True)
-    dashboard_raw = raw.get("dashboard") if isinstance(raw, dict) else None
-    dashboard_uid = ""
-    if isinstance(dashboard_raw, dict):
-        dashboard_uid = str(dashboard_raw.get("uid") or "").strip()
+    user_id, tenant_id, group_ids, is_admin = _scope(current_user)
+    raw = _dashboard_payload(payload)
+    dashboard_uid = _dashboard_uid(raw)
 
     if dashboard_uid:
         existing = await rtp(
             proxy.build_dashboard_search_context,
             db,
-            tenant_id=current_user.tenant_id,
+            tenant_id=tenant_id,
             uid=dashboard_uid,
         )
         if existing.get("uid_db_dashboard") is not None:
@@ -252,12 +276,12 @@ async def save_dashboard_from_grafana_ui(
                 db=db,
                 uid=dashboard_uid,
                 dashboard_update=parse_dashboard_update_payload(raw),
-                user_id=current_user.user_id,
-                tenant_id=current_user.tenant_id,
-                group_ids=user_group_ids(current_user),
+                user_id=user_id,
+                tenant_id=tenant_id,
+                group_ids=group_ids,
                 visibility=None,
                 shared_group_ids=None,
-                is_admin=is_admin_user(current_user),
+                is_admin=is_admin,
             )
             if result:
                 return result
@@ -265,12 +289,12 @@ async def save_dashboard_from_grafana_ui(
     result = await proxy.create_dashboard(
         db=db,
         dashboard_create=parse_dashboard_create_payload(raw),
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
-        group_ids=user_group_ids(current_user),
+        user_id=user_id,
+        tenant_id=tenant_id,
+        group_ids=group_ids,
         visibility="private",
         shared_group_ids=[],
-        is_admin=is_admin_user(current_user),
+        is_admin=is_admin,
     )
     if not result:
         raise HTTPException(status_code=500, detail="Failed to save dashboard")
@@ -290,16 +314,18 @@ async def update_dashboard(
     db: Session = Depends(get_db),
 ):
     validate_visibility(visibility)
+    user_id, tenant_id, group_ids, is_admin = _scope(current_user)
+    raw = _dashboard_payload(payload)
     result = await proxy.update_dashboard(
         db=db,
         uid=uid,
-        dashboard_update=parse_dashboard_update_payload(payload.model_dump(exclude_none=True)),
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
-        group_ids=user_group_ids(current_user),
+        dashboard_update=parse_dashboard_update_payload(raw),
+        user_id=user_id,
+        tenant_id=tenant_id,
+        group_ids=group_ids,
         visibility=visibility,
         shared_group_ids=shared_group_ids,
-        is_admin=is_admin_user(current_user),
+        is_admin=is_admin,
     )
     if not result:
         raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found, access denied, or update failed")
@@ -313,12 +339,13 @@ async def delete_dashboard(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.DELETE_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
 ):
+    user_id, tenant_id, group_ids, _ = _scope(current_user)
     ok = await proxy.delete_dashboard(
         db=db,
         uid=uid,
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
-        group_ids=user_group_ids(current_user),
+        user_id=user_id,
+        tenant_id=tenant_id,
+        group_ids=group_ids,
     )
     if not ok:
         raise HTTPException(status_code=404, detail=f"Dashboard {uid} not found or access denied")
