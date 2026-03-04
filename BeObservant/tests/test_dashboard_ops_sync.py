@@ -9,6 +9,7 @@ os.environ.setdefault("CORS_ALLOW_CREDENTIALS", "False")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost")
 
 from db_models import Base, GrafanaDashboard, GrafanaFolder, Tenant, User
+from models.grafana.grafana_dashboard_models import Dashboard, DashboardUpdate
 from models.grafana.grafana_dashboard_models import DashboardSearchResult
 from services.grafana import dashboard_ops
 
@@ -25,6 +26,17 @@ class _GrafanaServiceStub:
     async def search_dashboards(self, **kwargs):
         self.last_search_kwargs = kwargs
         return self._search_results
+
+    async def update_dashboard(self, uid: str, payload):
+        dashboard = getattr(payload, "dashboard", None)
+        return {
+            "uid": uid,
+            "dashboard": {
+                "uid": uid,
+                "title": getattr(dashboard, "title", "Updated"),
+                "tags": getattr(dashboard, "tags", []),
+            },
+        }
 
 
 class _ProxyStub:
@@ -512,3 +524,105 @@ async def test_filtered_search_does_not_purge_non_matching_dashboards():
 
     still_present = db.query(GrafanaDashboard).filter_by(grafana_uid="dash-uid-2").first()
     assert still_present is not None
+
+
+@pytest.mark.asyncio
+async def test_general_dashboards_with_negative_folder_id_are_not_excluded():
+    db = _session()
+    _seed_user_and_dashboard(db)
+    results = [
+        DashboardSearchResult(
+            id=101,
+            uid="dash-uid-1",
+            title="CPU Overview",
+            uri="db/cpu-overview",
+            url="/d/dash-uid-1/cpu-overview",
+            slug="cpu-overview",
+            type="dash-db",
+            tags=[],
+            folderId=-1,
+            folderUid=None,
+            folderTitle="General",
+        )
+    ]
+    service = _ProxyStub(_GrafanaServiceStub(search_results=results))
+
+    dashboards = await dashboard_ops.search_dashboards(
+        service,
+        db,
+        user_id="u1",
+        tenant_id="t1",
+        group_ids=[],
+        exclude_foldered_dashboards=True,
+    )
+
+    assert [d.uid for d in dashboards] == ["dash-uid-1"]
+
+
+@pytest.mark.asyncio
+async def test_search_dashboards_clears_stale_folder_uid_when_dashboard_moves_to_general():
+    db = _session()
+    _seed_user_and_dashboard(db)
+    db_dash = db.query(GrafanaDashboard).filter_by(grafana_uid="dash-uid-1").first()
+    db_dash.folder_uid = "stale-folder-uid"
+    db.commit()
+
+    results = [
+        DashboardSearchResult(
+            id=101,
+            uid="dash-uid-1",
+            title="CPU Overview",
+            uri="db/cpu-overview",
+            url="/d/dash-uid-1/cpu-overview",
+            slug="cpu-overview",
+            type="dash-db",
+            tags=[],
+            folderId=0,
+            folderUid=None,
+            folderTitle=None,
+        )
+    ]
+    service = _ProxyStub(_GrafanaServiceStub(search_results=results))
+
+    dashboards = await dashboard_ops.search_dashboards(
+        service,
+        db,
+        user_id="u1",
+        tenant_id="t1",
+        group_ids=[],
+        exclude_foldered_dashboards=True,
+    )
+
+    assert [d.uid for d in dashboards] == ["dash-uid-1"]
+    refreshed = db.query(GrafanaDashboard).filter_by(grafana_uid="dash-uid-1").first()
+    assert refreshed.folder_uid is None
+
+
+@pytest.mark.asyncio
+async def test_update_dashboard_clears_folder_uid_when_moved_to_general():
+    db = _session()
+    _seed_user_and_dashboard(db)
+    dash = db.query(GrafanaDashboard).filter_by(grafana_uid="dash-uid-1").first()
+    dash.folder_uid = "folder-uid-7"
+    db.commit()
+
+    service = _ProxyStub(_GrafanaServiceStub())
+    update_payload = DashboardUpdate(
+        dashboard=Dashboard(title="CPU Overview", tags=[]),
+        folderId=0,
+        overwrite=True,
+    )
+
+    updated = await dashboard_ops.update_dashboard(
+        service,
+        db,
+        uid="dash-uid-1",
+        dashboard_update=update_payload,
+        user_id="u1",
+        tenant_id="t1",
+        group_ids=[],
+    )
+
+    assert updated is not None
+    refreshed = db.query(GrafanaDashboard).filter_by(grafana_uid="dash-uid-1").first()
+    assert refreshed.folder_uid is None

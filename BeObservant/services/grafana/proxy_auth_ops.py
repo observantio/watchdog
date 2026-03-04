@@ -179,10 +179,6 @@ def _is_blocked_proxy_path(path: str) -> bool:
     return any(p.startswith(prefix) for prefix in BLOCKED_GRAFANA_PROXY_PREFIXES)
 
 
-def _is_dashboard_save_request(path: str, method: str) -> bool:
-    return (path or "").lower().startswith("/grafana/api/dashboards/db") and (method or "GET").upper() == "POST"
-
-
 def _is_dashboard_write_intent(path: str, method: str) -> bool:
     return (path or "").lower().startswith("/grafana/api/dashboards/uid/") and (method or "GET").upper() in {
         "DELETE", "PUT", "PATCH", "POST",
@@ -418,7 +414,13 @@ def _db_load_folder(tenant_id: str, folder_uid: Optional[str]) -> Optional[Grafa
 
 
 def _db_load_folder_by_id(tenant_id: str, folder_id: Optional[int]) -> Optional[GrafanaFolder]:
-    if folder_id in (None, 0):
+    if folder_id in (None, 0, "", "0"):
+        return None
+    try:
+        folder_id_int = int(folder_id)
+    except (TypeError, ValueError):
+        return None
+    if folder_id_int <= 0:
         return None
     with get_db_session() as s:
         return (
@@ -426,7 +428,7 @@ def _db_load_folder_by_id(tenant_id: str, folder_id: Optional[int]) -> Optional[
             .options(joinedload(GrafanaFolder.shared_groups))
             .filter(
                 GrafanaFolder.tenant_id == tenant_id,
-                GrafanaFolder.grafana_id == int(folder_id),
+                GrafanaFolder.grafana_id == folder_id_int,
             )
             .first()
         )
@@ -445,6 +447,28 @@ def _db_set_dashboard_folder_uid(tenant_id: str, dashboard_uid: str, folder_uid:
         if not dash:
             return
         dash.folder_uid = folder_uid
+        try:
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+
+
+def _db_clear_dashboard_folder_uid(tenant_id: str, dashboard_uid: str) -> None:
+    with get_db_session() as s:
+        dash = (
+            s.query(GrafanaDashboard)
+            .filter(
+                GrafanaDashboard.tenant_id == tenant_id,
+                GrafanaDashboard.grafana_uid == dashboard_uid,
+            )
+            .first()
+        )
+        if not dash:
+            return
+        if not dash.folder_uid:
+            return
+        dash.folder_uid = None
         try:
             s.commit()
         except Exception:
@@ -551,12 +575,6 @@ async def authorize_proxy_request(
             detail="Direct Grafana folder write API is disabled; use BeObservant folder endpoints",
         )
 
-    if not is_admin and _is_dashboard_save_request(original_path, original_method):
-        raise HTTPException(
-            status_code=403,
-            detail="Direct Grafana dashboard save API is disabled; use BeObservant dashboard endpoints",
-        )
-
     if not is_admin and (not required_permissions or not _has_any_permission(token_data, required_permissions)):
         raise HTTPException(status_code=403, detail="Insufficient permissions for this Grafana action")
 
@@ -566,28 +584,28 @@ async def authorize_proxy_request(
     if dashboard_uid:
         if not dash or not is_resource_accessible(dash, token_data, require_write=dashboard_write_intent):
             raise HTTPException(status_code=403, detail="Dashboard access denied")
-        dash_folder_uid = str(getattr(dash, "folder_uid", "") or "")
-        dash_folder_id = None
-        if not dash_folder_uid:
-            dash_payload = await service.grafana_service.get_dashboard(dashboard_uid)
-            meta = (dash_payload or {}).get("meta") or {}
-            dash_folder_uid = str(meta.get("folderUid") or "")
-            dash_folder_id = meta.get("folderId")
+        dash_payload = await service.grafana_service.get_dashboard(dashboard_uid)
+        meta = (dash_payload or {}).get("meta") or {}
+        dash_folder_uid = str(meta.get("folderUid") or "")
+        dash_folder_id = meta.get("folderId")
+        if dash_folder_uid:
+            if not folder_obj:
+                folder_obj = await run_in_threadpool(_db_load_folder, token_data.tenant_id, dash_folder_uid)
+            await run_in_threadpool(
+                _db_set_dashboard_folder_uid, token_data.tenant_id, dashboard_uid, dash_folder_uid,
+            )
+        elif dash_folder_id not in (None, 0, "", "0"):
+            folder_obj = await run_in_threadpool(_db_load_folder_by_id, token_data.tenant_id, dash_folder_id)
+            dash_folder_uid = str(getattr(folder_obj, "grafana_uid", "") or "")
             if dash_folder_uid:
-                if not folder_obj:
-                    folder_obj = await run_in_threadpool(_db_load_folder, token_data.tenant_id, dash_folder_uid)
                 await run_in_threadpool(
                     _db_set_dashboard_folder_uid, token_data.tenant_id, dashboard_uid, dash_folder_uid,
                 )
-            elif dash_folder_id not in (None, 0):
-                folder_obj = await run_in_threadpool(_db_load_folder_by_id, token_data.tenant_id, dash_folder_id)
-                dash_folder_uid = str(getattr(folder_obj, "grafana_uid", "") or "")
-                if dash_folder_uid:
-                    await run_in_threadpool(
-                        _db_set_dashboard_folder_uid, token_data.tenant_id, dashboard_uid, dash_folder_uid,
-                    )
-                else:
-                    raise HTTPException(status_code=403, detail="Folder access denied")
+            else:
+                raise HTTPException(status_code=403, detail="Folder access denied")
+        else:
+            dash_folder_uid = ""
+            await run_in_threadpool(_db_clear_dashboard_folder_uid, token_data.tenant_id, dashboard_uid)
         if dash_folder_uid:
             if not folder_obj:
                 folder_obj = await run_in_threadpool(_db_load_folder, token_data.tenant_id, dash_folder_uid)

@@ -251,6 +251,26 @@ def _folder_uid_from_result(item: Any) -> Optional[str]:
     return getattr(item, "folder_uid", None) or getattr(item, "folderUid", None)
 
 
+def _is_general_folder_id(folder_id: Any) -> bool:
+    if folder_id in ("", 0, "0"):
+        return True
+    if folder_id is None:
+        return False
+    try:
+        return int(folder_id) <= 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_non_general_folder_id(folder_id: Any) -> bool:
+    if folder_id in (None, "", 0, "0"):
+        return False
+    try:
+        return int(folder_id) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 async def _resolve_folder_uid_by_id(service, folder_id: Optional[int]) -> Optional[str]:
     if not folder_id:
         return None
@@ -376,7 +396,9 @@ async def search_dashboards(
     folder_updates: List[GrafanaDashboard] = []
     for d in all_dashboards:
         db_dash = db_dashboards.get(d.uid)
-        folder_id = getattr(d, "folder_id", None) or getattr(d, "folderId", None)
+        folder_id = getattr(d, "folder_id", None)
+        if folder_id is None:
+            folder_id = getattr(d, "folderId", None)
         try:
             folder_id_int = int(folder_id) if folder_id is not None else None
         except (TypeError, ValueError):
@@ -386,11 +408,17 @@ async def search_dashboards(
             or getattr(d, "folderUid", None)
             or (getattr(db_dash, "folder_uid", None) if db_dash else None)
         )
+        if _is_general_folder_id(folder_id):
+            if db_dash and db_dash.folder_uid:
+                # Dashboard moved back to General; clear stale folder mapping.
+                db_dash.folder_uid = None
+                folder_updates.append(db_dash)
+            folder_uid = None
         if folder_uid_set and str(folder_uid or "") not in folder_uid_set:
             continue
         if folder_id_set and folder_id_int not in folder_id_set:
             continue
-        if exclude_foldered_dashboards and (folder_uid or folder_id_int not in (None, 0)):
+        if exclude_foldered_dashboards and (folder_uid or _is_non_general_folder_id(folder_id_int)):
             continue
         if not folder_uid and folder_id:
             folder_by_id = (
@@ -403,7 +431,7 @@ async def search_dashboards(
             )
             folder_uid = getattr(folder_by_id, "grafana_uid", None)
         # Fail closed: if Grafana says dashboard is in a folder but we cannot map folder scope, do not leak it.
-        if not folder_uid and folder_id not in (None, 0, "0"):
+        if not folder_uid and _is_non_general_folder_id(folder_id):
             continue
         if db_dash and folder_uid and db_dash.folder_uid != folder_uid:
             db_dash.folder_uid = str(folder_uid)
@@ -458,7 +486,15 @@ async def get_dashboard(
     meta = result.get("meta") or {}
     folder_uid = meta.get("folderUid") or db_dashboard.folder_uid
     folder_id = meta.get("folderId")
-    if not folder_uid and folder_id not in (None, 0):
+    if _is_general_folder_id(folder_id) and db_dashboard.folder_uid:
+        db_dashboard.folder_uid = None
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        folder_uid = None
+    if not folder_uid and _is_non_general_folder_id(folder_id):
         folder_by_id = (
             db.query(GrafanaFolder)
             .filter(
@@ -468,7 +504,7 @@ async def get_dashboard(
             .first()
         )
         folder_uid = getattr(folder_by_id, "grafana_uid", None)
-    if not folder_uid and folder_id not in (None, 0):
+    if not folder_uid and _is_non_general_folder_id(folder_id):
         return None
     if folder_uid and not is_folder_accessible(
         db, folder_uid, user_id, tenant_id, gids, require_write=False, is_admin=is_admin,
@@ -644,6 +680,13 @@ async def update_dashboard(
     dashboard_data = result.get("dashboard", {})
     db_dashboard.title = requested_title or dashboard_data.get("title", db_dashboard.title)
     db_dashboard.tags = dashboard_data.get("tags", [])
+    resolved_folder_uid = result.get("folderUid") or dashboard_data.get("folderUid")
+    if not resolved_folder_uid:
+        if _is_general_folder_id(target_folder_id):
+            resolved_folder_uid = None
+        elif target_folder_uid:
+            resolved_folder_uid = target_folder_uid
+    db_dashboard.folder_uid = str(resolved_folder_uid) if resolved_folder_uid else None
 
     if visibility:
         db_dashboard.visibility = visibility

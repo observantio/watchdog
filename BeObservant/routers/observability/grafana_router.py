@@ -221,6 +221,62 @@ async def create_dashboard(
     return result
 
 
+@router.post("/dashboards/db")
+@router.post("/dashboards/db/")
+@handle_route_errors()
+async def save_dashboard_from_grafana_ui(
+    payload: GrafanaDashboardPayloadRequest,
+    current_user: TokenData = Depends(
+        require_any_permission_with_scope(
+            [Permission.CREATE_DASHBOARDS, Permission.UPDATE_DASHBOARDS, Permission.WRITE_DASHBOARDS],
+            "grafana",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    raw = payload.model_dump(exclude_none=True)
+    dashboard_raw = raw.get("dashboard") if isinstance(raw, dict) else None
+    dashboard_uid = ""
+    if isinstance(dashboard_raw, dict):
+        dashboard_uid = str(dashboard_raw.get("uid") or "").strip()
+
+    if dashboard_uid:
+        existing = await rtp(
+            proxy.build_dashboard_search_context,
+            db,
+            tenant_id=current_user.tenant_id,
+            uid=dashboard_uid,
+        )
+        if existing.get("uid_db_dashboard") is not None:
+            result = await proxy.update_dashboard(
+                db=db,
+                uid=dashboard_uid,
+                dashboard_update=parse_dashboard_update_payload(raw),
+                user_id=current_user.user_id,
+                tenant_id=current_user.tenant_id,
+                group_ids=user_group_ids(current_user),
+                visibility=None,
+                shared_group_ids=None,
+                is_admin=is_admin_user(current_user),
+            )
+            if result:
+                return result
+
+    result = await proxy.create_dashboard(
+        db=db,
+        dashboard_create=parse_dashboard_create_payload(raw),
+        user_id=current_user.user_id,
+        tenant_id=current_user.tenant_id,
+        group_ids=user_group_ids(current_user),
+        visibility="private",
+        shared_group_ids=[],
+        is_admin=is_admin_user(current_user),
+    )
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to save dashboard")
+    return result
+
+
 @router.put("/dashboards/{uid}")
 @handle_route_errors()
 async def update_dashboard(
