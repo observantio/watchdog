@@ -109,8 +109,8 @@ class RateLimitTests(unittest.TestCase):
         module.config.TRUST_PROXY_HEADERS = True
         module.config.TRUSTED_PROXY_CIDRS = []
         try:
-            request = _request_with_ip("203.0.113.9")
-            self.assertEqual(module.client_ip(request), "203.0.113.9")
+            request = _request_with_ip("127.0.0.1")
+            self.assertEqual(module.client_ip(request), "127.0.0.1")
         finally:
             module.config.TRUST_PROXY_HEADERS = previous
             if previous_cidrs is not None:

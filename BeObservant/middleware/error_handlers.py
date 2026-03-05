@@ -75,7 +75,7 @@ def validation_exception_handler(
 ) -> JSONResponse:
     logger.warning(f"Request validation error for {request.url}: {exc}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": _json_safe(exc.errors())},
     )
 
