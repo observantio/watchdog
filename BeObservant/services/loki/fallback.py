@@ -1,4 +1,6 @@
 """
+Loki Fallback HTTP client with integrated Prometheus metrics observation.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -10,19 +12,19 @@ import asyncio
 import re
 from typing import Any, Dict, List, Optional
 
-_SERVICE_NAME_LABEL = "service.name"
-_SERVICE_NAME_ALIAS = "service_name"
-_EXACT_LABEL_RE = re.compile(r'(?P<label>service_name|service\.name)\s*=\s*"(?P<value>[^"]+)"')
+SERVICE_NAME_LABEL = "service.name"
+SERVICE_NAME_ALIAS = "service_name"
+EXACT_LABEL_RE = re.compile(r'(?P<label>service_name|service\.name)\s*=\s*"(?P<value>[^"]+)"')
 
 
 def _normalize_service_label(query: str) -> str:
-    if _SERVICE_NAME_LABEL not in query:
+    if SERVICE_NAME_LABEL not in query:
         return query
 
     def _replace_selector(m: re.Match) -> str:
         content = re.sub(
-            rf"(?<![\w.]){re.escape(_SERVICE_NAME_LABEL)}(?=\s*=~?)",
-            _SERVICE_NAME_ALIAS,
+            rf"(?<![\w.]){re.escape(SERVICE_NAME_LABEL)}(?=\s*=~?)",
+            SERVICE_NAME_ALIAS,
             m.group(1),
         )
         return "{" + content + "}"
@@ -31,7 +33,7 @@ def _normalize_service_label(query: str) -> str:
 
 
 def _expand_exact_to_prefix(query: str) -> str:
-    return _EXACT_LABEL_RE.sub(
+    return EXACT_LABEL_RE.sub(
         lambda m: f'{m.group("label")}=~"{re.escape(m.group("value"))}.*"', query
     )
 

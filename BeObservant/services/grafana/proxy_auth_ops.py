@@ -345,9 +345,6 @@ def _db_load_context(
             raise HTTPException(status_code=401, detail="User not found or inactive")
 
         token_data.org_id = getattr(orm_user, "org_id", token_data.org_id)
-
-        # Use the same collect_permissions logic as the original working code
-        # but on the already-loaded ORM object — no extra session opened
         token_data.permissions = list(auth_service._collect_permissions(orm_user))
         token_data.group_ids = [g.id for g in (orm_user.groups or [])]
 

@@ -11,7 +11,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-_KEY_RE = re.compile(r"[A-Za-z0-9_.:-]+")
+KEY_RE = re.compile(r"[A-Za-z0-9_.:-]+")
 
 
 def _parse_pairs(s: str) -> Dict[str, str]:
@@ -26,7 +26,7 @@ def _parse_pairs(s: str) -> Dict[str, str]:
         while i < n and s[i] not in "=, \t":
             i += 1
         key = s[start:i].strip()
-        if not key or not _KEY_RE.fullmatch(key):
+        if not key or not KEY_RE.fullmatch(key):
             while i < n and s[i] != ",":
                 i += 1
             continue

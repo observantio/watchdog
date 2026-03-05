@@ -15,10 +15,8 @@ import json
 import time
 import uuid
 from typing import Any, Dict, Optional
-
 import httpx
 from fastapi import HTTPException, status
-
 from config import config
 from models.access.auth_models import TokenData
 from services.common.ttl_cache import TTLCache

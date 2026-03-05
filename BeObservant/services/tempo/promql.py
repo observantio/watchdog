@@ -10,10 +10,8 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from typing import List, Optional
 
-
 def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
-
 
 def build_promql_selectors(service: Optional[str]) -> List[str]:
     if not service:
@@ -25,7 +23,6 @@ def build_promql_selectors(service: Optional[str]) -> List[str]:
         f'{{service="{svc}"}}',
         f'{{service.name="{svc}"}}',
     ]
-
 
 def build_count_promql(service: Optional[str], range_s: int, label_variant: int = 0) -> str:
     selectors = build_promql_selectors(service)

@@ -243,7 +243,6 @@ class GrafanaService:
         except GrafanaAPIError as exc:
             if exc.status != 412:
                 raise
-            # Folder version changed server-side; fetch latest and retry once.
             refreshed = await self.get_folder(uid)
             if not refreshed:
                 return None

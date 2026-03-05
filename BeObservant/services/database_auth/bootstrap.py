@@ -7,6 +7,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -20,7 +21,7 @@ from database import get_db_session
 from db_models import Permission, Tenant, User, UserApiKey
 from models.access.auth_models import Role
 
-_BOOTSTRAP_PG_LOCK_KEY = 947201
+BOOTSTRAP_PG_LOCK_KEY = 947201
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -176,7 +177,7 @@ def ensure_default_api_key(service, db, user: User) -> None:
 def ensure_default_setup(service) -> None:
     try:
         with get_db_session() as db:
-            _pg_advisory_lock(db, _BOOTSTRAP_PG_LOCK_KEY)
+            _pg_advisory_lock(db, BOOTSTRAP_PG_LOCK_KEY)
             try:
                 _ensure_user_security_columns(db)
                 _ensure_grafana_folder_columns(db)
@@ -245,7 +246,7 @@ def ensure_default_setup(service) -> None:
                 ensure_default_api_key(service, db, admin_user)
                 db.commit()
             finally:
-                _pg_advisory_unlock(db, _BOOTSTRAP_PG_LOCK_KEY)
+                _pg_advisory_unlock(db, BOOTSTRAP_PG_LOCK_KEY)
 
     except SQLAlchemyError as exc:
         service.logger.error("Database error during default setup: %s", exc)

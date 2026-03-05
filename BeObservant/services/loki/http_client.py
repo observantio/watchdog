@@ -1,4 +1,6 @@
 """
+Loki HTTP client with integrated Prometheus metrics observation.
+
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -9,11 +11,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import logging
 import time
 from typing import Any, Dict, Optional
-
 import httpx
 
 logger = logging.getLogger(__name__)
-
 
 class LokiHttpClient:
     def __init__(self, metrics: Optional[Dict[str, float]] = None) -> None:

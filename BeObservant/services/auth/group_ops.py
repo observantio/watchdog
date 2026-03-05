@@ -551,7 +551,6 @@ def update_group_members(
                 removed_user_ids=removed_member_ids,
             )
 
-        # Auto-cleanup: if a group has no members after an update, delete it.
         if not members:
             service._log_audit(
                 db,

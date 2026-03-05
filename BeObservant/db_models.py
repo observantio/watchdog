@@ -2,7 +2,6 @@
 All SQLAlchemy models for the main server, defining schema for tenants, users,
 groups, permissions, Grafana resources, API keys, and audit logs.
 
-Alerting/incident/rules/channel persistence was moved to BeNotified.
 
 Copyright (c) 2026 Stefan Kumarasinghe
 
@@ -43,11 +42,6 @@ def _uuid() -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-# ---------------------------------------------------------------------------
-# Association tables
-# ---------------------------------------------------------------------------
 
 user_groups = Table(
     "user_groups",
