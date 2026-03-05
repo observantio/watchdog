@@ -17,6 +17,7 @@ import logging
 from urllib.parse import parse_qsl, urlencode
 
 from fastapi import Request
+from fastapi.concurrency import run_in_threadpool
 
 from database import get_db_session
 from db_models import AuditLog
@@ -81,8 +82,47 @@ def _set_header_if_missing(headers, key: str, value: str) -> None:
         headers[key] = value
 
 
+def _extract_request_token(request: Request) -> str | None:
+    auth_header = request.headers.get("authorization", "")
+    cookie_token = request.cookies.get("beobservant_token")
+    bearer = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
+    return bearer or cookie_token
+
+
+def _write_resource_view_audit(
+    *,
+    tenant_id: str,
+    user_id: str,
+    path: str,
+    method: str,
+    status_code: int,
+    raw_query: str,
+    ip_address: str,
+    user_agent: str | None,
+) -> None:
+    with get_db_session() as db:
+        db.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="resource.view",
+                resource_type="http",
+                resource_id=path,
+                details={
+                    "method": method,
+                    "status_code": status_code,
+                    "query": _sanitize_query_string(raw_query),
+                },
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        )
+
+
 async def security_headers_middleware(request: Request, call_next):
-    context_tokens = set_request_audit_context(client_ip(request), request.headers.get("user-agent"))
+    request_ip = client_ip(request)
+    user_agent = request.headers.get("user-agent")
+    context_tokens = set_request_audit_context(request_ip, user_agent)
     try:
         response = await call_next(request)
     finally:
@@ -91,31 +131,21 @@ async def security_headers_middleware(request: Request, call_next):
     try:
         path = request.url.path
         if request.method == "GET" and path.startswith("/api/") and not _skip_resource_view_audit(path):
-            auth_header = request.headers.get("authorization", "")
-            cookie_token = request.cookies.get("beobservant_token")
-            bearer = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
-            token = bearer or cookie_token
-
+            token = _extract_request_token(request)
             if token:
-                token_data = auth_service.decode_token(token)
+                token_data = await run_in_threadpool(auth_service.decode_token, token)
                 if token_data:
-                    with get_db_session() as db:
-                        db.add(
-                            AuditLog(
-                                tenant_id=token_data.tenant_id,
-                                user_id=token_data.user_id,
-                                action="resource.view",
-                                resource_type="http",
-                                resource_id=path,
-                                details={
-                                    "method": request.method,
-                                    "status_code": response.status_code,
-                                    "query": _sanitize_query_string(request.url.query),
-                                },
-                                ip_address=client_ip(request),
-                                user_agent=request.headers.get("user-agent"),
-                            )
-                        )
+                    await run_in_threadpool(
+                        _write_resource_view_audit,
+                        tenant_id=token_data.tenant_id,
+                        user_id=token_data.user_id,
+                        path=path,
+                        method=request.method,
+                        status_code=response.status_code,
+                        raw_query=request.url.query,
+                        ip_address=request_ip,
+                        user_agent=user_agent,
+                    )
     except Exception:
         logger.debug("Skipping middleware audit write for request %s", request.url.path, exc_info=True)
 
