@@ -79,7 +79,7 @@ export default function RcaReportSummary({ report, compact = false }) {
               label="Gating Profile"
               value={
                 <span
-                  className="block truncate text-base font-mono max-w-[10rem]"
+                  className="block truncate text-base font-mono max-w-[8rem]"
                   title={gatingProfile}
                 >
                   {gatingProfileShort}

@@ -1260,7 +1260,11 @@ export default function IncidentBoardPage() {
                     (groups.length > 0 ? (
                       <Select
                         value={selectedGroup}
-                        onChange={setSelectedGroup}
+                        onChange={(valueOrEvent) =>
+                          setSelectedGroup(
+                            valueOrEvent?.target?.value ?? valueOrEvent ?? "",
+                          )
+                        }
                         placeholder="Select group..."
                       >
                         {groups.map((group) => (

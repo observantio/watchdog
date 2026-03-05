@@ -197,7 +197,7 @@ export default function SilenceForm({ onSave, onCancel }) {
             </label>
             <div
               id="silence-groups"
-              className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-sre-border rounded bg-sre-surface"
+              className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto"
             >
               {groups.map((group) => (
                 <label

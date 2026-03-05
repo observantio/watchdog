@@ -78,20 +78,7 @@ docker compose up -d --build
 For explicit permissive development overrides:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-```
-
-**Option B: User Mode (Pre-built Images)**
-*Best for testing the platform features.*
-
-```bash
-docker compose -f docker-compose.stable.yml up -d
-```
-
-For strict fail-closed production profile:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -d --build
 ```
 
 ### 3. Access the Platform

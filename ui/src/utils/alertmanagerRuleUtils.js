@@ -1,9 +1,16 @@
 
+export function normalizeRuleOrgId(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return undefined;
+  if (normalized.toLowerCase() === "default") return undefined;
+  return normalized;
+}
+
 export function normalizeRuleForUI(rule) {
   if (!rule) return rule;
   return {
     ...rule,
-    orgId: rule.orgId || rule.org_id || undefined,
+    orgId: normalizeRuleOrgId(rule.orgId || rule.org_id),
     expr: rule.expr || rule.expression || "",
     duration: rule.duration || rule.for || rule["for"] || undefined,
     group: rule.group || rule.groupName || rule.group_name || "default",
@@ -19,7 +26,7 @@ export function normalizeRuleForUI(rule) {
 export function buildRulePayload(ruleData) {
   return {
     name: ruleData.name,
-    orgId: ruleData.orgId || ruleData.org_id || undefined,
+    orgId: normalizeRuleOrgId(ruleData.orgId || ruleData.org_id),
     expression: ruleData.expr || ruleData.expression || "",
     severity: ruleData.severity,
     description:

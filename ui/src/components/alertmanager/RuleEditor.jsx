@@ -11,6 +11,7 @@ import {
   validateRuleForm,
   createLabelPairsFromRule,
 } from "./ruleEditorUtils";
+import { normalizeRuleOrgId } from "../../utils/alertmanagerRuleUtils";
 
 export default function RuleEditor({
   rule,
@@ -106,7 +107,7 @@ export default function RuleEditor({
     setLoadingMetrics(true);
     setMetricsError(null);
     try {
-      const resp = await listMetricNames(formData.orgId || undefined);
+      const resp = await listMetricNames(normalizeRuleOrgId(formData.orgId));
       setMetricNames(Array.isArray(resp.metrics) ? resp.metrics : []);
     } catch (e) {
       setMetricsError(e.message || "Failed to load metrics from Mimir");
@@ -613,7 +614,7 @@ export default function RuleEditor({
                 </div>
 
                 {/* Alert Labels */}
-                <div className="bg-gradient-to-r from-sre-surface to-sre-surface/80 rounded-xl p-6 border border-sre-border">
+                <div className="pt-4">
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <div>
                       <h4 className="text-base font-semibold text-sre-text">
@@ -645,7 +646,7 @@ export default function RuleEditor({
                   </div>
 
                   {labelPairs.length === 0 ? (
-                    <p className="text-sm text-sre-text-muted italic">
+                    <p className="text-sm text-sre-text-muted">
                       No labels added yet.
                     </p>
                   ) : (
@@ -653,7 +654,7 @@ export default function RuleEditor({
                       {labelPairs.map((pair, idx) => (
                         <div
                           key={pair.id}
-                          className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-center p-4 bg-sre-surface border border-sre-border rounded-lg shadow-sm"
+                          className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-center"
                         >
                           <Input
                             value={pair.key}
@@ -708,9 +709,6 @@ export default function RuleEditor({
                 {/* Rule Preview */}
                 <div>
                   <h4 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
-                    <span className="material-icons text-xl text-sre-primary">
-                      visibility
-                    </span>
                     Rule Preview
                   </h4>
 
@@ -755,13 +753,13 @@ export default function RuleEditor({
                       <div className="text-sm text-sre-text-muted font-medium uppercase tracking-wide">
                         Labels
                       </div>
-                      <div className="flex flex-wrap gap-2 min-h-[3rem] p-3 bg-sre-surface rounded border border-sre-border">
+                      <div className="flex flex-wrap gap-2 min-h-[3rem]">
                         {Object.entries(effectiveLabels).length > 0 ? (
                           Object.entries(effectiveLabels).map(
                             ([key, value]) => (
                               <span
                                 key={key}
-                                className="text-sm px-3 py-1 bg-sre-primary/10 border border-sre-primary/20 rounded-full text-sre-text break-words text-left"
+                                className="text-sm px-5 py-3 bg-sre-primary/10  rounded-full text-sre-text break-words text-left"
                               >
                                 {key}={value}
                               </span>
@@ -1010,7 +1008,7 @@ export default function RuleEditor({
                 </div>
 
                 {/* Enable Rule */}
-                <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-sre-surface to-sre-surface/80 rounded-xl border-2 border-sre-border">
+                <div className="flex items-center gap-8">
                   <input
                     type="checkbox"
                     id="enabled"
@@ -1085,7 +1083,7 @@ export default function RuleEditor({
                     </label>
                     <div
                       id="rule-groups"
-                      className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-64 overflow-y-auto p-4 border-2 border-sre-border rounded-xl bg-sre-bg-alt"
+                      className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-64 overflow-y-auto"
                     >
                       {groups.map((group) => (
                         <label
@@ -1205,7 +1203,7 @@ export default function RuleEditor({
 
         {/* Test Rule Button - Only show for existing rules */}
         {rule?.id && (
-          <div className="flex justify-center pt-4">
+          <div className="flex flex-col gap-3 justify-center pt-4">
             <Button
               type="button"
               variant="secondary"
@@ -1221,9 +1219,9 @@ export default function RuleEditor({
               {testing ? "Testing..." : "Test Current Rule"}
             </Button>
             {testResult && (
-              <span className="text-sm text-sre-text-muted self-center break-words max-w-xs ml-4">
+              <p className="text-sm text-sre-text-muted text-center ">
                 {testResult}
-              </span>
+              </p>
             )}
           </div>
         )}

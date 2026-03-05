@@ -388,7 +388,7 @@ export default function DashboardEditorModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto max-h-80 ">
                 {DASHBOARD_TEMPLATES.map((t) => {
                   const isSelected = selectedTemplate === t.id;
                   const panelTitles =

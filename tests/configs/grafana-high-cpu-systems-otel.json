@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 38,
+  "title": "High CPU Systems (OTel Hostmetrics)",
+  "timezone": "browser",
+  "refresh": "30s",
+  "uid": "high-cpu-systems-otel",
+  "version": 1,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Top 10 CPU Busy Hosts (%)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "mimir-prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, 100 * (1 - avg by(instance) (rate(system_cpu_time_seconds_total{state=\"idle\"}[5m])))) or topk(10, 100 * (1 - avg by(instance) (rate(system_cpu_time{state=\"idle\"}[5m]))))",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Current CPU Busy by Host (%)",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "mimir-prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sort_desc(100 * (1 - avg by(instance) (rate(system_cpu_time_seconds_total{state=\"idle\"}[5m])))) or sort_desc(100 * (1 - avg by(instance) (rate(system_cpu_time{state=\"idle\"}[5m]))))",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    }
+  ]
+}
