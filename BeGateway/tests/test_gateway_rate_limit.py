@@ -66,7 +66,7 @@ class GatewayRateLimitTests(unittest.TestCase):
         prev = os.environ.get("GATEWAY_ALLOWLIST_FAIL_OPEN")
         try:
             os.environ["GATEWAY_ALLOWLIST_FAIL_OPEN"] = "true"
-            importlib.reload(__import__("services.config", fromlist=["*"]))
+            importlib.reload(__import__("config", fromlist=["*"]))
             importlib.reload(__import__("services.gateway_service", fromlist=["*"]))
             from services.gateway_service import GatewayAuthService
             service = GatewayAuthService(rate_limit_per_minute=100, ip_allowlist="")
@@ -76,7 +76,7 @@ class GatewayRateLimitTests(unittest.TestCase):
                 os.environ.pop("GATEWAY_ALLOWLIST_FAIL_OPEN", None)
             else:
                 os.environ["GATEWAY_ALLOWLIST_FAIL_OPEN"] = prev
-            importlib.reload(__import__("services.config", fromlist=["*"]))
+            importlib.reload(__import__("config", fromlist=["*"]))
             importlib.reload(__import__("services.gateway_service", fromlist=["*"]))
 
     def test_validate_otlp_token_raises_database_unavailable_on_api_error(self):
@@ -175,7 +175,7 @@ class GatewayRateLimitTests(unittest.TestCase):
             tc_mod.redis = prev_redis
 
     def test_strict_rate_limiter_requires_redis(self):
-        import services.config as cfg
+        import config as cfg
         import services.rate_limit as rl_mod
         from services.rate_limit import make_default_rate_limiter, RedisTokenRateLimiter
 

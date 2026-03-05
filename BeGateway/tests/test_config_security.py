@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-CONFIG_MODULE = "services.config"
+CONFIG_MODULE = "config"
 
 def _reload_config():
     if CONFIG_MODULE in sys.modules:
