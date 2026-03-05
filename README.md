@@ -26,7 +26,8 @@ Core dependencies include PostgreSQL, Redis, Grafana, Loki, Mimir, Tempo, and Al
 ## Quick Start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/observantio/beobservant/main/install.py | python3
+curl -fsSL https://raw.githubusercontent.com/observantio/beobservant/main/install.py -o /tmp/install.py
+python3 /tmp/install.py
 ```
 
 The installer prepares a local environment for evaluation and testing.
@@ -89,4 +90,3 @@ Be Observant is in active development (beta). Recommended usage is local/homelab
 
 - Issues and feature requests: https://github.com/observantio/beobservant/issues
 - Repository: https://github.com/observantio/beobservant
-

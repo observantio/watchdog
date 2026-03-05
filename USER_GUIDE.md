@@ -20,7 +20,8 @@ This guide covers deployment, first-time usage, core workflows, and operational 
 ### Option A: Installer (Fastest)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/observantio/beobservant/main/install.py | python3
+curl -fsSL https://raw.githubusercontent.com/observantio/beobservant/main/install.py -o /tmp/install.py
+python3 /tmp/install.py
 ```
 
 ### Option B: Source Build (Development)
@@ -139,4 +140,3 @@ From `.env.example`:
 - Environment reference: [.env.example](.env.example)
 - Issues: https://github.com/observantio/beobservant/issues
 - Repository: https://github.com/observantio/beobservant
-
