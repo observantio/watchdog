@@ -105,12 +105,16 @@ class RateLimitTests(unittest.TestCase):
     def test_client_ip_uses_forwarded_header_when_proxy_trusted(self):
         module = _reload_rate_limit_module()
         previous = module.config.TRUST_PROXY_HEADERS
+        previous_cidrs = getattr(module.config, "TRUSTED_PROXY_CIDRS", None)
         module.config.TRUST_PROXY_HEADERS = True
+        module.config.TRUSTED_PROXY_CIDRS = []
         try:
             request = _request_with_ip("203.0.113.9")
             self.assertEqual(module.client_ip(request), "203.0.113.9")
         finally:
             module.config.TRUST_PROXY_HEADERS = previous
+            if previous_cidrs is not None:
+                module.config.TRUSTED_PROXY_CIDRS = previous_cidrs
 
 
 if __name__ == "__main__":
