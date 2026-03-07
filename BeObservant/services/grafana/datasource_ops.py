@@ -100,13 +100,12 @@ def _load_allowed_scope_org_ids(db: Session, *, user_id: str, tenant_id: str) ->
 
     default_scope = str(getattr(user, "org_id", "") or config.DEFAULT_ORG_ID)
     allowed: Set[str] = {default_scope, str(config.DEFAULT_ORG_ID)}
-
+    
     own_rows = (
         db.query(UserApiKey.key)
         .filter(
             UserApiKey.user_id == user_id,
             UserApiKey.tenant_id == tenant_id,
-            UserApiKey.is_enabled.is_(True),
         )
         .all()
     )
