@@ -17,11 +17,13 @@ export default function RuleEditor({
   rule,
   channels,
   apiKeys = [],
+  availableCorrelationIds = [],
   onSave,
   onCancel,
 }) {
   const { hasPermission } = useAuth();
   const canReadChannels = hasPermission("read:channels");
+  const AUTO_SCOPE = "__auto__";
 
   const [formData, setFormData] = useState(rule || DEFAULT_FORM);
   const [groups, setGroups] = useState([]);
@@ -45,6 +47,22 @@ export default function RuleEditor({
   const totalSteps = 4;
   const [issuesCollapsed, setIssuesCollapsed] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [correlationMode, setCorrelationMode] = useState("existing");
+  const [selectedApiScopes, setSelectedApiScopes] = useState([AUTO_SCOPE]);
+  const visibleApiKeys = useMemo(
+    () =>
+      (apiKeys || []).filter(
+        (k) => !(k?.is_hidden || k?.isHidden),
+      ),
+    [apiKeys],
+  );
+  const visibleApiScopeValues = useMemo(
+    () =>
+      visibleApiKeys
+        .map((k) => String(k?.key || "").trim())
+        .filter(Boolean),
+    [visibleApiKeys],
+  );
 
   useEffect(() => {
     loadGroups();
@@ -60,6 +78,15 @@ export default function RuleEditor({
         : [];
     setSelectedGroups(new Set(incomingGroups));
   }, [rule]);
+
+  useEffect(() => {
+    const rawOrg = String((rule || DEFAULT_FORM)?.orgId || "").trim();
+    if (!rawOrg) {
+      setSelectedApiScopes([AUTO_SCOPE, ...visibleApiScopeValues]);
+      return;
+    }
+    setSelectedApiScopes([rawOrg]);
+  }, [rule, visibleApiScopeValues]);
 
   useEffect(() => {
     if (labelPairs.length === 0) return;
@@ -123,6 +150,44 @@ export default function RuleEditor({
     return metricNames.filter((name) => name.toLowerCase().includes(q));
   }, [metricNames, metricFilter]);
 
+  useEffect(() => {
+    const explicitScopes = selectedApiScopes.filter((id) => id !== AUTO_SCOPE);
+    setFormData((prev) => {
+      const nextOrgId = explicitScopes[0] || "";
+      const nextOrgIds = explicitScopes;
+      const prevOrgId = String(prev.orgId || "");
+      const prevOrgIds = Array.isArray(prev.orgIds) ? prev.orgIds : [];
+      const sameOrgId = prevOrgId === nextOrgId;
+      const sameOrgIds =
+        prevOrgIds.length === nextOrgIds.length &&
+        prevOrgIds.every((value, index) => String(value || "") === String(nextOrgIds[index] || ""));
+      if (sameOrgId && sameOrgIds) return prev;
+      return { ...prev, orgId: nextOrgId, orgIds: nextOrgIds };
+    });
+  }, [selectedApiScopes]);
+
+  const correlationIdOptions = useMemo(
+    () => {
+      const values = new Set(
+        (availableCorrelationIds || [])
+          .map((item) => String(item || "").trim())
+          .filter(Boolean),
+      );
+      values.add("default");
+      return Array.from(values).sort((a, b) => a.localeCompare(b));
+    },
+    [availableCorrelationIds],
+  );
+
+  useEffect(() => {
+    const current = String(formData.group || "").trim();
+    if (!current || correlationIdOptions.includes(current)) {
+      setCorrelationMode("existing");
+      return;
+    }
+    setCorrelationMode("custom");
+  }, [formData.group, correlationIdOptions]);
+
   const effectiveLabels = useMemo(
     () => ({
       ...(formData.labels || {}),
@@ -139,6 +204,25 @@ export default function RuleEditor({
       newGroups.add(groupId);
     }
     setSelectedGroups(newGroups);
+  };
+
+  const toggleApiScope = (scopeId) => {
+    const target = String(scopeId || "").trim();
+    if (!target) return;
+    setSelectedApiScopes((prev) => {
+      const current = new Set(prev || []);
+      if (target === AUTO_SCOPE) {
+        return [AUTO_SCOPE, ...visibleApiScopeValues];
+      }
+      current.delete(AUTO_SCOPE);
+      if (current.has(target)) {
+        current.delete(target);
+      } else {
+        current.add(target);
+      }
+      const next = Array.from(current);
+      return next.length > 0 ? next : [AUTO_SCOPE, ...visibleApiScopeValues];
+    });
   };
 
   const applyTemplate = (template) => {
@@ -300,24 +384,57 @@ export default function RuleEditor({
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-sre-text">
                       Product / API Key{" "}
-                      <HelpTooltip text="Select the API key to scope this rule to a specific product, or leave empty to monitor all products." />
+                      <HelpTooltip text="Select one or more API keys to target specific products. Auto scope selects all visible API keys." />
                     </label>
-                    <Select
-                      value={formData.orgId || ""}
-                      onChange={(e) =>
-                        setFormData({ ...formData, orgId: e.target.value })
-                      }
-                      className="w-full max-w-md text-base py-2 px-3 border-2 border-sre-border focus:border-sre-primary transition-colors"
-                    >
-                      <option value="">All products (no scope)</option>
-                      {apiKeys.map((k) => (
-                        <option key={k.id} value={k.key}>
-                          {k.name}
-                          {k.is_default ? " (Default)" : ""}
-                          {k.is_enabled ? " — active" : ""}
-                        </option>
-                      ))}
-                    </Select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleApiScope(AUTO_SCOPE)}
+                        className={`text-left p-3 rounded-lg border transition-colors ${
+                          selectedApiScopes.includes(AUTO_SCOPE)
+                            ? "border-sre-primary bg-sre-primary/10"
+                            : "border-sre-border bg-sre-surface hover:border-sre-primary/50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedApiScopes.includes(AUTO_SCOPE)}
+                            readOnly
+                          />
+                          <span className="material-icons text-base text-sre-primary">
+                            auto_awesome
+                          </span>
+                          <span className="text-sm font-medium text-sre-text">
+                            Auto scope
+                          </span>
+                        </div>
+                      </button>
+                      {visibleApiKeys.map((k) => {
+                        const isSelected = selectedApiScopes.includes(String(k.key || ""));
+                        return (
+                          <button
+                            key={k.id}
+                            type="button"
+                            onClick={() => toggleApiScope(String(k.key || ""))}
+                            className={`text-left p-3 rounded-lg border transition-colors ${
+                              isSelected
+                                ? "border-sre-primary bg-sre-primary/10"
+                                : "border-sre-border bg-sre-surface hover:border-sre-primary/50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input type="checkbox" checked={isSelected} readOnly />
+                              <span className="text-sm font-medium text-sre-text truncate">
+                                {k.name}
+                                {k.is_default ? " (Default)" : ""}
+                                {k.is_enabled ? " — active" : ""}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -441,17 +558,66 @@ export default function RuleEditor({
                     </div>
                     <div className="space-y-3">
                       <label className="block text-sm font-semibold text-sre-text">
-                        Group{" "}
-                        <HelpTooltip text="Group name for organizing related alerts. Alerts in the same group are treated as a single notification." />
+                        Correlation ID{" "}
+                        <HelpTooltip text="Correlation ID groups related rules/alerts together. Select an existing one or type a new ID." />
                       </label>
-                      <Input
-                        value={formData.group}
-                        onChange={(e) =>
-                          setFormData({ ...formData, group: e.target.value })
-                        }
-                        placeholder="default"
-                        className="w-full text-lg py-3 px-4 border-2 border-sre-border focus:border-sre-primary transition-colors"
-                      />
+                      <div className="space-y-2">
+                        <Select
+                          value={correlationMode}
+                          onChange={(e) => {
+                            const mode = e.target.value;
+                            setCorrelationMode(mode);
+                            if (mode === "existing") {
+                              setFormData((prev) => ({
+                                ...prev,
+                                group:
+                                  correlationIdOptions[0] ||
+                                  String(prev.group || "").trim() ||
+                                  "default",
+                              }));
+                            }
+                          }}
+                          className="w-full text-base py-2 px-3 border-2 border-sre-border focus:border-sre-primary transition-colors"
+                        >
+                          <option value="existing">Select existing</option>
+                          <option value="custom">Create new</option>
+                        </Select>
+
+                        {correlationMode === "existing" ? (
+                          <Select
+                            value={
+                              correlationIdOptions.includes(formData.group)
+                                ? formData.group
+                                : correlationIdOptions[0] || formData.group || "default"
+                            }
+                            onChange={(e) =>
+                              setFormData({ ...formData, group: e.target.value })
+                            }
+                            className="w-full text-lg px-4 border-2 border-sre-border focus:border-sre-primary transition-colors"
+                          >
+                            {correlationIdOptions.length === 0 ? (
+                              <option value={formData.group || "default"}>
+                                {formData.group || "default"}
+                              </option>
+                            ) : (
+                              correlationIdOptions.map((value) => (
+                                <option key={value} value={value}>
+                                  {value}
+                                </option>
+                              ))
+                            )}
+                          </Select>
+                        ) : (
+                          <Input
+                            value={formData.group}
+                            onChange={(e) =>
+                              setFormData({ ...formData, group: e.target.value })
+                            }
+                            placeholder="default"
+                            className="w-full text-lg px-4 border-2 border-sre-border focus:border-sre-primary transition-colors"
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1249,6 +1415,7 @@ RuleEditor.propTypes = {
   }),
   channels: PropTypes.arrayOf(PropTypes.object),
   apiKeys: PropTypes.arrayOf(PropTypes.object),
+  availableCorrelationIds: PropTypes.arrayOf(PropTypes.string),
   onSave: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 };

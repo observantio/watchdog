@@ -41,6 +41,14 @@ export default function AlertManagerPage() {
     "alertmanager-filter-severity",
     "all",
   );
+  const [filterCorrelationId, setFilterCorrelationId] = useLocalStorage(
+    "alertmanager-filter-correlation-id",
+    "all",
+  );
+  const [filterLabel, setFilterLabel] = useLocalStorage(
+    "alertmanager-filter-label",
+    "",
+  );
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_CONFIRM_DIALOG);
 
   const [testDialog, setTestDialog] = useState({
@@ -124,13 +132,31 @@ export default function AlertManagerPage() {
   }, [reloadData]);
 
   async function handleSaveRule(ruleData) {
-    const payload = buildRulePayload(ruleData);
+    const normalizedOrgIds = Array.from(
+      new Set(
+        (Array.isArray(ruleData?.orgIds) ? ruleData.orgIds : [])
+          .map((value) => String(value || "").trim())
+          .filter(Boolean),
+      ),
+    );
 
     try {
       if (editingRule) {
+        const payload = buildRulePayload({
+          ...ruleData,
+          orgId: normalizedOrgIds[0] || ruleData?.orgId,
+        });
         await updateAlertRule(editingRule.id, payload);
       } else {
-        await createAlertRule(payload);
+        if (normalizedOrgIds.length > 1) {
+          for (const orgId of normalizedOrgIds) {
+            const payload = buildRulePayload({ ...ruleData, orgId });
+            await createAlertRule(payload);
+          }
+        } else {
+          const payload = buildRulePayload(ruleData);
+          await createAlertRule(payload);
+        }
       }
       await reloadData();
       return true;
@@ -289,10 +315,78 @@ export default function AlertManagerPage() {
     }
   }
 
+  const alertNameToCorrelationId = useMemo(() => {
+    const mapping = {};
+    for (const rule of rules || []) {
+      const ruleName = String(rule?.name || "").trim();
+      const correlationId = String(rule?.group || "").trim();
+      if (!ruleName || !correlationId || mapping[ruleName]) continue;
+      mapping[ruleName] = correlationId;
+    }
+    return mapping;
+  }, [rules]);
+
+  const correlationIdOptions = useMemo(() => {
+    const values = new Set();
+    for (const rule of rules || []) {
+      const value = String(rule?.group || "").trim();
+      if (value) values.add(value);
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [rules]);
+
   const filteredAlerts = useMemo(() => {
-    if (filterSeverity === "all") return alerts;
-    return alerts.filter((a) => a.labels?.severity === filterSeverity);
-  }, [alerts, filterSeverity]);
+    let filtered = alerts;
+    if (filterSeverity !== "all") {
+      filtered = filtered.filter((a) => a.labels?.severity === filterSeverity);
+    }
+    if (filterCorrelationId !== "all") {
+      filtered = filtered.filter((a) => {
+        const labels = a.labels || {};
+        const alertName = String(labels.alertname || "").trim();
+        const correlationId =
+          alertNameToCorrelationId[alertName] ||
+          String(
+            labels.correlation_id ||
+              labels.correlationId ||
+              labels.group ||
+              labels.alertgroup ||
+              "",
+          ).trim();
+        return correlationId === filterCorrelationId;
+      });
+    }
+    const rawLabelFilter = String(filterLabel || "").trim();
+    if (rawLabelFilter) {
+      const normalized = rawLabelFilter.toLowerCase();
+      const eqIndex = normalized.indexOf("=");
+      if (eqIndex > 0) {
+        const keyPart = normalized.slice(0, eqIndex).trim();
+        const valuePart = normalized.slice(eqIndex + 1).trim();
+        filtered = filtered.filter((a) => {
+          const labels = a.labels || {};
+          const candidate = String(labels[keyPart] ?? "").toLowerCase();
+          return candidate.includes(valuePart);
+        });
+      } else {
+        filtered = filtered.filter((a) => {
+          const labels = a.labels || {};
+          return Object.entries(labels).some(
+            ([k, v]) =>
+              String(k || "").toLowerCase().includes(normalized) ||
+              String(v || "").toLowerCase().includes(normalized),
+          );
+        });
+      }
+    }
+    return filtered;
+  }, [
+    alerts,
+    filterSeverity,
+    filterCorrelationId,
+    filterLabel,
+    alertNameToCorrelationId,
+  ]);
 
   const orgIdToName = useMemo(() => {
     const map = {};
@@ -491,6 +585,13 @@ export default function AlertManagerPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={filterLabel}
+                      onChange={(e) => setFilterLabel(e.target.value)}
+                      placeholder="Label filter (e.g. instance=node-1)"
+                      className="text-xs px-3 py-1 rounded border border-sre-border bg-sre-surface text-sre-text min-w-[220px]"
+                    />
                     <Select
                       className="text-xs px-3 py-1"
                       value={filterSeverity}
@@ -502,17 +603,41 @@ export default function AlertManagerPage() {
                         </option>
                       ))}
                     </Select>
-                    <HelpTooltip text="Filter alerts by severity level. Choose 'All' to see all alerts, or select specific severity to focus on critical or warning alerts." />
+                    <Select
+                      className="text-xs px-3 py-1"
+                      value={filterCorrelationId}
+                      onChange={(e) => setFilterCorrelationId(e.target.value)}
+                    >
+                      <option value="all">All correlation IDs</option>
+                      {correlationIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </Select>
+                    <HelpTooltip text="Filter alerts by label, severity, or correlation ID. Label filter supports key=value or free text." />
                   </div>
                 </div>
 
                 {filteredAlerts.length > 0 ? (
                   <div className="space-y-4">
-                    {filteredAlerts.map((a, idx) => (
-                      <div
-                        key={a.fingerprint || a.id || a.starts_at || idx}
-                        className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200"
-                      >
+                    {filteredAlerts.map((a, idx) => {
+                      const labels = a.labels || {};
+                      const alertName = String(labels.alertname || "").trim();
+                      const correlationId =
+                        alertNameToCorrelationId[alertName] ||
+                        String(
+                          labels.correlation_id ||
+                            labels.correlationId ||
+                            labels.group ||
+                            labels.alertgroup ||
+                            "",
+                        ).trim();
+                      return (
+                        <div
+                          key={a.fingerprint || a.id || a.starts_at || idx}
+                          className="p-6 bg-sre-surface border-2 border-sre-border rounded-xl hover:border-sre-primary/50 hover:shadow-md transition-all duration-200"
+                        >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-3">
@@ -558,6 +683,11 @@ export default function AlertManagerPage() {
                                   >
                                     {a.status?.state || "active"}
                                   </span>
+                                  {correlationId && (
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
+                                      Correlation ID: {correlationId}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -596,7 +726,8 @@ export default function AlertManagerPage() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
@@ -738,8 +869,8 @@ export default function AlertManagerPage() {
                                     >
                                       {rule.enabled ? "Enabled" : "Disabled"}
                                     </span>
-                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-                                      {rule.group}
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
+                                      Correlation ID: {rule.group}
                                     </span>
                                     {(rule.isHidden || rule.is_hidden) && (
                                       <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
@@ -1259,6 +1390,7 @@ export default function AlertManagerPage() {
           rule={editingRule}
           channels={channels}
           apiKeys={apiKeys}
+          availableCorrelationIds={correlationIdOptions}
           onSave={async (data) => {
             const ok = await handleSaveRule(data);
             if (ok) {
