@@ -119,7 +119,6 @@ def _load_allowed_scope_org_ids(db: Session, *, user_id: str, tenant_id: str) ->
             ApiKeyShare.can_use.is_(True),
             ApiKeyShare.tenant_id == tenant_id,
             UserApiKey.tenant_id == tenant_id,
-            UserApiKey.is_enabled.is_(True),
         )
         .all()
     )

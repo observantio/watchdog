@@ -16,7 +16,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:
 os.environ.setdefault("CORS_ALLOW_CREDENTIALS", "False")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost")
 
-from db_models import Base, Tenant, User, UserApiKey
+from db_models import ApiKeyShare, Base, Tenant, User, UserApiKey
 from services.grafana import datasource_ops
 
 
@@ -88,3 +88,56 @@ def test_resolve_datasource_org_scope_rejects_unknown_key():
             tenant_id="t1",
         )
     assert exc.value.status_code == 403
+
+
+def test_resolve_datasource_org_scope_allows_shared_key_without_activation():
+    db = _session()
+    db.add_all(
+        [
+            Tenant(id="t1", name="tenant-1", display_name="Tenant 1"),
+            User(
+                id="owner",
+                tenant_id="t1",
+                username="owner",
+                email="owner@example.com",
+                hashed_password="x",
+                org_id="org-owner",
+                is_active=True,
+            ),
+            User(
+                id="viewer",
+                tenant_id="t1",
+                username="viewer",
+                email="viewer@example.com",
+                hashed_password="x",
+                org_id="org-viewer-default",
+                is_active=True,
+            ),
+            UserApiKey(
+                id="k-shared",
+                tenant_id="t1",
+                user_id="owner",
+                name="shared-key",
+                key="org-shared",
+                is_default=False,
+                is_enabled=False,
+            ),
+            ApiKeyShare(
+                id="share-1",
+                tenant_id="t1",
+                api_key_id="k-shared",
+                owner_user_id="owner",
+                shared_user_id="viewer",
+                can_use=True,
+            ),
+        ]
+    )
+    db.commit()
+
+    resolved = datasource_ops._resolve_datasource_org_scope(
+        db,
+        requested_org_id="org-shared",
+        user_id="viewer",
+        tenant_id="t1",
+    )
+    assert resolved == "org-shared"
