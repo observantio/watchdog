@@ -11,12 +11,15 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import Optional, List, Set, Tuple, Iterable
 
+import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
 from sqlalchemy.orm import joinedload
 
+from config import config
 from database import get_db_session
 from db_models import GrafanaDashboard, GrafanaDatasource, GrafanaFolder, Group, Permission, User
 from models.access.group_models import GroupCreate, GroupUpdate, Group as GroupSchema
@@ -31,6 +34,8 @@ ROLE_RANK = {
     Role.USER.value: 1,
     Role.ADMIN.value: 2,
 }
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -611,3 +616,60 @@ def _prune_removed_member_grafana_group_shares(
     _prune(GrafanaDashboard)
     _prune(GrafanaDatasource)
     _prune(GrafanaFolder)
+    removed_usernames = [
+        str(username).strip()
+        for (username,) in (
+            db.query(User.username)
+            .filter(User.tenant_id == tenant_id, User.id.in_(removed_ids))
+            .all()
+        )
+        if str(username).strip()
+    ]
+    _prune_removed_member_benotified_group_shares(
+        tenant_id=tenant_id,
+        group_id=target_group_id,
+        removed_user_ids=removed_ids,
+        removed_usernames=removed_usernames,
+    )
+
+
+def _prune_removed_member_benotified_group_shares(
+    *,
+    tenant_id: str,
+    group_id: str,
+    removed_user_ids: List[str],
+    removed_usernames: Optional[List[str]] = None,
+) -> None:
+    base_url = str(getattr(config, "BENOTIFIED_URL", "") or "").strip().rstrip("/")
+    service_token = config.get_secret("BENOTIFIED_SERVICE_TOKEN")
+    if not base_url or not service_token:
+        logger.warning("Skipping BeNotified group-share prune; BeNotified URL or service token is missing")
+        return
+
+    payload = {
+        "tenantId": tenant_id,
+        "groupId": group_id,
+        "removedUserIds": [str(uid).strip() for uid in (removed_user_ids or []) if str(uid).strip()],
+        "removedUsernames": [str(name).strip() for name in (removed_usernames or []) if str(name).strip()],
+    }
+    if not payload["removedUserIds"]:
+        return
+
+    target = f"{base_url}/internal/v1/api/alertmanager/access/group-shares/prune"
+    try:
+        with httpx.Client(timeout=float(config.BENOTIFIED_TIMEOUT_SECONDS)) as client:
+            response = client.post(
+                target,
+                headers={"X-Service-Token": service_token},
+                json=payload,
+            )
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to propagate group-share revocation to BeNotified",
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to propagate group-share revocation to BeNotified",
+        ) from exc
