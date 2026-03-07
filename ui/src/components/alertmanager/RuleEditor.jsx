@@ -1076,7 +1076,7 @@ export default function RuleEditor({
                         </div>
 
                         {/* Individual Channels */}
-                        <div className="grid gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {channels.map((channel) => {
                             const isSelected =
                               formData.notificationChannels?.includes(
@@ -1159,6 +1159,12 @@ export default function RuleEditor({
                                     {channel.config?.to && (
                                       <div className="text-sm text-sre-text-muted truncate">
                                         To: {channel.config.to}
+                                      </div>
+                                    )}
+
+                                    {((!channel.config?.channel && !channel.config?.url && !channel.config?.to) || channel.is_hidden || channel.isHidden) && (
+                                      <div className="text-xs text-sre-text-muted italic mt-1">
+                                        You don't own this channel but may use it
                                       </div>
                                     )}
                                   </div>

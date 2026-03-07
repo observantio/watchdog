@@ -279,18 +279,6 @@ const IncidentCard = memo(function IncidentCard({
               </span>
               {incident.severity}
             </Badge>
-
-            {incident.hideWhenResolved && (
-              <Badge
-                variant="ghost"
-                className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-sre-border/50 bg-sre-surface/50"
-              >
-                <span className="material-icons text-sm mr-1">
-                  visibility_off
-                </span>
-                Hidden
-              </Badge>
-            )}
           </div>
 
           <div className="flex items-center gap-1">
@@ -808,6 +796,8 @@ export default function IncidentBoardPage() {
   }, [assignableIncidentUsers, assigneeSearch]);
 
   const RESOLVE_BLOCK_TOAST = "Alert still active. Resolve it first.";
+  const RESOLVE_BLOCK_BODY =
+    "Wait a few minutes since this will take some time to reset to prevent automatic refiring. Alert still active. Resolve it first.";
 
   const isResolveBlockedError = useCallback((err) => {
     const detail = String(err?.body?.detail || err?.message || "").toLowerCase();
@@ -828,6 +818,9 @@ export default function IncidentBoardPage() {
         if (Array.isArray(activeAlerts) && activeAlerts.length > 0) {
           try {
             toast.error(RESOLVE_BLOCK_TOAST);
+          } catch (_) {}
+          try {
+            setError(RESOLVE_BLOCK_BODY);
           } catch (_) {}
           return false;
         }
@@ -1116,6 +1109,7 @@ export default function IncidentBoardPage() {
             quietOnCheckError: true,
           });
           if (!canResolve) {
+            try { setError(RESOLVE_BLOCK_BODY); } catch (_) {}
             setDropping((prev) => clearDroppedState(prev, droppedId));
             return;
           }
@@ -1125,14 +1119,14 @@ export default function IncidentBoardPage() {
         setDropping((prev) => clearDroppedState(prev, droppedId));
         await refresh();
       } catch (err) {
-        const detail =
-          isResolveBlockedError(err)
-            ? RESOLVE_BLOCK_TOAST
-            : err?.body?.detail || err?.message || "Unable to update incident";
-        setError(detail);
-        try {
-          toast.error(detail);
-        } catch (_) {}
+        if (isResolveBlockedError(err)) {
+          try { setError(RESOLVE_BLOCK_BODY); } catch (_) {}
+          try { toast.error(RESOLVE_BLOCK_TOAST); } catch (_) {}
+        } else {
+          const detail = err?.body?.detail || err?.message || "Unable to update incident";
+          setError(detail);
+          try { toast.error(detail); } catch (_) {}
+        }
       } finally {
         setDropping((prev) => clearDroppedState(prev, droppedId));
       }
@@ -1164,14 +1158,14 @@ export default function IncidentBoardPage() {
         await updateIncident(incident.id, { status: "resolved" });
         await refresh();
       } catch (err) {
-        const detail =
-          isResolveBlockedError(err)
-            ? RESOLVE_BLOCK_TOAST
-            : err?.body?.detail || err?.message || "Unable to update incident";
-        setError(detail);
-        try {
-          toast.error(detail);
-        } catch (_) {}
+        if (isResolveBlockedError(err)) {
+          try { setError(RESOLVE_BLOCK_BODY); } catch (_) {}
+          try { toast.error(RESOLVE_BLOCK_TOAST); } catch (_) {}
+        } else {
+          const detail = err?.body?.detail || err?.message || "Unable to update incident";
+          setError(detail);
+          try { toast.error(detail); } catch (_) {}
+        }
       } finally {
         setDropping((prev) => clearDroppedState(prev, droppedId));
       }

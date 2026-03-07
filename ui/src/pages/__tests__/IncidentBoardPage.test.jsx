@@ -20,8 +20,9 @@ vi.mock("../../components/HelpTooltip", () => ({ default: () => <span /> }));
 vi.mock("../../components/ui/PageHeader", () => ({
   default: ({ children }) => <div>{children}</div>,
 }));
+const toastFns = { success: vi.fn(), error: vi.fn() };
 vi.mock("../../contexts/ToastContext", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+  useToast: () => toastFns,
 }));
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -179,6 +180,46 @@ describe("IncidentBoardPage — UI refresh & persistence", () => {
     );
     expect(localStorage.getItem("incidents-selected-group")).toEqual(
       JSON.stringify("g1"),
+    );
+  });
+
+  it("blocks resolving when underlying alert is still active", async () => {
+    const initial = {
+      id: "i1",
+      alertName: "Alert 1",
+      status: "assigned",
+      assignee: "u2",
+      fingerprint: "f1",
+      lastSeenAt: new Date().toISOString(),
+      severity: "warning",
+      notes: [],
+    };
+    api.getIncidents.mockResolvedValue([initial]);
+    api.getUsers.mockResolvedValue([]);
+    api.getGroups.mockResolvedValue([]);
+    api.getAlertsByFilter.mockResolvedValue([{ id: "a1" }]);
+    api.updateIncident.mockResolvedValue({});
+
+    const { findByText, findByTitle } = render(<IncidentBoardPage />);
+
+    await findByText("Alert 1");
+    fireEvent.click(await findByTitle("Quick resolve"));
+
+    await waitFor(() =>
+      expect(api.getAlertsByFilter).toHaveBeenCalledWith(
+        { fingerprint: "f1" },
+        true,
+      ),
+    );
+
+    // error body should show extended message
+    expect(
+      screen.getByText(/Wait a few minutes since this will take some time/i),
+    ).toBeTruthy();
+
+    // toast should show short message
+    expect(toastFns.error).toHaveBeenCalledWith(
+      "Alert still active. Resolve it first.",
     );
   });
 
