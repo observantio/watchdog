@@ -6,7 +6,7 @@ vi.mock("../../ui", () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   Input: (props) => <input {...props} />,
   Select: ({ children, onChange, ...props }) => (
-    <select {...props} onChange={(e) => onChange?.(e.target.value)}>
+    <select {...props} onChange={onChange}>
       {children}
     </select>
   ),
@@ -107,13 +107,20 @@ describe("RuleEditor API key selector", () => {
     render(<RuleEditor {...defaultProps} apiKeys={apiKeys} />);
 
     const autoBtn = screen.getByRole("button", { name: /auto scope/i });
-    const ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
+    let ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
+
+    // Leave auto mode first; explicit scopes are disabled while auto is active.
+    fireEvent.click(autoBtn);
+    expect(autoBtn.querySelector("input")).not.toBeChecked();
+    expect(ubuntuBtn).not.toBeDisabled();
 
     fireEvent.click(ubuntuBtn);
+    ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
     expect(ubuntuBtn.querySelector("input")).toBeChecked();
     expect(autoBtn.querySelector("input")).not.toBeChecked();
 
     fireEvent.click(ubuntuBtn);
+    ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
     expect(autoBtn.querySelector("input")).toBeChecked();
     expect(ubuntuBtn.querySelector("input")).not.toBeChecked();
   });
@@ -128,15 +135,20 @@ describe("RuleEditor correlation ID generator", () => {
 
   it("switches to custom mode and fills generated value", () => {
     useAuth.mockReturnValue({ hasPermission: () => true });
-    render(<RuleEditor {...defaultProps} apiKeys={[]} />);
+    render(
+      <RuleEditor
+        {...defaultProps}
+        apiKeys={[]}
+        rule={{ ...baseRule, group: "custom-seed" }}
+      />,
+    );
 
-    // find mode selector and change to custom
-    const modeSelect = screen.getByDisplayValue(/Select existing/i);
-    fireEvent.change(modeSelect, { target: { value: "custom" } });
+    // Correlation UI is in Alert Condition step.
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
 
     const input = screen.getByPlaceholderText("default");
     expect(input).toBeInTheDocument();
-    expect(input.value).toBe("");
+    expect(input.value).toBe("custom-seed");
 
     const genBtn = screen.getByTitle(/Generate random ID/i);
     fireEvent.click(genBtn);
