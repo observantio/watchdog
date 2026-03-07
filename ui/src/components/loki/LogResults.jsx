@@ -10,8 +10,7 @@ import {
 import { getLogLevel } from "../../utils/helpers";
 
 const MAX_STREAMS_RENDER = 30;
-const STREAM_CONTAINER_MIN_HEIGHT = 200;
-const STREAM_CONTAINER_MAX_HEIGHT = 800;
+
 
 function hashString(value = "") {
   let hash = 5381;
@@ -158,7 +157,7 @@ export default function LogResults({
   const visibleStreams = filteredStreams.slice(startIndex, endIndex);
 
   return (
-    <div className="space-y-4 overflow-auto scrollbar-thin scrollbar-thumb-sre-border scrollbar-track-sre-bg-alt scrollbar-thumb-rounded max-h-[calc(100vh-18rem)] min-h-[28rem] pr-2 md:pr-4">
+    <div className="space-y-4 overflow-auto scrollbar-thin scrollbar-thumb-sre-border scrollbar-track-sre-bg-alt scrollbar-thumb-rounded max-h-[calc(100vh-18rem)] pr-2 md:pr-4">
       {totalStreams > perPage && (
         <div className="flex items-center justify-between text-xs text-sre-text-muted">
           <div>
@@ -233,14 +232,9 @@ export default function LogResults({
                     key: buildLogItemKey(streamKey, value, index),
                   }));
                 const rowHeight =
-                  viewMode === "compact" ? 36 : viewMode === "raw" ? 140 : 120;
-                const listHeight = Math.max(
-                  rowHeight,
-                  Math.min(
-                    displayValues.length * rowHeight,
-                    STREAM_CONTAINER_MAX_HEIGHT,
-                  ),
-                );
+                  viewMode === "compact" ? 36 : viewMode === "raw" ? 100 : 120;
+
+                const listHeight = displayValues.length * rowHeight;
                 const Row = ({ index, style, data }) => {
                   const row = data[index];
                   const v = row.value;

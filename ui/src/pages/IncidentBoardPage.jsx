@@ -146,6 +146,8 @@ const IncidentCard = memo(function IncidentCard({
   const assigneeLabel = getIncidentAssigneeLabel(incident, userById, currentUser);
   const correlationId = getIncidentCorrelationId(incident);
   const previewLabels = getIncidentLabelEntries(incident).slice(0, 3);
+  const isHiddenResolvedIncident =
+    incident.status === "resolved" && !!incident.hideWhenResolved;
 
   return (
     <div
@@ -372,14 +374,16 @@ const IncidentCard = memo(function IncidentCard({
             </Button>
             )}
 
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onOpenModal(incident)}
-              className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
-            >
-              <span className="material-icons text-sm">edit</span>
-            </Button>
+            {!isHiddenResolvedIncident && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onOpenModal(incident)}
+                className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
+              >
+                <span className="material-icons text-sm">edit</span>
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -152,9 +152,11 @@ describe("RuleEditor correlation ID generator", () => {
 
     const genBtn = screen.getByTitle(/Generate random ID/i);
     fireEvent.click(genBtn);
-    expect(input.value).toMatch(/^[0-9a-zA-Z-]+$/);
+    expect(input.value).toMatch(/^[0-9a-zA-Z]+$/);
+    expect(input.value).toHaveLength(10);
     const first = input.value;
     fireEvent.click(genBtn);
     expect(input.value).not.toBe(first);
+    expect(input.value).toHaveLength(10);
   });
 });

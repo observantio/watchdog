@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import DashboardEditorModal from "../DashboardEditorModal";
 
 describe("DashboardEditorModal — JSON sample loader", () => {
-  it("loads the Mimir sample JSON and sets datasource + templating", () => {
+  it("loads the Mimir sample JSON without auto-selecting datasource", () => {
     const setDashboardForm = vi.fn();
     const setJsonContent = vi.fn();
 
@@ -45,12 +45,7 @@ describe("DashboardEditorModal — JSON sample loader", () => {
     fireEvent.click(btn);
 
     expect(setJsonContent).toHaveBeenCalled();
-    expect(setDashboardForm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        datasourceUid: "mimir-prometheus",
-        useTemplating: true,
-      }),
-    );
+    expect(setDashboardForm).not.toHaveBeenCalled();
   });
 
   it("prompts when saving from form if JSON exists and supports merge/override", async () => {

@@ -21,6 +21,7 @@ export default function RuleEditor({
   onSave,
   onCancel,
 }) {
+  const MAX_CORRELATION_ID_LENGTH = 10;
   const { hasPermission } = useAuth();
   const canReadChannels = hasPermission("read:channels");
   const AUTO_SCOPE = "__auto__";
@@ -50,10 +51,11 @@ export default function RuleEditor({
   const [correlationMode, setCorrelationMode] = useState("existing");
   // helper to generate random correlation IDs (uses crypto.randomUUID when available)
   const generateCorrelationId = () => {
-    const id =
+    const id = (
       (typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).substring(2, 10));
+        ? crypto.randomUUID().replace(/-/g, "")
+        : Math.random().toString(36).slice(2))
+    ).slice(0, MAX_CORRELATION_ID_LENGTH);
     setCorrelationMode("custom");
     setFormData((prev) => ({ ...prev, group: id }));
   };
@@ -487,7 +489,7 @@ export default function RuleEditor({
                       and thresholds for your environment.
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-80 scrollbar-thin overflow-y-auto pr-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-80 scrollbar-thin scrollbar-thumb-sre-border scrollbar-track-sre-bg-alt scrollbar-thumb-rounded overflow-y-auto pr-2">
                     {RULE_TEMPLATES.map((template) => {
                       const isSelected = selectedTemplate === template.id;
                       return (
@@ -645,9 +647,16 @@ export default function RuleEditor({
                             <Input
                               value={formData.group}
                               onChange={(e) =>
-                                setFormData({ ...formData, group: e.target.value })
+                                setFormData({
+                                  ...formData,
+                                  group: e.target.value.slice(
+                                    0,
+                                    MAX_CORRELATION_ID_LENGTH,
+                                  ),
+                                })
                               }
                               placeholder="default"
+                              maxLength={MAX_CORRELATION_ID_LENGTH}
                               className="w-full text-lg px-4 border-2 border-sre-border focus:border-sre-primary transition-colors"
                             />
                             <Button
@@ -1197,17 +1206,6 @@ export default function RuleEditor({
                               >
                                 Manage Integrations
                               </a>
-                              <Button
-                                variant="ghost"
-                                onClick={() =>
-                                  setFormData({
-                                    ...formData,
-                                    notificationChannels: [],
-                                  })
-                                }
-                              >
-                                Skip for now
-                              </Button>
                             </div>
                             <p className="text-sm text-sre-text-muted mt-3">
                               You can assign channels later after creating the

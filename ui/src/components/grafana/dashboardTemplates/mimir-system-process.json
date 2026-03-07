@@ -1,95 +1,193 @@
 {
   "schemaVersion": 38,
-  "title": "System & Process Metrics (Mimir / OTel Hostmetrics)",
+  "title": "Complete System & Process Observability",
   "timezone": "browser",
   "refresh": "30s",
-  "uid": "system-process-mimir-otel",
+  "uid": "sys-proc-all",
   "version": 1,
   "time": { "from": "now-1h", "to": "now" },
   "panels": [
     {
       "type": "timeseries",
-      "title": "High CPU Systems (%)",
-      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "title": "process_cpu_time_seconds_total",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "topk(10, 100 * (1 - avg by(instance) (rate(system_cpu_time_seconds_total{state=\"idle\"}[5m])))) or topk(10, 100 * (1 - avg by(instance) (rate(system_cpu_time{state=\"idle\"}[5m]))))",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (process_cpu_time_seconds_total)", "refId": "A" }]
     },
     {
       "type": "timeseries",
-      "title": "Memory Usage %",
-      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "title": "process_disk_io_bytes_total",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "100 * avg by(instance) (system_memory_utilization{state=\"used\"}) or 100 * (sum by(instance) (system_memory_usage_bytes{state=\"used\"}) / clamp_min(sum by(instance) (system_memory_limit_bytes), 1)) or 100 * (sum by(instance) (system_memory_usage{state=\"used\"}) / clamp_min(sum by(instance) (system_memory_limit), 1))",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (process_disk_io_bytes_total)", "refId": "A" }]
     },
     {
       "type": "timeseries",
-      "title": "Load Average (5m)",
-      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "title": "process_memory_usage_bytes",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "system_cpu_load_average_5m or system_cpu_load_average_1m or system_load_average_5m",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (process_memory_usage_bytes)", "refId": "A" }]
     },
     {
       "type": "timeseries",
-      "title": "Disk Read Throughput",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "title": "process_memory_virtual_bytes",
+      "gridPos": { "x": 0, "y": 7, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum by(instance) (rate(system_disk_io_bytes_total{direction=\"read\"}[5m])) or sum by(instance) (rate(system_disk_io_bytes{direction=\"read\"}[5m]))",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (process_memory_virtual_bytes)", "refId": "A" }]
     },
     {
       "type": "timeseries",
-      "title": "Disk Write Throughput",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "title": "system_cpu_load_average_15m",
+      "gridPos": { "x": 8, "y": 7, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum by(instance) (rate(system_disk_io_bytes_total{direction=\"write\"}[5m])) or sum by(instance) (rate(system_disk_io_bytes{direction=\"write\"}[5m]))",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (system_cpu_load_average_15m)", "refId": "A" }]
     },
     {
       "type": "timeseries",
-      "title": "Network Receive",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "title": "system_cpu_load_average_1m",
+      "gridPos": { "x": 16, "y": 7, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum by(instance) (rate(system_network_io_bytes_total{direction=\"receive\"}[5m])) or sum by(instance) (rate(system_network_io_bytes{direction=\"receive\"}[5m]))",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (system_cpu_load_average_1m)", "refId": "A" }]
     },
     {
       "type": "timeseries",
-      "title": "Network Transmit",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "title": "system_cpu_load_average_5m",
+      "gridPos": { "x": 0, "y": 14, "w": 8, "h": 7 },
       "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum by(instance) (rate(system_network_io_bytes_total{direction=\"transmit\"}[5m])) or sum by(instance) (rate(system_network_io_bytes{direction=\"transmit\"}[5m]))",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "expr": "sum by(instance) (system_cpu_load_average_5m)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_cpu_time_seconds_total",
+      "gridPos": { "x": 8, "y": 14, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_cpu_time_seconds_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_io_bytes_total",
+      "gridPos": { "x": 16, "y": 14, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_io_bytes_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_io_time_seconds_total",
+      "gridPos": { "x": 0, "y": 21, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_io_time_seconds_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_merged_total",
+      "gridPos": { "x": 8, "y": 21, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_merged_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_operation_time_seconds_total",
+      "gridPos": { "x": 16, "y": 21, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_operation_time_seconds_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_operations_total",
+      "gridPos": { "x": 0, "y": 28, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_operations_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_pending_operations",
+      "gridPos": { "x": 8, "y": 28, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_pending_operations)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_disk_weighted_io_time_seconds_total",
+      "gridPos": { "x": 16, "y": 28, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_disk_weighted_io_time_seconds_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_filesystem_inodes_usage",
+      "gridPos": { "x": 0, "y": 35, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_filesystem_inodes_usage)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_filesystem_usage_bytes",
+      "gridPos": { "x": 8, "y": 35, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_filesystem_usage_bytes)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_memory_usage_bytes",
+      "gridPos": { "x": 16, "y": 35, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_memory_usage_bytes)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_network_connections",
+      "gridPos": { "x": 0, "y": 42, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_network_connections)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_network_dropped_total",
+      "gridPos": { "x": 8, "y": 42, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_network_dropped_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_network_errors_total",
+      "gridPos": { "x": 16, "y": 42, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_network_errors_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_network_io_bytes_total",
+      "gridPos": { "x": 0, "y": 49, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_network_io_bytes_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_network_packets_total",
+      "gridPos": { "x": 8, "y": 49, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_network_packets_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_paging_faults_total",
+      "gridPos": { "x": 16, "y": 49, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_paging_faults_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_paging_operations_total",
+      "gridPos": { "x": 0, "y": 56, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_paging_operations_total)", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "system_paging_usage_bytes",
+      "gridPos": { "x": 8, "y": 56, "w": 8, "h": 7 },
+      "datasource": { "uid": "mimir-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum by(instance) (system_paging_usage_bytes)", "refId": "A" }]
     }
   ]
 }

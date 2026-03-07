@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useLocalStorage } from "../hooks";
 import PageHeader from "../components/ui/PageHeader";
 import { Card, Input, Button, Select, Modal, Checkbox } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
@@ -325,7 +326,11 @@ export default function ApiKeyPage() {
 
   const [showYamlModal, setShowYamlModal] = useState(false);
   const [yamlModalKeyId, setYamlModalKeyId] = useState("");
-  const [gatewayHost, setGatewayHost] = useState(OTLP_GATEWAY_HOST);
+  // remember a custom host so users don't have to re-enter it every time
+  const [gatewayHost, setGatewayHost] = useLocalStorage(
+    "ApiKeyPage.gatewayHost",
+    OTLP_GATEWAY_HOST,
+  );
 
   const [yamlShowToken, setYamlShowToken] = useState(false);
   const [regeneratingToken, setRegeneratingToken] = useState(false);

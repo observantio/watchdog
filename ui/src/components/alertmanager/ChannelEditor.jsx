@@ -285,84 +285,58 @@ export default function ChannelEditor({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 py-4">
-      {/* Basic Information Section */}
-      <div>
-        <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
-          <span className="material-icons text-sre-primary">info</span>
-          Basic Information
-        </h3>
+      <div className="md:flex md:justify-between md:items-start">
+        <div className="md:flex-1">
+          <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
+            <span className="material-icons text-sre-primary">info</span>
+            Basic Information
+          </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-sre-text">
-              Channel Name{" "}
-              <HelpTooltip text="Enter a descriptive name for this notification channel." />
-            </label>
-            <Input
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              required
-              placeholder="Team Slack Channel"
-              className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-sre-text">
-              Channel Type{" "}
-              <HelpTooltip text="Select the type of notification service you want to integrate with." />
-            </label>
-            <Select
-              value={formData.type}
-              onChange={(e) =>
-                setFormData({ ...formData, type: e.target.value, config: {} })
-              }
-              className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
-            >
-              {channelTypeOptions.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
-            {channelTypeOptions.length === 0 && (
-              <p className="text-xs text-sre-text-muted mt-2">
-                No channel types are enabled by organization policy.
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Channel Type Preview */}
-      {formData.type && (
-        <div class="pt-4">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-sre-primary/10 flex items-center justify-center">
-              <span className="material-icons text-2xl text-sre-primary">
-                {channelTypeOptions.find((opt) => opt.value === formData.type)
-                  ?.icon || "notifications"}
-              </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-sre-text">
+                Channel Name{" "}
+                <HelpTooltip text="Enter a descriptive name for this notification channel." />
+              </label>
+              <Input
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                required
+                placeholder="Team Slack Channel"
+                className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
+              />
             </div>
-            <div>
-              <h4 className="text-lg font-semibold text-sre-text">
-                {
-                  channelTypeOptions.find((opt) => opt.value === formData.type)
-                    ?.label
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-sre-text">
+                Channel Type{" "}
+                <HelpTooltip text="Select the type of notification service you want to integrate with." />
+              </label>
+              <Select
+                value={formData.type}
+                onChange={(e) =>
+                  setFormData({ ...formData, type: e.target.value, config: {} })
                 }
-              </h4>
-              <p className="text-sm text-sre-text-muted">
-                {
-                  channelTypeOptions.find((opt) => opt.value === formData.type)
-                    ?.description
-                }
-              </p>
+                className="bg-sre-bg border-sre-border/60 focus:border-sre-primary"
+              >
+                {channelTypeOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </Select>
+              {channelTypeOptions.length === 0 && (
+                <p className="text-xs text-sre-text-muted mt-2">
+                  No channel types are enabled by organization policy.
+                </p>
+              )}
             </div>
           </div>
         </div>
-      )}
+
+        </div>
 
       {/* Configuration Section */}
       {renderConfigFields() && (
@@ -377,9 +351,9 @@ export default function ChannelEditor({
 
       {/* Settings Section */}
       <div className="pt-4">
-        <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2">
-          <span className="material-icons text-sre-primary">tune</span>
-          Settings
+        <h3 className="text-lg font-semibold text-sre-text mb-4 flex items-center gap-2  pb-2">
+            <span className="material-icons text-sre-primary text-lg">tune</span>
+            Settings
         </h3>
 
         <div className="space-y-4">
@@ -459,7 +433,7 @@ export default function ChannelEditor({
       )}
 
       {/* Action Buttons */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-sre-border/50">
+      <div className="flex justify-end gap-3 pt-4">
         <Button
           type="button"
           variant="ghost"

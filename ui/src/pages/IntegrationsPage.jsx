@@ -899,7 +899,7 @@ export default function IntegrationsPage() {
       >
         <JiraIntegrationForm value={jiraForm} onChange={setJiraForm} canUseSso={canUseSso} />
 
-        <div className="flex justify-end gap-3 pt-4 border-t border-sre-border/50 mt-6">
+        <div className="flex justify-end gap-3 pt-4 mt-6">
           <Button
             type="button"
             variant="ghost"

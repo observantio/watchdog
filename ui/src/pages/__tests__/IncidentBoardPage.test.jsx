@@ -254,4 +254,28 @@ describe("IncidentBoardPage — UI refresh & persistence", () => {
     });
     expect(link).toHaveAttribute("href", "/integrations");
   });
+
+  it("shows quick unhide but no quick edit for hidden resolved cards", async () => {
+    const hiddenResolved = {
+      id: "i-hidden-1",
+      alertName: "Hidden Resolved Alert",
+      status: "resolved",
+      assignee: "",
+      fingerprint: "f-hidden-1",
+      lastSeenAt: new Date().toISOString(),
+      severity: "warning",
+      notes: [],
+      hideWhenResolved: true,
+    };
+
+    api.getIncidents.mockResolvedValue([hiddenResolved]);
+    api.getUsers.mockResolvedValue([]);
+    api.getGroups.mockResolvedValue([]);
+
+    render(<IncidentBoardPage />);
+    await screen.findByText("Hidden Resolved Alert");
+
+    expect(screen.getByTitle("Unhide incident")).toBeInTheDocument();
+    expect(screen.queryByText("edit")).not.toBeInTheDocument();
+  });
 });

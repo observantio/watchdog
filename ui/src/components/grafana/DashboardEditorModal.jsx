@@ -33,13 +33,6 @@ export default function DashboardEditorModal({
     setJsonContent(JSON.stringify(template.dashboard, null, 2));
     setJsonError("");
     setFileUploaded(false);
-    if (template.datasourceUid) {
-      setDashboardForm({
-        ...dashboardForm,
-        datasourceUid: template.datasourceUid,
-        useTemplating: true,
-      });
-    }
   };
 
   const _jsonLooksMeaningful = (content) => {
