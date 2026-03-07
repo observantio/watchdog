@@ -39,6 +39,54 @@ function getIncidentAssigneeLabel(incident, userById = {}, currentUser = null) {
   return looksLikeUuid(assignee) ? "Unknown user" : assignee;
 }
 
+function getIncidentCorrelationId(incident) {
+  if (!incident || typeof incident !== "object") return "";
+
+  const direct = [
+    incident.correlationId,
+    incident.correlation_id,
+    incident.group,
+    incident.alertgroup,
+  ];
+  for (const value of direct) {
+    const s = String(value || "").trim();
+    if (s) return s;
+  }
+
+  const sources = [incident.labels, incident.annotations];
+  const keys = [
+    "beobservantCorrelationId",
+    "correlation_id",
+    "correlationId",
+    "group",
+    "alertgroup",
+  ];
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    for (const key of keys) {
+      const s = String(source[key] || "").trim();
+      if (s) return s;
+    }
+  }
+  return "";
+}
+
+function getIncidentLabelEntries(incident) {
+  if (!incident || typeof incident !== "object") return [];
+  const labels = incident.labels;
+  if (!labels || typeof labels !== "object") return [];
+  const nextLabels = { ...labels };
+  const metricStates = String(
+    incident?.annotations?.beobservantMetricStates || "",
+  ).trim();
+  if (metricStates) {
+    nextLabels.state = metricStates;
+  }
+  return Object.entries(nextLabels)
+    .filter(([key, value]) => String(key || "").trim() && value !== null && typeof value !== "undefined")
+    .sort(([a], [b]) => String(a).localeCompare(String(b)));
+}
+
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -91,9 +139,13 @@ const IncidentCard = memo(function IncidentCard({
   onSetModalTab,
   onQuickResolve,
   onUnhide,
+  onHide,
   droppingState,
+  compact = false,
 }) {
   const assigneeLabel = getIncidentAssigneeLabel(incident, userById, currentUser);
+  const correlationId = getIncidentCorrelationId(incident);
+  const previewLabels = getIncidentLabelEntries(incident).slice(0, 3);
 
   return (
     <div
@@ -106,7 +158,9 @@ const IncidentCard = memo(function IncidentCard({
       onDragEnd={(e) => {
         e.currentTarget.classList.remove("opacity-50", "scale-95", "rotate-2");
       }}
-      className="group bg-gradient-to-br from-sre-bg to-sre-surface border border-sre-border/50 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-move relative overflow-hidden backdrop-blur-sm"
+      className={`group bg-gradient-to-br from-sre-bg to-sre-surface border border-sre-border/50 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-move relative overflow-hidden backdrop-blur-sm ${
+        compact ? "min-h-[140px]" : ""
+      }`}
     >
       <div
         className={`h-2 w-full ${
@@ -118,8 +172,8 @@ const IncidentCard = memo(function IncidentCard({
         }`}
       />
 
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4 mb-4">
+      <div className={compact ? "p-3" : "p-5"}>
+        <div className={`flex items-start justify-between gap-4 ${compact ? "mb-2" : "mb-4"}`}>
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div
               className={`w-3 h-3 rounded-full flex-shrink-0 ${
@@ -130,7 +184,7 @@ const IncidentCard = memo(function IncidentCard({
                     : "bg-blue-500 shadow-blue-500/50 shadow-lg"
               }`}
             />
-            <h3 className="font-semibold text-sre-text text-base leading-tight flex-1 min-w-0 truncate">
+            <h3 className={`font-semibold text-sre-text leading-tight flex-1 min-w-0 truncate ${compact ? "text-sm" : "text-base"}`}>
               {incident.alertName}
             </h3>
           </div>
@@ -145,7 +199,27 @@ const IncidentCard = memo(function IncidentCard({
           </div>
         </div>
 
-        <div className="space-y-3 mb-4">
+        <div className={`${compact ? "space-y-2 mb-2" : "space-y-3 mb-4"}`}>
+          {(correlationId || previewLabels.length > 0) && (
+            <div className="flex items-center gap-2 text-xs flex-wrap">
+              {correlationId && (
+                <Badge variant="ghost" className="max-w-full truncate">
+                  Correlation: {correlationId}
+                </Badge>
+              )}
+              {!compact &&
+                previewLabels.map(([key, value]) => (
+                <Badge
+                  key={`${incident.id}-label-${key}`}
+                  variant="ghost"
+                  className="max-w-full truncate"
+                >
+                  {key}: {String(value)}
+                </Badge>
+                ))}
+            </div>
+          )}
+
           <div className="flex items-center gap-3 text-sm text-sre-text-muted">
             <div className="flex items-center gap-2">
               <span className="material-icons text-base text-sre-primary/70">
@@ -157,18 +231,20 @@ const IncidentCard = memo(function IncidentCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-sm text-sre-text-muted min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="material-icons text-base text-sre-primary/70">
-                person
-              </span>
-              <span className="font-medium truncate min-w-0 max-w-full">
-                {assigneeLabel}
-              </span>
+          {!compact && (
+            <div className="flex items-center gap-3 text-sm text-sre-text-muted min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="material-icons text-base text-sre-primary/70">
+                  person
+                </span>
+                <span className="font-medium truncate min-w-0 max-w-full">
+                  {assigneeLabel}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {incident.jiraTicketKey && (
+          {!compact && incident.jiraTicketKey && (
             <div className="flex items-center gap-3 text-sm text-sre-text-muted">
               <div className="flex items-center gap-2">
                 <span className="material-icons text-base text-sre-primary/70">
@@ -182,7 +258,7 @@ const IncidentCard = memo(function IncidentCard({
           )}
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className={`flex items-center justify-between ${compact ? "mb-2" : "mb-4"}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <Badge
               variant={
@@ -259,6 +335,21 @@ const IncidentCard = memo(function IncidentCard({
               </Button>
             )}
 
+            {canUpdateIncidents &&
+              incident.status === "resolved" &&
+              !incident.hideWhenResolved && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onHide(incident.id)}
+                  className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 h-8 w-8 hover:bg-sre-surface/50"
+                  title="Hide incident"
+                >
+                  <span className="material-icons text-sm">visibility_off</span>
+                </Button>
+              )}
+
+            {!compact && (
             <Button
               size="sm"
               variant="ghost"
@@ -271,7 +362,9 @@ const IncidentCard = memo(function IncidentCard({
             >
               <span className="material-icons text-sm">link</span>
             </Button>
+            )}
 
+            {!compact && (
             <Button
               size="sm"
               variant="ghost"
@@ -289,6 +382,7 @@ const IncidentCard = memo(function IncidentCard({
                 </span>
               )}
             </Button>
+            )}
 
             <Button
               size="sm"
@@ -302,7 +396,7 @@ const IncidentCard = memo(function IncidentCard({
         </div>
       </div>
 
-      <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className={`absolute ${compact ? "top-2 left-2" : "top-3 left-3"} opacity-0 group-hover:opacity-100 transition-opacity duration-200`}>
         <span className="material-icons text-sre-text-muted/70 text-sm">
           drag_indicator
         </span>
@@ -336,8 +430,19 @@ const Column = memo(function Column({
   setIncidentModalTab,
   onQuickResolve,
   handleUnhideIncident,
+  handleHideIncident,
   dropping,
+  hiddenResolvedItems = [],
+  hiddenResolvedVisibleCount = 0,
+  onLoadMoreHiddenResolved = null,
 }) {
+  const visibleHiddenResolved = hiddenResolvedItems.slice(
+    0,
+    hiddenResolvedVisibleCount,
+  );
+  const hasMoreHiddenResolved =
+    hiddenResolvedItems.length > visibleHiddenResolved.length;
+
   return (
     <div className="flex flex-col">
       <div className="mb-4">
@@ -383,10 +488,11 @@ const Column = memo(function Column({
                 onSetModalTab={setIncidentModalTab}
                 onQuickResolve={onQuickResolve}
                 onUnhide={handleUnhideIncident}
+                onHide={handleHideIncident}
                 droppingState={!!dropping[it.id]}
               />
             ))
-          ) : (
+          ) : icon === "resolved" && hiddenResolvedItems.length > 0 ? null : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <span className="material-icons text-4xl text-sre-text-muted/50 mb-3">
                 {empty.icon}
@@ -395,6 +501,47 @@ const Column = memo(function Column({
               <p className="text-sre-text-muted/70 text-xs mt-1">
                 {empty.subtitle}
               </p>
+            </div>
+          )}
+
+          {icon === "resolved" && hiddenResolvedItems.length > 0 && (
+            <div className="mt-4 border-t border-sre-border/60 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs uppercase tracking-wide text-sre-text-muted">
+                  Hidden Resolved ({hiddenResolvedItems.length})
+                </div>
+                <HelpTooltip text="Hidden resolved incidents are compacted. Load more to view additional hidden cards." />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {visibleHiddenResolved.map((it) => (
+                  <IncidentCard
+                    key={`hidden-${it.id}`}
+                    incident={it}
+                    columnKey={icon}
+                    canUpdateIncidents={canUpdateIncidents}
+                    userById={userById}
+                    currentUser={currentUser}
+                    onOpenModal={openIncidentModal}
+                    onSetModalTab={setIncidentModalTab}
+                    onQuickResolve={onQuickResolve}
+                    onUnhide={handleUnhideIncident}
+                    onHide={handleHideIncident}
+                    droppingState={!!dropping[it.id]}
+                    compact
+                  />
+                ))}
+              </div>
+              {hasMoreHiddenResolved && (
+                <div className="mt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={onLoadMoreHiddenResolved}
+                  >
+                    Load more hidden (+5)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -424,6 +571,8 @@ export default function IncidentBoardPage() {
   const [dropping, setDropping] = useState({});
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [showHiddenResolved, setShowHiddenResolved] = useState(false);
+  const [hiddenResolvedVisibleCount, setHiddenResolvedVisibleCount] =
+    useState(5);
   const [jiraCreating, setJiraCreating] = useState({});
   const [jiraProjects, setJiraProjects] = useState([]);
   const [jiraIntegrations, setJiraIntegrations] = useState([]);
@@ -566,6 +715,29 @@ export default function IncidentBoardPage() {
       resolved: incidents.filter((incident) => incident.status === "resolved"),
     };
   }, [incidents]);
+
+  const resolvedVisibleItems = useMemo(
+    () =>
+      incidentsByState.resolved.filter(
+        (incident) => !incident.hideWhenResolved,
+      ),
+    [incidentsByState.resolved],
+  );
+
+  const hiddenResolvedItems = useMemo(
+    () =>
+      incidentsByState.resolved.filter((incident) => !!incident.hideWhenResolved),
+    [incidentsByState.resolved],
+  );
+
+  useEffect(() => {
+    setHiddenResolvedVisibleCount(5);
+  }, [
+    showHiddenResolved,
+    incidentVisibilityTab,
+    selectedGroup,
+    hiddenResolvedItems.length,
+  ]);
 
   const userById = useMemo(() => {
     const map = {};
@@ -722,13 +894,21 @@ export default function IncidentBoardPage() {
 
       out = out.replace(
         /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
-        (id) => resolveAuthorLabel(id),
+        (id, _group, offset, source) => {
+          const before = String(source || "").charAt(Math.max(0, Number(offset) - 1));
+          if (before === "#") return id;
+          return resolveAuthorLabel(id);
+        },
       );
 
       Object.entries(userById).forEach(([id, userItem]) => {
         const label = getUserLabel(userItem);
         const rx = new RegExp(`\\b${escapeRegExp(id)}\\b`, "g");
-        out = out.replace(rx, label);
+        out = out.replace(rx, (matched, offset, source) => {
+          const before = String(source || "").charAt(Math.max(0, Number(offset) - 1));
+          if (before === "#") return matched;
+          return label;
+        });
       });
 
       return out;
@@ -860,10 +1040,16 @@ export default function IncidentBoardPage() {
     return (
       <div className="mt-4">
         <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+          <span className="material-icons font-bold  text-sm mr-1 align-middle">
+            settings
+          </span>
           Behavior
         </label>
-        <div className="p-2 border border-sre-border rounded bg-sre-bg-alt flex items-center justify-between gap-4">
-          <div className="text-sm text-sre-text">Hide when resolved</div>
+        <div className="p-2 border border-sre-border rounded-xl p-3 bg-sre-bg-alt flex items-center justify-between gap-4 max-w-[400px]">
+          <div className="text-sm text-sre-text flex items-center gap-3">
+            <span className="material-icons text-sm mr-1">visibility_off</span>
+            Hide when resolved
+          </div>
           <div>
             <label className="inline-flex items-center gap-2  p-2 cursor-pointer">
               <input
@@ -1135,6 +1321,35 @@ export default function IncidentBoardPage() {
     [refresh, setError, toast],
   );
 
+  const handleHideIncident = useCallback(
+    async (incidentId) => {
+      try {
+        setDropping((prev) => ({ ...prev, [incidentId]: true }));
+        await updateIncident(incidentId, { hideWhenResolved: true });
+        await refresh();
+        try {
+          toast.success("Incident hidden");
+        } catch (_) {}
+      } catch (err) {
+        setError(
+          err?.body?.detail || err?.message || "Unable to hide incident",
+        );
+        try {
+          toast.error(
+            err?.body?.detail || err?.message || "Unable to hide incident",
+          );
+        } catch (_) {}
+      } finally {
+        setDropping((prev) => {
+          const next = { ...prev };
+          delete next[incidentId];
+          return next;
+        });
+      }
+    },
+    [refresh, setError, toast],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1366,6 +1581,7 @@ export default function IncidentBoardPage() {
                 setIncidentModalTab={setIncidentModalTab}
                 onQuickResolve={handleQuickResolveIncident}
                 handleUnhideIncident={handleUnhideIncident}
+                handleHideIncident={handleHideIncident}
                 dropping={dropping}
               />
 
@@ -1389,6 +1605,7 @@ export default function IncidentBoardPage() {
                 setIncidentModalTab={setIncidentModalTab}
                 onQuickResolve={handleQuickResolveIncident}
                 handleUnhideIncident={handleUnhideIncident}
+                handleHideIncident={handleHideIncident}
                 dropping={dropping}
               />
 
@@ -1398,7 +1615,7 @@ export default function IncidentBoardPage() {
                 colorDot="bg-purple-500"
                 icon="resolved"
                 help="Incidents that have been resolved and closed. These may be hidden by default."
-                items={incidentsByState.resolved}
+                items={resolvedVisibleItems}
                 empty={{
                   icon: "check_circle",
                   title: "No resolved incidents",
@@ -1412,7 +1629,13 @@ export default function IncidentBoardPage() {
                 setIncidentModalTab={setIncidentModalTab}
                 onQuickResolve={handleQuickResolveIncident}
                 handleUnhideIncident={handleUnhideIncident}
+                handleHideIncident={handleHideIncident}
                 dropping={dropping}
+                hiddenResolvedItems={hiddenResolvedItems}
+                hiddenResolvedVisibleCount={hiddenResolvedVisibleCount}
+                onLoadMoreHiddenResolved={() =>
+                  setHiddenResolvedVisibleCount((prev) => prev + 5)
+                }
               />
             </>
           </div>
@@ -1441,7 +1664,7 @@ export default function IncidentBoardPage() {
               setIncidentModal({ isOpen: false, incident: null });
               setAssigneeSearch("");
             }}
-            title={`Update Incident: ${activeIncident.alertName}`}
+            title={`Updating Incident #${activeIncident.id}`}
             size="lg"
             closeOnOverlayClick={false}
           >
@@ -1521,6 +1744,44 @@ export default function IncidentBoardPage() {
                     Incident Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(() => {
+                      const correlationId = getIncidentCorrelationId(activeIncident);
+                      const labelEntries = getIncidentLabelEntries(activeIncident);
+                      return (
+                        <>
+                          <div>
+                            <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                              Correlation ID
+                            </label>
+                            <div className="p-2 border border-sre-border rounded bg-sre-bg-alt text-sm text-sre-text break-all">
+                              {correlationId || "N/A"}
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
+                              Labels
+                            </label>
+                            <div>
+                              {labelEntries.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {labelEntries.map(([key, value]) => (
+                                    <Badge
+                                      key={`${activeIncident.id}-details-label-${key}`}
+                                      variant="ghost"
+                                    >
+                                      {key}: {String(value)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-sm text-sre-text-muted">No labels</div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+
                     <div>
                       <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
                         Status
@@ -1575,23 +1836,6 @@ export default function IncidentBoardPage() {
                       </p>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-sre-text-muted mb-1 text-left">
-                        Visibility
-                      </label>
-                      <div className="p-2 border border-sre-border rounded bg-sre-bg-alt">
-                        <div className="text-sm text-sre-text">
-                          {activeIncident.visibility}
-                          {Array.isArray(activeIncident.sharedGroupIds) &&
-                            activeIncident.sharedGroupIds.length > 0 && (
-                              <span className="text-sre-text-muted ml-2 truncate">
-                                ({activeIncident.sharedGroupIds.join(", ")})
-                              </span>
-                            )}
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Behavior moved under tabs */}
                   </div>
                 </Card>
@@ -1615,7 +1859,7 @@ export default function IncidentBoardPage() {
                           placeholder="Search users by name, username, or email"
                         />
                         <Button
-                          size="sm"
+                          size="xs"
                           variant="ghost"
                           onClick={() =>
                             setIncidentDrafts((prev) => ({
@@ -1628,6 +1872,7 @@ export default function IncidentBoardPage() {
                           }
                           disabled={!canUpdateIncidents || !user?.id}
                           title="Assign to me"
+                          className="flex items-center font-bold gap-1 whitespace-nowrap"
                         >
                           Assign to me
                         </Button>
@@ -1708,7 +1953,7 @@ export default function IncidentBoardPage() {
                     <span className="material-icons text-base mr-2">link</span>
                     Jira Integration
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1  md:grid-cols-2 gap-4">
                     <Input
                       value={activeIncidentDraft.jiraSummary ?? ""}
                       onChange={(e) =>
@@ -1720,6 +1965,7 @@ export default function IncidentBoardPage() {
                           },
                         }))
                       }
+                      className="min-w-[650px]"
                       placeholder="Optional: override ticket summary (defaults to incident title)"
                     />
 
@@ -1982,9 +2228,14 @@ export default function IncidentBoardPage() {
                               <span className="ml-2">Creating…</span>
                             </>
                           ) : (
-                            isIncidentLinkedToJira
-                              ? "Create New Jira"
-                              : "Create Jira"
+                            <span className="flex items-center gap-1">
+                              <span className="material-icons text-sm">
+                                {isIncidentLinkedToJira ? "autorenew" : "add"}
+                              </span>
+                              <span className="sr-only">
+                                {isIncidentLinkedToJira ? "Create New Jira" : "Create Jira"}
+                              </span>
+                            </span>
                           )}
                         </Button>
                       </div>

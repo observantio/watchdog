@@ -74,3 +74,75 @@ describe("RuleEditor notification channel section", () => {
     expect(screen.queryByText("Manage Integrations")).not.toBeInTheDocument();
   });
 });
+
+// new tests for API key selection behaviour
+
+describe("RuleEditor API key selector", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const apiKeys = [
+    { id: "1", key: "default", name: "Default", is_default: true, is_enabled: true },
+    { id: "2", key: "ubuntu", name: "ubuntu", is_default: false, is_enabled: true },
+  ];
+
+  it("starts with auto scope active and individual options disabled", () => {
+    useAuth.mockReturnValue({ hasPermission: () => true });
+    render(<RuleEditor {...defaultProps} apiKeys={apiKeys} />);
+
+    const autoBtn = screen.getByRole("button", { name: /auto scope/i });
+    expect(autoBtn).toBeInTheDocument();
+    const autoCheckbox = autoBtn.querySelector("input[type=checkbox]");
+    expect(autoCheckbox).toBeChecked();
+
+    const defaultBtn = screen.getByRole("button", { name: /default/i });
+    expect(defaultBtn).toBeDisabled();
+    const ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
+    expect(ubuntuBtn).toBeDisabled();
+  });
+
+  it("can toggle an explicit key then return to auto when deselected", () => {
+    useAuth.mockReturnValue({ hasPermission: () => true });
+    render(<RuleEditor {...defaultProps} apiKeys={apiKeys} />);
+
+    const autoBtn = screen.getByRole("button", { name: /auto scope/i });
+    const ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
+
+    fireEvent.click(ubuntuBtn);
+    expect(ubuntuBtn.querySelector("input")).toBeChecked();
+    expect(autoBtn.querySelector("input")).not.toBeChecked();
+
+    fireEvent.click(ubuntuBtn);
+    expect(autoBtn.querySelector("input")).toBeChecked();
+    expect(ubuntuBtn.querySelector("input")).not.toBeChecked();
+  });
+});
+
+// correlation id generator
+
+describe("RuleEditor correlation ID generator", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("switches to custom mode and fills generated value", () => {
+    useAuth.mockReturnValue({ hasPermission: () => true });
+    render(<RuleEditor {...defaultProps} apiKeys={[]} />);
+
+    // find mode selector and change to custom
+    const modeSelect = screen.getByDisplayValue(/Select existing/i);
+    fireEvent.change(modeSelect, { target: { value: "custom" } });
+
+    const input = screen.getByPlaceholderText("default");
+    expect(input).toBeInTheDocument();
+    expect(input.value).toBe("");
+
+    const genBtn = screen.getByTitle(/Generate random ID/i);
+    fireEvent.click(genBtn);
+    expect(input.value).toMatch(/^[0-9a-zA-Z-]+$/);
+    const first = input.value;
+    fireEvent.click(genBtn);
+    expect(input.value).not.toBe(first);
+  });
+});

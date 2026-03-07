@@ -37,18 +37,9 @@ export default function AlertManagerPage() {
   const [showRuleEditor, setShowRuleEditor] = useState(false);
   const [showSilenceForm, setShowSilenceForm] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
-  const [filterSeverity, setFilterSeverity] = useLocalStorage(
-    "alertmanager-filter-severity",
-    "all",
-  );
-  const [filterCorrelationId, setFilterCorrelationId] = useLocalStorage(
-    "alertmanager-filter-correlation-id",
-    "all",
-  );
-  const [filterLabel, setFilterLabel] = useLocalStorage(
-    "alertmanager-filter-label",
-    "",
-  );
+  const [filterSeverity, setFilterSeverity] = useState("all");
+  const [filterCorrelationId, setFilterCorrelationId] = useState("all");
+  const [filterLabel, setFilterLabel] = useState("");
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_CONFIRM_DIALOG);
 
   const [testDialog, setTestDialog] = useState({
@@ -692,27 +683,31 @@ export default function AlertManagerPage() {
                               </div>
                             </div>
 
-                            {a.annotations?.summary && (
-                              <p className="text-sm text-sre-text-muted mb-3">
-                                {a.annotations.summary}
-                              </p>
-                            )}
+                            {(a.annotations?.summary || (a.labels && Object.keys(a.labels).length > 0)) && (
+                              <div className="flex flex-wrap items-center gap-2 mb-3">
+                                {a.annotations?.summary && (
+                                  <span className="text-sm text-sre-text-muted flex-1 min-w-0 truncate">
+                                    {a.annotations.summary}
+                                  </span>
+                                )}
 
-                            {a.labels && Object.keys(a.labels).length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {Object.entries(a.labels)
-                                  .filter(
-                                    ([key]) =>
-                                      !["alertname", "severity"].includes(key),
-                                  )
-                                  .map(([key, value]) => (
-                                    <span
-                                      key={key}
-                                      className="text-xs px-3 py-1 bg-sre-bg-alt border border-sre-border rounded-full text-sre-text-muted"
-                                    >
-                                      {key}={value}
-                                    </span>
-                                  ))}
+                                {a.labels && Object.keys(a.labels).length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {Object.entries(a.labels)
+                                      .filter(
+                                        ([key]) =>
+                                          !["alertname", "severity"].includes(key),
+                                      )
+                                      .map(([key, value]) => (
+                                        <span
+                                          key={key}
+                                          className="text-xs px-3 py-1 bg-sre-bg-alt border border-sre-border rounded-full text-sre-text-muted"
+                                        >
+                                          {key}={value}
+                                        </span>
+                                      ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

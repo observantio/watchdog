@@ -503,7 +503,7 @@ class Config:
 
 class Constants:
     APP_NAME: str = "Be Observant with Your Infrastructure"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "0.0.1"
     APP_DESCRIPTION: str = "Unified API for managing Tempo, Loki, AlertManager, Grafana, and BeCertain"
 
     STATUS_HEALTHY: str = "Healthy"

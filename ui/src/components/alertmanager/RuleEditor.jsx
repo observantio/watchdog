@@ -48,6 +48,15 @@ export default function RuleEditor({
   const [issuesCollapsed, setIssuesCollapsed] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [correlationMode, setCorrelationMode] = useState("existing");
+  // helper to generate random correlation IDs (uses crypto.randomUUID when available)
+  const generateCorrelationId = () => {
+    const id =
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substring(2, 10));
+    setCorrelationMode("custom");
+    setFormData((prev) => ({ ...prev, group: id }));
+  };
   const [selectedApiScopes, setSelectedApiScopes] = useState([AUTO_SCOPE]);
   const visibleApiKeys = useMemo(
     () =>
@@ -82,7 +91,8 @@ export default function RuleEditor({
   useEffect(() => {
     const rawOrg = String((rule || DEFAULT_FORM)?.orgId || "").trim();
     if (!rawOrg) {
-      setSelectedApiScopes([AUTO_SCOPE, ...visibleApiScopeValues]);
+      // default to auto scope only
+      setSelectedApiScopes([AUTO_SCOPE]);
       return;
     }
     setSelectedApiScopes([rawOrg]);
@@ -211,17 +221,30 @@ export default function RuleEditor({
     if (!target) return;
     setSelectedApiScopes((prev) => {
       const current = new Set(prev || []);
+      const hasAuto = current.has(AUTO_SCOPE);
       if (target === AUTO_SCOPE) {
-        return [AUTO_SCOPE, ...visibleApiScopeValues];
+        // toggle auto-scope on/off
+        if (hasAuto) {
+          current.delete(AUTO_SCOPE);
+          return Array.from(current);
+        } else {
+          // enable auto and clear explicit selections
+          return [AUTO_SCOPE];
+        }
       }
-      current.delete(AUTO_SCOPE);
+      // toggling an explicit key
+      if (hasAuto) {
+        // leaving auto scope, start fresh with explicit only
+        current.clear();
+      }
       if (current.has(target)) {
         current.delete(target);
       } else {
         current.add(target);
       }
       const next = Array.from(current);
-      return next.length > 0 ? next : [AUTO_SCOPE, ...visibleApiScopeValues];
+      // when nothing left, fall back to auto-scope only
+      return next.length > 0 ? next : [AUTO_SCOPE];
     });
   };
 
@@ -401,6 +424,7 @@ export default function RuleEditor({
                             type="checkbox"
                             checked={selectedApiScopes.includes(AUTO_SCOPE)}
                             readOnly
+                            className="pointer-events-none" // let clicks fall through
                           />
                           <span className="material-icons text-base text-sre-primary">
                             auto_awesome
@@ -411,20 +435,29 @@ export default function RuleEditor({
                         </div>
                       </button>
                       {visibleApiKeys.map((k) => {
-                        const isSelected = selectedApiScopes.includes(String(k.key || ""));
+                        const isAuto = selectedApiScopes.includes(AUTO_SCOPE);
+                        const isSelected =
+                          !isAuto &&
+                          selectedApiScopes.includes(String(k.key || ""));
                         return (
                           <button
                             key={k.id}
                             type="button"
                             onClick={() => toggleApiScope(String(k.key || ""))}
+                            disabled={isAuto}
                             className={`text-left p-3 rounded-lg border transition-colors ${
                               isSelected
                                 ? "border-sre-primary bg-sre-primary/10"
                                 : "border-sre-border bg-sre-surface hover:border-sre-primary/50"
-                            }`}
+                            } ${isAuto ? "opacity-50 cursor-not-allowed" : ""}`}
                           >
                             <div className="flex items-center gap-2">
-                              <input type="checkbox" checked={isSelected} readOnly />
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                readOnly
+                                className="pointer-events-none"
+                              />
                               <span className="text-sm font-medium text-sre-text truncate">
                                 {k.name}
                                 {k.is_default ? " (Default)" : ""}
@@ -608,14 +641,27 @@ export default function RuleEditor({
                             )}
                           </Select>
                         ) : (
-                          <Input
-                            value={formData.group}
-                            onChange={(e) =>
-                              setFormData({ ...formData, group: e.target.value })
-                            }
-                            placeholder="default"
-                            className="w-full text-lg px-4 border-2 border-sre-border focus:border-sre-primary transition-colors"
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={formData.group}
+                              onChange={(e) =>
+                                setFormData({ ...formData, group: e.target.value })
+                              }
+                              placeholder="default"
+                              className="w-full text-lg px-4 border-2 border-sre-border focus:border-sre-primary transition-colors"
+                            />
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              title="Generate random ID"
+                              onClick={generateCorrelationId}
+                            >
+                              <span className="material-icons text-base">
+                                shuffle
+                              </span>
+                              <span className="sr-only">Generate ID</span>
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>

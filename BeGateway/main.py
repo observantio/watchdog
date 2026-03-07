@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="BeObservant Gateway Auth Service",
-    version="1.0.0",
+    version="0.0.1",
     docs_url="/docs" if gw_config.ENABLE_API_DOCS else None,
     redoc_url="/redoc" if gw_config.ENABLE_API_DOCS else None,
     openapi_url="/openapi.json" if gw_config.ENABLE_API_DOCS else None,
