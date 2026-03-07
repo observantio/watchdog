@@ -57,21 +57,6 @@ export default function RcaJobQueuePanel({
                   </span>
                   {isSelected ? (
                     <div className="flex items-center gap-1 ml-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Reload"
-                        className="p-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReload && onReload(job);
-                        }}
-                        title="Reload"
-                      >
-                        <span className="material-icons text-base">
-                          refresh
-                        </span>
-                      </Button>
                       {onView && (
                         <Button
                           variant="ghost"
