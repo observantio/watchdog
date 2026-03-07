@@ -19,25 +19,6 @@ compactor:
   compaction:
     block_retention: 72h
 
-metrics_generator:
-  registry:
-    external_labels:
-      source: tempo
-      cluster: docker-compose
-  storage:
-    path: /tmp/tempo/generator/wal
-    remote_write:
-      - url: http://mimir:9009/api/v1/push
-        headers:
-          X-Scope-OrgID: ${MIMIR_TENANT_ID}
-        send_exemplars: false
-        queue_config:
-          min_shards: 1
-          max_shards: 2
-          capacity: 5000
-          max_samples_per_send: 1000
-          batch_send_deadline: 5s
-
 storage:
   trace:
     backend: local
@@ -52,6 +33,3 @@ overrides:
   ingestion_rate_limit_bytes: 4000000
   ingestion_burst_size_bytes: 8000000
   max_traces_per_user: 50000
-  # Keep metrics generation light in single-node Docker deployments.
-  # service-graphs is CPU-expensive and can cause query/push deadline churn.
-  metrics_generator_processors: [span-metrics]
