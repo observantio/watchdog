@@ -17,7 +17,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import PageHeader from "../components/ui/PageHeader";
-import { Button, Card, Input, Modal, Select, Spinner, Alert } from "../components/ui";
+import { Button, Card, Input, Modal, Select, Spinner } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
 import ChannelEditor from "../components/alertmanager/ChannelEditor";
 
@@ -210,7 +210,6 @@ export default function IntegrationsPage() {
   const [jiraIntegrations, setJiraIntegrations] = useState([]);
   const [canUseSso, setCanUseSso] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [showHidden, setShowHidden] = useState(false);
 
   const [showChannelModal, setShowChannelModal] = useState(false);
@@ -240,7 +239,6 @@ export default function IntegrationsPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [channelsData, allowedTypesData, jiraData, authModeData] = await Promise.all([
         getNotificationChannels({ showHidden }).catch(() => []),
@@ -274,11 +272,11 @@ export default function IntegrationsPage() {
 
       setCanUseSso(!!authModeData?.oidc_enabled);
     } catch (e) {
-      setError(e?.message || "Failed to load integrations");
+      toast.error(formatApiError(e) || "Failed to load integrations");
     } finally {
       setLoading(false);
     }
-  }, [showHidden]);
+  }, [showHidden, toast]);
 
   useEffect(() => {
     loadAll();
@@ -740,8 +738,6 @@ export default function IntegrationsPage() {
         title="Integrations"
         subtitle="Manage notification channels and Jira integrations with private, group, and organization scopes."
       />
-
-      {error && <Alert variant="error">{error}</Alert>}
 
       <div className="flex gap-2 border-b border-sre-border justify-center items-center">
         {VISIBILITY_TABS.map((tab) => (

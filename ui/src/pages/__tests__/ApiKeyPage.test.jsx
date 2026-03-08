@@ -194,7 +194,7 @@ describe("ApiKeyPage (gateway host persistence)", () => {
     fireEvent.change(input, { target: { value: "http://foo:4317" } });
 
     // close and reopen modal
-    fireEvent.click(within(modal).getByRole("button", { name: /Cancel/i }));
+    fireEvent.click(within(modal).getByRole("button", { name: /Close modal/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Generate Agent YAML/i }));
 
     const modal2 = await screen.findByRole("dialog");

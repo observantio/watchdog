@@ -10,7 +10,7 @@ import {
   setAlertRuleHidden,
   setSilenceHidden,
 } from "../api";
-import { Card, Button, Select, Alert, Spinner, Modal } from "../components/ui";
+import { Card, Button, Select, Spinner, Modal } from "../components/ui";
 import { useToast } from "../contexts/ToastContext";
 import ConfirmModal from "../components/ConfirmModal";
 import HelpTooltip from "../components/HelpTooltip";
@@ -50,6 +50,13 @@ export default function AlertManagerPage() {
   const [filterSeverity, setFilterSeverity] = useState("all");
   const [filterCorrelationId, setFilterCorrelationId] = useState("all");
   const [filterLabel, setFilterLabel] = useState("");
+  const [rulesOwnerFilter, setRulesOwnerFilter] = useState("all");
+  const [rulesCorrelationSearch, setRulesCorrelationSearch] = useState("");
+  const [rulesStatusFilter, setRulesStatusFilter] = useState("all");
+  const [rulesSeverityFilter, setRulesSeverityFilter] = useState("all");
+  const [rulesApiKeyFilter, setRulesApiKeyFilter] = useState("all");
+  const [alertsFiltersExpanded, setAlertsFiltersExpanded] = useState(false);
+  const [rulesFiltersExpanded, setRulesFiltersExpanded] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_CONFIRM_DIALOG);
 
   const [testDialog, setTestDialog] = useState({
@@ -84,7 +91,6 @@ export default function AlertManagerPage() {
     rules,
     channels,
     loading,
-    error,
     reloadData,
     setError: setHookError,
   } = useAlertManagerData({
@@ -157,14 +163,27 @@ export default function AlertManagerPage() {
 
     try {
       if (editingRule) {
+        const targetOrgIds = normalizedOrgIds.length
+          ? normalizedOrgIds
+          : [String(ruleData?.orgId || "").trim()].filter(Boolean);
+        const primaryOrgId = targetOrgIds[0] || ruleData?.orgId;
         const payload = payloadWithProductName(
           buildRulePayload({
             ...ruleData,
-            orgId: normalizedOrgIds[0] || ruleData?.orgId,
+            orgId: primaryOrgId,
           }),
-          normalizedOrgIds[0] || ruleData?.orgId,
+          primaryOrgId,
         );
         await updateAlertRule(editingRule.id, payload);
+        if (targetOrgIds.length > 1) {
+          for (const extraOrgId of targetOrgIds.slice(1)) {
+            const extraPayload = payloadWithProductName(
+              buildRulePayload({ ...ruleData, orgId: extraOrgId }),
+              extraOrgId,
+            );
+            await createAlertRule(extraPayload);
+          }
+        }
       } else {
         if (normalizedOrgIds.length > 1) {
           for (const orgId of normalizedOrgIds) {
@@ -412,6 +431,75 @@ export default function AlertManagerPage() {
     alertNameToCorrelationId,
   ]);
 
+  const ruleApiKeyOptions = useMemo(() => {
+    const options = new Map();
+    for (const key of apiKeys || []) {
+      const scope = String(key?.key || "").trim();
+      if (!scope) continue;
+      const label = String(key?.name || "").trim() || `${scope.slice(0, 8)}...`;
+      options.set(scope, label);
+    }
+    for (const rule of rules || []) {
+      const scope = String(rule?.orgId || rule?.org_id || "").trim();
+      if (!scope || options.has(scope)) continue;
+      options.set(scope, `${scope.slice(0, 8)}...`);
+    }
+    return Array.from(options.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }));
+  }, [apiKeys, rules]);
+
+  const filteredRules = useMemo(() => {
+    const currentUserId = String(user?.id || "").trim();
+    const correlationQuery = String(rulesCorrelationSearch || "").trim().toLowerCase();
+
+    return (rules || []).filter((rule) => {
+      const ownerId = String(rule?.createdBy || rule?.created_by || "").trim();
+      const isOwnRule = Boolean(currentUserId && ownerId && ownerId === currentUserId);
+      const correlationId = String(rule?.group || "").trim();
+      const severity = String(rule?.severity || "").toLowerCase();
+      const enabled = Boolean(rule?.enabled);
+      const orgScope = String(rule?.orgId || rule?.org_id || "").trim();
+
+      if (rulesOwnerFilter === "owned" && !isOwnRule) return false;
+      if (rulesOwnerFilter === "shared" && isOwnRule) return false;
+      if (rulesStatusFilter === "enabled" && !enabled) return false;
+      if (rulesStatusFilter === "disabled" && enabled) return false;
+      if (rulesSeverityFilter !== "all" && severity !== rulesSeverityFilter) return false;
+      if (rulesApiKeyFilter === "__all_products__" && orgScope) return false;
+      if (
+        rulesApiKeyFilter !== "all" &&
+        rulesApiKeyFilter !== "__all_products__" &&
+        orgScope !== rulesApiKeyFilter
+      ) {
+        return false;
+      }
+      if (correlationQuery && !correlationId.toLowerCase().includes(correlationQuery)) {
+        return false;
+      }
+      return true;
+    });
+  }, [
+    rules,
+    user?.id,
+    rulesOwnerFilter,
+    rulesCorrelationSearch,
+    rulesStatusFilter,
+    rulesSeverityFilter,
+    rulesApiKeyFilter,
+  ]);
+
+  const isRulesFilterActive =
+    rulesOwnerFilter !== "all" ||
+    rulesStatusFilter !== "all" ||
+    rulesSeverityFilter !== "all" ||
+    rulesApiKeyFilter !== "all" ||
+    String(rulesCorrelationSearch || "").trim() !== "";
+  const hasActiveAlertFilters =
+    filterSeverity !== "all" ||
+    filterCorrelationId !== "all" ||
+    String(filterLabel || "").trim() !== "";
+
   const orgIdToName = useMemo(() => {
     const map = {};
     for (const k of apiKeys) {
@@ -488,14 +576,6 @@ export default function AlertManagerPage() {
           Comprehensive alerting system with rules, channels, and silences
         </p>
       </div>
-
-      {error && (
-        <Alert variant="danger" className="mb-4">
-          {error.split("\n").map((msg, idx) => (
-            <div key={`err-${idx}`}>{msg}</div>
-          ))}
-        </Alert>
-      )}
 
       {/* Draggable Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -608,39 +688,99 @@ export default function AlertManagerPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={filterLabel}
-                      onChange={(e) => setFilterLabel(e.target.value)}
-                      placeholder="Label filter (e.g. instance=node-1)"
-                      className="text-xs px-3 py-1 rounded border border-sre-border bg-sre-surface text-sre-text min-w-[220px]"
-                    />
-                    <Select
-                      className="text-xs px-3 py-1"
-                      value={filterSeverity}
-                      onChange={(e) => setFilterSeverity(e.target.value)}
+                </div>
+
+                <div className="bg-gradient-to-r from-sre-surface to-sre-bg-alt rounded-xl border border-sre-border/50 shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between p-4 hover:bg-sre-surface/50 transition-colors duration-200">
+                    <button
+                      type="button"
+                      onClick={() => setAlertsFiltersExpanded((prev) => !prev)}
+                      className="flex-1 flex items-center justify-between"
                     >
-                      {ALERT_SEVERITY_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      className="text-xs px-3 py-1"
-                      value={filterCorrelationId}
-                      onChange={(e) => setFilterCorrelationId(e.target.value)}
-                    >
-                      <option value="all">All correlation IDs</option>
-                      {correlationIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </Select>
-                    <HelpTooltip text="Filter alerts by label, severity, or correlation ID. Label filter supports key=value or free text." />
+                      <div className="flex items-center gap-3">
+                        <span className="material-icons text-sre-primary">
+                          {alertsFiltersExpanded ? "expand_less" : "expand_more"}
+                        </span>
+                        <span className="text-sm font-semibold text-sre-text">Filters</span>
+                        {hasActiveAlertFilters && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-sre-primary/15 text-sre-primary">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-sre-text-muted">
+                        {hasActiveAlertFilters ? "Filters applied" : "Click to filter"}
+                      </div>
+                    </button>
+                    <div className="ml-3">
+                      <HelpTooltip text="Filter alerts by label, severity, or correlation ID. Label filter supports key=value or free text." />
+                    </div>
                   </div>
+                  {alertsFiltersExpanded && (
+                    <div className="px-4 pb-4 border-t border-sre-border/30">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end pt-4">
+                        <div>
+                          <label className="block text-xs text-sre-text-muted mb-1">Label</label>
+                          <input
+                            type="text"
+                            value={filterLabel}
+                            onChange={(e) => setFilterLabel(e.target.value)}
+                            placeholder="instance=node-1"
+                            className="w-full text-sm px-3 py-2 rounded border border-sre-border bg-sre-surface text-sre-text"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-sre-text-muted mb-1">Severity</label>
+                          <Select
+                            value={filterSeverity}
+                            onChange={(e) => setFilterSeverity(e.target.value)}
+                          >
+                            {ALERT_SEVERITY_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-sre-text-muted mb-1">
+                            Correlation ID
+                          </label>
+                          <Select
+                            value={filterCorrelationId}
+                            onChange={(e) => setFilterCorrelationId(e.target.value)}
+                          >
+                            <option value="all">All correlation IDs</option>
+                            {correlationIdOptions.map((id) => (
+                              <option key={id} value={id}>
+                                {id}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          {hasActiveAlertFilters && (
+                            <Button
+                              variant="secondary"
+                              onClick={() => {
+                                setFilterLabel("");
+                                setFilterSeverity("all");
+                                setFilterCorrelationId("all");
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          )}
+                          <Button
+                            variant="primary"
+                            onClick={() => setAlertsFiltersExpanded(false)}
+                          >
+                            Apply
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {filteredAlerts.length > 0 ? (
@@ -789,7 +929,9 @@ export default function AlertManagerPage() {
                       </h2>
                       <p className="text-sm text-sre-text-muted">
                         {rules.length > 0
-                          ? `${rules.length} rule${rules.length !== 1 ? "s" : ""} configured`
+                          ? isRulesFilterActive
+                            ? `Showing ${filteredRules.length} of ${rules.length} rule${rules.length !== 1 ? "s" : ""}`
+                            : `${rules.length} rule${rules.length !== 1 ? "s" : ""} configured`
                           : "No rules configured"}
                       </p>
                     </div>
@@ -809,6 +951,7 @@ export default function AlertManagerPage() {
                         setImportResult(null);
                         setShowImportRulesModal(true);
                       }}
+                      size="sm"
                     >
                       <span className="material-icons text-sm mr-2">
                         upload_file
@@ -821,6 +964,7 @@ export default function AlertManagerPage() {
                           setEditingRule(null);
                           setShowRuleEditor(true);
                         }}
+                        size="sm"
                       >
                         <span className="material-icons text-sm mr-2">add</span>
                         Create Rule
@@ -830,8 +974,124 @@ export default function AlertManagerPage() {
                 </div>
 
                 {rules.length > 0 ? (
-                  <div className="grid gap-4">
-                    {rules.map((rule) => {
+                  <>
+                    <div className="bg-gradient-to-r from-sre-surface to-sre-bg-alt rounded-xl border border-sre-border/50 shadow-sm overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setRulesFiltersExpanded((prev) => !prev)}
+                        className="w-full flex items-center justify-between p-4 hover:bg-sre-surface/50 transition-colors duration-200"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="material-icons text-sre-primary">
+                            {rulesFiltersExpanded ? "expand_less" : "expand_more"}
+                          </span>
+                          <span className="text-sm font-semibold text-sre-text">Filters</span>
+                          {isRulesFilterActive && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-sre-primary/15 text-sre-primary">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-sre-text-muted">
+                          {isRulesFilterActive ? "Filters applied" : "Click to filter"}
+                        </div>
+                      </button>
+                      {rulesFiltersExpanded && (
+                        <div className="px-4 pb-4 border-t border-sre-border/30">
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end pt-4">
+                            <div>
+                              <label className="block text-xs text-sre-text-muted mb-1">Owner</label>
+                              <Select
+                                value={rulesOwnerFilter}
+                                onChange={(e) => setRulesOwnerFilter(e.target.value)}
+                              >
+                                <option value="all">All</option>
+                                <option value="owned">Owned</option>
+                                <option value="shared">Shared</option>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-sre-text-muted mb-1">Status</label>
+                              <Select
+                                value={rulesStatusFilter}
+                                onChange={(e) => setRulesStatusFilter(e.target.value)}
+                              >
+                                <option value="all">All</option>
+                                <option value="enabled">Enabled</option>
+                                <option value="disabled">Disabled</option>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-sre-text-muted mb-1">Severity</label>
+                              <Select
+                                value={rulesSeverityFilter}
+                                onChange={(e) => setRulesSeverityFilter(e.target.value)}
+                              >
+                                <option value="all">All</option>
+                                {ALERT_SEVERITY_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-sre-text-muted mb-1">API Key</label>
+                              <Select
+                                value={rulesApiKeyFilter}
+                                onChange={(e) => setRulesApiKeyFilter(e.target.value)}
+                              >
+                                <option value="all">All API keys</option>
+                                <option value="__all_products__">All products</option>
+                                {ruleApiKeyOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-sre-text-muted mb-1">
+                                Correlation ID
+                              </label>
+                              <input
+                                type="text"
+                                value={rulesCorrelationSearch}
+                                onChange={(e) => setRulesCorrelationSearch(e.target.value)}
+                                placeholder="Search correlation ID"
+                                className="w-full px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-3">
+                            {isRulesFilterActive && (
+                              <Button
+                                variant="secondary"
+                                onClick={() => {
+                                  setRulesOwnerFilter("all");
+                                  setRulesStatusFilter("all");
+                                  setRulesSeverityFilter("all");
+                                  setRulesApiKeyFilter("all");
+                                  setRulesCorrelationSearch("");
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            )}
+                            <Button
+                              variant="primary"
+                              onClick={() => setRulesFiltersExpanded(false)}
+                            >
+                              Apply
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {filteredRules.length > 0 ? (
+                      <div className="grid gap-4">
+                        {filteredRules.map((rule) => {
                       const ownerId = String(rule.createdBy || rule.created_by || "");
                       const isOwnRule = ownerId && ownerId === String(user?.id || "");
                       const canHideRule = !isOwnRule;
@@ -1010,8 +1270,19 @@ export default function AlertManagerPage() {
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 px-6 rounded-xl border border-sre-border bg-sre-bg-alt">
+                        <h3 className="text-lg font-semibold text-sre-text mb-2">
+                          No Rules Match Current Filters
+                        </h3>
+                        <p className="text-sre-text-muted text-sm">
+                          Adjust your owner, status, severity, correlation ID, or API key filters.
+                        </p>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-sre-border bg-sre-bg-alt">
                     <span className="material-icons text-5xl text-sre-text-muted mb-4 block">
@@ -1070,7 +1341,7 @@ export default function AlertManagerPage() {
                       Show hidden
                     </label>
                     {silences.length > 0 && (
-                      <Button onClick={() => setShowSilenceForm(true)}>
+                      <Button onClick={() => setShowSilenceForm(true)} size="sm">
                         <span className="material-icons text-sm mr-2">add</span>
                         Create Silence
                       </Button>
@@ -1236,7 +1507,7 @@ export default function AlertManagerPage() {
                       Silences temporarily suppress alert notifications. Create
                       a silence to stop alerts during maintenance.
                     </p>
-                    <Button onClick={() => setShowSilenceForm(true)}>
+                    <Button onClick={() => setShowSilenceForm(true)} size="sm">
                       <span className="material-icons text-sm mr-2">add</span>
                       Create Silence
                     </Button>

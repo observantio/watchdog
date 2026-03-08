@@ -3,7 +3,7 @@ import { useAutoRefresh } from "../hooks";
 import PageHeader from "../components/ui/PageHeader";
 import AutoRefreshControl from "../components/ui/AutoRefreshControl";
 import { queryLogs, getLabels, getLabelValues, getLogVolume } from "../api";
-import { Card, Button, Alert } from "../components/ui";
+import { Card, Button } from "../components/ui";
 import { DEFAULT_QUERY_LIMITS, MAX_LOG_OPTIONS } from "../utils/constants";
 import LogQueryForm from "../components/loki/LogQueryForm";
 import LogResults from "../components/loki/LogResults";
@@ -69,7 +69,6 @@ export default function LokiPage() {
   const [queryResult, setQueryResult] = useState(null);
   const [volume, setVolume] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [topTerms, setTopTerms] = useState([]);
 
   const logStats = useMemo(() => {
@@ -370,7 +369,6 @@ export default function LokiPage() {
   }
 
   async function executeQuery(overrideFilters, overridePattern) {
-    setError(null);
     setLoading(true);
 
     const effectivePattern =
@@ -385,7 +383,7 @@ export default function LokiPage() {
       if (queryMode === "custom" && overrideFilters === undefined) {
         q = customLogQL.trim();
         if (!q) {
-          setError("Please enter a LogQL query");
+          toast.error("Please enter a LogQL query");
           setLoading(false);
           return;
         }
@@ -434,7 +432,7 @@ export default function LokiPage() {
         safeResult,
       );
     } catch (e) {
-      setError(e.message || "Failed to query logs");
+      toast.error(e?.message || "Failed to query logs");
     } finally {
       setLoading(false);
     }
@@ -536,12 +534,6 @@ export default function LokiPage() {
             </Card>
           ))}
         </div>
-      )}
-
-      {error && (
-        <Alert variant="error" className="mb-6" onClose={() => setError(null)}>
-          <strong>Error:</strong> {error}
-        </Alert>
       )}
 
       <Card title="Search & Filter" className="mb-6">

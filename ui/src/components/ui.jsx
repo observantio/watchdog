@@ -384,9 +384,6 @@ MetricCard.propTypes = {
   className: PropTypes.string,
 };
 
-/**
- * Code block component with syntax highlighting
- */
 export function CodeBlock({ children, language = "json", className }) {
   return (
     <pre

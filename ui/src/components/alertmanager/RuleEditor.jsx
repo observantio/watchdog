@@ -22,7 +22,7 @@ export default function RuleEditor({
   onCancel,
 }) {
   const MAX_CORRELATION_ID_LENGTH = 10;
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canReadChannels = hasPermission("read:channels");
   const AUTO_SCOPE = "__auto__";
 
@@ -73,6 +73,23 @@ export default function RuleEditor({
         .map((k) => String(k?.key || "").trim())
         .filter(Boolean),
     [visibleApiKeys],
+  );
+  const ruleOwnerId = String(
+    rule?.createdBy || rule?.created_by || "",
+  ).trim();
+  const isRuleOwner = ruleOwnerId && String(user?.id || "").trim() === ruleOwnerId;
+  const selectedExplicitApiScopes = selectedApiScopes.filter(
+    (id) => id !== AUTO_SCOPE,
+  );
+  const hasExplicitApiScope = selectedExplicitApiScopes.length > 0;
+  const hasHiddenSelectedApiScope = selectedExplicitApiScopes.some(
+    (scope) => !visibleApiScopeValues.includes(scope),
+  );
+  const showOwnerScopeHiddenHint = Boolean(
+    rule &&
+      ruleOwnerId &&
+      !isRuleOwner &&
+      (!hasExplicitApiScope || hasHiddenSelectedApiScope),
   );
 
   useEffect(() => {
@@ -463,13 +480,18 @@ export default function RuleEditor({
                               <span className="text-sm font-medium text-sre-text truncate">
                                 {k.name}
                                 {k.is_default ? " (Default)" : ""}
-                                {k.is_enabled ? " — active" : ""}
+                                {k.is_enabled ? " — active" : " — inactive"}
                               </span>
                             </div>
                           </button>
                         );
                       })}
                     </div>
+                    {showOwnerScopeHiddenHint && (
+                      <p className="text-xs text-sre-text-muted">
+                        The API key selected for this rule has not been shared with you by the owner.
+                      </p>
+                    )}
                   </div>
                 )}
 

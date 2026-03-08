@@ -12,7 +12,7 @@ import AutoRefreshControl from "../components/ui/AutoRefreshControl";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { fetchTempoServices, searchTraces, getTrace } from "../api";
-import { Card, Button, Select, Input, Alert, Spinner } from "../components/ui";
+import { Card, Button, Select, Input, Spinner } from "../components/ui";
 import ServiceGraph from "../components/tempo/ServiceGraph";
 const TraceResults = lazy(() => import("../components/tempo/TraceResults"));
 const TraceTimeline = lazy(() => import("../components/tempo/TraceTimeline"));
@@ -64,7 +64,6 @@ export default function TempoPage() {
   const [graphTraces, setGraphTraces] = useState([]);
   const [graphLoading, setGraphLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState(saved.viewMode || "list");
   const [tracePage, setTracePage] = useState(saved.tracePage || 1);
   const [pageSize, setPageSize] = useState(saved.pageSize || TRACE_PAGE_SIZE);
@@ -216,7 +215,7 @@ export default function TempoPage() {
             })),
           });
         } else {
-          if (!silent) setError("Trace data is incomplete — no spans returned");
+          if (!silent) toast.error("Trace data is incomplete — no spans returned");
         }
         return true;
       } catch (e) {
@@ -225,15 +224,15 @@ export default function TempoPage() {
           prunePersistedSelectedTraceIds(new Set([traceId]));
           setSelectedTrace(null);
           if (!silent) {
-            setError(`Trace not found: ${traceId}`);
+            toast.error(`Trace not found: ${traceId}`);
           }
         } else {
-          if (!silent) setError(`Failed to load trace: ${e.message}`);
+          if (!silent) toast.error(`Failed to load trace: ${e?.message || e}`);
         }
         return false;
       }
     },
-    [prunePersistedSelectedTraceIds, removePersistedSelectedTrace, viewMode],
+    [prunePersistedSelectedTraceIds, removePersistedSelectedTrace, toast, viewMode],
   );
 
   function toggleSelectTrace(traceId, checked) {
@@ -323,7 +322,6 @@ export default function TempoPage() {
 
   async function onSearch(e) {
     if (e) e.preventDefault();
-    setError(null);
 
     if (viewMode !== "list") {
       setViewMode("list");
@@ -377,7 +375,7 @@ export default function TempoPage() {
         if (discovered.length) setServices(discovered);
       }
     } catch (e) {
-      setError(e.message);
+      toast.error(e?.message || "Failed to search traces");
     } finally {
       setLoading(false);
     }
@@ -457,12 +455,6 @@ export default function TempoPage() {
           />
         </div>
       </PageHeader>
-
-      {error && (
-        <Alert variant="error" className="mb-6" onClose={() => setError(null)}>
-          <strong>Error:</strong> {error}
-        </Alert>
-      )}
 
       {/* Stats Bar */}
       {traceStats && (

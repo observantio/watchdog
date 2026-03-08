@@ -13,7 +13,7 @@ vi.mock("../../ui", () => ({
 }));
 vi.mock("../../HelpTooltip", () => ({ default: () => <span /> }));
 vi.mock("../../../contexts/AuthContext", () => ({
-  useAuth: vi.fn(() => ({ hasPermission: vi.fn() })),
+  useAuth: vi.fn(() => ({ hasPermission: vi.fn(), user: null })),
 }));
 
 import RuleEditor from "../RuleEditor";
@@ -88,7 +88,7 @@ describe("RuleEditor API key selector", () => {
   ];
 
   it("starts with auto scope active and individual options disabled", () => {
-    useAuth.mockReturnValue({ hasPermission: () => true });
+    useAuth.mockReturnValue({ hasPermission: () => true, user: { id: "u-1" } });
     render(<RuleEditor {...defaultProps} apiKeys={apiKeys} />);
 
     const autoBtn = screen.getByRole("button", { name: /auto scope/i });
@@ -103,7 +103,7 @@ describe("RuleEditor API key selector", () => {
   });
 
   it("can toggle an explicit key then return to auto when deselected", () => {
-    useAuth.mockReturnValue({ hasPermission: () => true });
+    useAuth.mockReturnValue({ hasPermission: () => true, user: { id: "u-1" } });
     render(<RuleEditor {...defaultProps} apiKeys={apiKeys} />);
 
     const autoBtn = screen.getByRole("button", { name: /auto scope/i });
@@ -123,6 +123,36 @@ describe("RuleEditor API key selector", () => {
     ubuntuBtn = screen.getByRole("button", { name: /ubuntu/i });
     expect(autoBtn.querySelector("input")).toBeChecked();
     expect(ubuntuBtn.querySelector("input")).not.toBeChecked();
+  });
+
+  it("shows owner-key visibility hint for non-owner when scope is auto/unknown", () => {
+    useAuth.mockReturnValue({ hasPermission: () => true, user: { id: "viewer-1" } });
+    render(
+      <RuleEditor
+        {...defaultProps}
+        apiKeys={apiKeys}
+        rule={{ ...baseRule, createdBy: "owner-1", orgId: "" }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/api key selected for this rule has not been shared/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows owner-key visibility hint for non-owner when selected scope is not visible", () => {
+    useAuth.mockReturnValue({ hasPermission: () => true, user: { id: "viewer-1" } });
+    render(
+      <RuleEditor
+        {...defaultProps}
+        apiKeys={apiKeys}
+        rule={{ ...baseRule, createdBy: "owner-1", orgId: "unshared-scope-id" }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/api key selected for this rule has not been shared/i),
+    ).toBeInTheDocument();
   });
 });
 
