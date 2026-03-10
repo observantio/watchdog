@@ -13,7 +13,7 @@ from datetime import datetime
 import types
 
 import pytest
-from fastapi import HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
@@ -309,3 +309,17 @@ def test_scope_aware_current_user_skips_base_rate_limit(monkeypatch):
     assert resolved.org_id == "org-live"
     assert resolved.permissions == ["read:traces"]
     assert rate_limit_calls == []
+
+
+def test_scope_aware_current_user_dependency_does_not_require_body(monkeypatch):
+    app = FastAPI()
+
+    monkeypatch.setattr(dependencies, "_scope_aware_current_user", lambda: _token_data())
+    monkeypatch.setattr(dependencies, "apply_scoped_rate_limit", lambda current_user, scope: None)
+
+    @app.get("/scoped")
+    def scoped(_current_user: TokenData = Depends(dependencies.require_authenticated_with_scope("auth"))):
+        return {"ok": True}
+
+    operation = app.openapi()["paths"]["/scoped"]["get"]
+    assert "requestBody" not in operation

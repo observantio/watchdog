@@ -283,7 +283,7 @@ def _scope_exists_in_other_tenants(*, scope_id: str | None = None, tenant_id: st
 
 def _scope_aware_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> TokenData:
     return _authenticate_request(
         request,

@@ -342,6 +342,15 @@ async def test_user_group_and_mfa_routes_cover_admin_and_error_paths(monkeypatch
     monkeypatch.setattr(users_router.auth_service, "update_user", lambda *_args: user_obj)
     assert await users_router.update_user("u2", UserUpdate(group_ids=["g1"]), admin_user) is response_obj
 
+    monkeypatch.setattr(
+        users_router.auth_service,
+        "update_user",
+        lambda *_args: (_ for _ in ()).throw(HTTPException(status_code=403, detail="Users cannot change their own role, tenant scope, or group memberships")),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await users_router.update_user("u1", UserUpdate(role=Role.USER), admin_user)
+    assert exc.value.status_code == 403
+
     with pytest.raises(HTTPException) as exc:
         await users_router.update_user_password("u2", UserPasswordUpdate(current_password="oldpass123", new_password="newpass123"), _current_user(is_superuser=False, permissions=[]))
     assert exc.value.status_code == 403
@@ -418,6 +427,15 @@ async def test_user_group_and_mfa_routes_cover_admin_and_error_paths(monkeypatch
         "success": True,
         "permissions": ["read:users"],
     }
+
+    monkeypatch.setattr(
+        users_router.auth_service,
+        "update_user_permissions",
+        lambda *_args: (_ for _ in ()).throw(HTTPException(status_code=403, detail="Users cannot change their own permissions")),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await users_router.update_user_permissions("u1", ["read:users"], admin_user)
+    assert exc.value.status_code == 403
 
     monkeypatch.setattr(users_router.auth_service, "list_all_permissions", lambda: [{"name": "read:users"}, {"name": "delete:users"}])
     assert await users_router.list_all_permissions(admin_user) == [{"name": "read:users"}, {"name": "delete:users"}]

@@ -65,7 +65,7 @@ def test_non_admin_cannot_create_admin_user():
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
-def test_admin_cannot_demote_another_admin_but_can_deactivate():
+def test_admin_can_only_toggle_is_active_for_another_admin():
     svc = DatabaseAuthService()
     svc._lazy_init()
 
@@ -86,7 +86,12 @@ def test_admin_cannot_demote_another_admin_but_can_deactivate():
     with pytest.raises(HTTPException) as exc:
         svc.update_user(target.id, UserUpdate(role=Role.USER), tenant_id, actor.id)
     assert exc.value.status_code == 403
-    assert "cannot be demoted" in str(exc.value.detail).lower()
+    assert "only be activated or deactivated" in str(exc.value.detail).lower()
+
+    with pytest.raises(HTTPException) as exc:
+        svc.update_user(target.id, UserUpdate(full_name='Renamed Target'), tenant_id, actor.id)
+    assert exc.value.status_code == 403
+    assert "only be activated or deactivated" in str(exc.value.detail).lower()
 
     updated = svc.update_user(target.id, UserUpdate(is_active=False), tenant_id, actor.id)
     assert updated is not None

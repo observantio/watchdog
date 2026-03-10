@@ -363,11 +363,17 @@ def update_user(
             if k in MUTABLE_USER_FIELDS or k == "group_ids"
         }
 
-        if updater_id and user_id == updater_id and update_data.get("is_active") is False:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot disable your own account",
-            )
+        if updater_id and user_id == updater_id:
+            if update_data.get("is_active") is False:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You cannot disable your own account",
+                )
+            if set(update_data.keys()) & {"role", "group_ids", "org_id"}:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Users cannot change their own role, tenant scope, or group memberships",
+                )
 
         updater_user = _get_user(db, user_id=updater_id, tenant_id=tenant_id) if updater_id else None
         updater_is_superuser = bool(getattr(updater_user, "is_superuser", False))
@@ -395,12 +401,11 @@ def update_user(
             if (
                 _is_admin_user(user)
                 and str(user_id) != str(updater_id)
-                and requested_role is not None
-                and _role_to_text(requested_role) != Role.ADMIN.value
+                and (set(update_data.keys()) - {"is_active"})
             ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admin accounts cannot be demoted; only deactivation is allowed",
+                    detail="Admin accounts can only be activated or deactivated by another admin",
                 )
 
         if getattr(user, "auth_provider", "local") != "local" and "email" in update_data:
@@ -556,6 +561,11 @@ def update_user_permissions(
         actor = _get_user(db, user_id=actor_user_id, tenant_id=tenant_id)
         if not actor:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Actor not found")
+        if str(user_id) == str(actor_user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Users cannot change their own permissions",
+            )
 
         actor_role_text = _role_to_text(actor_role or getattr(actor, "role", None))
         actor_is_superuser = bool(actor_is_superuser or getattr(actor, "is_superuser", False))
