@@ -30,7 +30,7 @@ async def grafana_auth(
     request: Request,
     token: Optional[str] = Query(None),
     orig: Optional[str] = Query(None),
-):
+) -> Response:
     enforce_public_endpoint_security(
         request,
         scope="grafana_proxy_auth",
@@ -48,7 +48,7 @@ async def bootstrap_grafana_session(
     request: Request,
     payload: GrafanaBootstrapSessionRequest = Body(default_factory=GrafanaBootstrapSessionRequest),
     _current_user: TokenData = Depends(require_authenticated_with_scope("grafana")),
-):
+) -> JSONResponse:
     enforce_public_endpoint_security(
         request,
         scope="grafana_bootstrap_session",

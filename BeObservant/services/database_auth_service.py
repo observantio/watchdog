@@ -11,9 +11,10 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import logging
 import hashlib
+import importlib.util
 import secrets
 import threading
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from cryptography.fernet import Fernet
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,8 +22,7 @@ from sqlalchemy.orm import Session
 
 try:
     from db_models import Group, User, UserApiKey
-except ImportError:
-    import importlib.util
+except ImportError as exc:
     import os
     import sys
 
@@ -31,6 +31,8 @@ except ImportError:
     if not os.path.exists(db_models_path):
         raise
     spec = importlib.util.spec_from_file_location("db_models", db_models_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load db_models from {db_models_path}") from exc
     db_models = importlib.util.module_from_spec(spec)
     sys.modules["db_models"] = db_models
     spec.loader.exec_module(db_models)
@@ -47,6 +49,7 @@ from models.access.user_models import (
     UserResponse,
     UserUpdate,
 )
+from custom_types.json import JSONDict
 from services.auth.api_key_ops import (
     backfill_otlp_tokens as backfill_otlp_tokens_op,
     create_api_key as create_api_key_op,
@@ -104,7 +107,7 @@ logger = logging.getLogger(__name__)
 class DatabaseAuthService:
     _MFA_SETUP_RESPONSE = "mfa_setup_required"
     _MFA_REQUIRED_RESPONSE = "mfa_required"
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._initialized = False
         self._init_lock = threading.Lock()
@@ -119,26 +122,24 @@ class DatabaseAuthService:
     def is_password_auth_enabled(self) -> bool:
         return bool(config.AUTH_PASSWORD_FLOW_ENABLED)
 
-    def _lazy_init(self):
+    def _lazy_init(self) -> None:
         if self._initialized:
             return
         with self._init_lock:
-            if self._initialized:
-                return
             try:
                 self._ensure_default_setup()
                 self._initialized = True
             except (SQLAlchemyError, ValueError) as exc:
                 logger.warning("Failed to initialize auth service: %s", exc)
 
-    def _ensure_default_setup(self):
-        return db_bootstrap.ensure_default_setup(self)
+    def _ensure_default_setup(self) -> None:
+        db_bootstrap.ensure_default_setup(self)
 
-    def _ensure_permissions(self, db: Session):
-        return db_bootstrap.ensure_permissions(db)
+    def _ensure_permissions(self, db: Session) -> None:
+        db_bootstrap.ensure_permissions(db)
 
-    def _ensure_default_api_key(self, db: Session, user: User):
-        return db_bootstrap.ensure_default_api_key(self, db, user)
+    def _ensure_default_api_key(self, db: Session, user: User) -> None:
+        db_bootstrap.ensure_default_api_key(self, db, user)
 
 
     def hash_password(self, password: str) -> str:
@@ -147,8 +148,9 @@ class DatabaseAuthService:
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return db_password.verify_password(self, plain_password, hashed_password)
 
-    def reset_user_password_temp(self, actor_user_id: str, target_user_id: str, tenant_id: str) -> dict:
-        return db_password.reset_user_password_temp(self, actor_user_id, target_user_id, tenant_id)
+    def reset_user_password_temp(self, actor_user_id: str, target_user_id: str, tenant_id: str) -> JSONDict:
+        result = db_password.reset_user_password_temp(self, actor_user_id, target_user_id, tenant_id)
+        return {str(key): value for key, value in result.items()}
 
     def _get_fernet(self) -> Optional[Fernet]:
         return db_mfa._get_fernet(self)
@@ -200,7 +202,7 @@ class DatabaseAuthService:
     def reset_totp(self, user_id: str, admin_id: str) -> bool:
         return db_mfa.reset_totp(self, user_id, admin_id)
 
-    def _mfa_setup_challenge(self, user: User) -> dict:
+    def _mfa_setup_challenge(self, user: User) -> JSONDict:
         return db_mfa.mfa_setup_challenge(self, user)
 
     def _needs_mfa_setup(self, user: User) -> bool:
@@ -222,7 +224,7 @@ class DatabaseAuthService:
 
     def login(
         self, username: str, password: str, mfa_code: Optional[str] = None
-    ) -> Optional[Union[Token, dict]]:
+    ) -> Optional[Union[Token, JSONDict]]:
         return db_auth.login(self, username, password, mfa_code)
 
     def exchange_oidc_authorization_code(
@@ -232,7 +234,7 @@ class DatabaseAuthService:
         transaction_id: Optional[str] = None,
         state: Optional[str] = None,
         code_verifier: Optional[str] = None,
-    ) -> Optional[Union[Token, dict]]:
+    ) -> Optional[Union[Token, JSONDict]]:
         return db_auth.exchange_oidc_authorization_code(
             self,
             code,
@@ -265,10 +267,10 @@ class DatabaseAuthService:
         return db_auth.provision_external_user(self, email=email, username=username, full_name=full_name)
 
 
-    def _extract_permissions_from_oidc_claims(self, claims: Dict[str, Any]) -> List[str]:
+    def _extract_permissions_from_oidc_claims(self, claims: JSONDict) -> List[str]:
         return db_oidc.extract_permissions_from_oidc_claims(claims)
 
-    def _sync_user_from_oidc_claims(self, claims: Dict[str, Any]) -> Optional[User]:
+    def _sync_user_from_oidc_claims(self, claims: JSONDict) -> Optional[User]:
         return db_oidc.sync_user_from_oidc_claims(self, claims)
 
     def _provision_oidc_user(
@@ -283,20 +285,20 @@ class DatabaseAuthService:
 
     def _update_oidc_user(
         self, db: Session, user: User, email: str, full_name: Optional[str], subject: str
-    ):
-        return db_oidc.update_oidc_user(db, user, email, full_name, subject)
+    ) -> None:
+        db_oidc.update_oidc_user(db, user, email, full_name, subject)
 
 
-    def get_user_permissions(self, user: User) -> List[str]:
+    def get_user_permissions(self, user: User | UserSchema) -> List[str]:
         return db_permissions.get_user_permissions(self, user)
 
-    def get_user_direct_permissions(self, user: User) -> List[str]:
+    def get_user_direct_permissions(self, user: User | UserSchema) -> List[str]:
         return db_permissions.get_user_direct_permissions(user)
 
     def _collect_permissions(self, user: User) -> List[str]:
         return db_permissions.collect_permissions(user)
 
-    def list_all_permissions(self) -> List[Dict[str, Any]]:
+    def list_all_permissions(self) -> List[dict[str, object]]:
         return db_permissions.list_all_permissions()
 
     def _to_user_schema(self, user: User) -> UserSchema:
@@ -399,8 +401,8 @@ class DatabaseAuthService:
     def delete_api_key(self, user_id: str, key_id: str) -> bool:
         return delete_api_key_op(self, user_id, key_id)
 
-    def list_api_key_shares(self, owner_user_id: str, tenant_id: str, key_id: str):
-        return list_api_key_shares_op(self, owner_user_id, tenant_id, key_id)
+    def list_api_key_shares(self, owner_user_id: str, tenant_id: str, key_id: str) -> List[JSONDict]:
+        return [share.model_dump() for share in list_api_key_shares_op(self, owner_user_id, tenant_id, key_id)]
 
     def replace_api_key_shares(
         self,
@@ -409,8 +411,11 @@ class DatabaseAuthService:
         key_id: str,
         user_ids: List[str],
         group_ids: Optional[List[str]] = None,
-    ):
-        return replace_api_key_shares_op(self, owner_user_id, tenant_id, key_id, user_ids, group_ids=group_ids)
+    ) -> List[JSONDict]:
+        return [
+            share.model_dump()
+            for share in replace_api_key_shares_op(self, owner_user_id, tenant_id, key_id, user_ids, group_ids=group_ids)
+        ]
 
     def delete_api_key_share(
         self, owner_user_id: str, tenant_id: str, key_id: str, shared_user_id: str
@@ -420,7 +425,7 @@ class DatabaseAuthService:
     def validate_otlp_token(self, token: str, *, suppress_errors: bool = True) -> Optional[str]:
         return validate_otlp_token_op(self, token, suppress_errors=suppress_errors)
 
-    def backfill_otlp_tokens(self):
+    def backfill_otlp_tokens(self) -> None:
         backfill_otlp_tokens_op(self)
 
 
@@ -545,11 +550,11 @@ class DatabaseAuthService:
         action: str,
         resource_type: str,
         resource_id: str,
-        details: Dict[str, Any],
+        details: JSONDict,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
-    ):
-        return db_audit.log_audit(
+    ) -> None:
+        db_audit.log_audit(
             db, tenant_id, user_id, action, resource_type, resource_id, details,
             ip_address=ip_address, user_agent=user_agent,
         )

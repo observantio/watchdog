@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import logging
 from urllib.parse import parse_qsl, urlencode
+from typing import Awaitable, Callable
 
 from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
+from starlette.responses import Response
 
 from database import get_db_session
 from db_models import AuditLog
@@ -77,7 +80,7 @@ def _is_https_request(request: Request) -> bool:
     return scheme == "https"
 
 
-def _set_header_if_missing(headers, key: str, value: str) -> None:
+def _set_header_if_missing(headers: MutableHeaders, key: str, value: str) -> None:
     if key not in headers:
         headers[key] = value
 
@@ -119,7 +122,7 @@ def _write_resource_view_audit(
         )
 
 
-async def security_headers_middleware(request: Request, call_next):
+async def security_headers_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     request_ip = client_ip(request)
     user_agent = request.headers.get("user-agent")
     context_tokens = set_request_audit_context(request_ip, user_agent)

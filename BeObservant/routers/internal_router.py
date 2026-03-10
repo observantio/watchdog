@@ -25,7 +25,7 @@ internal_service = InternalService()
 
 
 @router.get("/otlp/validate", dependencies=[Depends(internal_service.verify_service_token)])
-async def validate_otlp_token_query(token: str = Query(..., min_length=1)):
+async def validate_otlp_token_query(token: str = Query(..., min_length=1)) -> dict[str, str]:
     _ = token
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
@@ -37,7 +37,7 @@ async def validate_otlp_token_query(token: str = Query(..., min_length=1)):
 async def validate_otlp_token_post(
     payload: OtlpValidateRequest,
     x_otlp_token: str | None = Header(None),
-):
+) -> dict[str, str]:
     token = (payload.token or x_otlp_token or "").strip()
     if not token:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing token")

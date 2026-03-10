@@ -288,7 +288,7 @@ class Config:
 
         self.DEFAULT_RULE_GROUP: str = os.getenv("DEFAULT_RULE_GROUP", "default")
         self.DEFAULT_SLACK_CHANNEL: str = os.getenv("DEFAULT_SLACK_CHANNEL", "default")
-        self.ENABLED_NOTIFICATION_CHANNEL_TYPES: list = [
+        self.ENABLED_NOTIFICATION_CHANNEL_TYPES: list[str] = [
             channel_type.strip().lower()
             for channel_type in os.getenv(
                 "ENABLED_NOTIFICATION_CHANNEL_TYPES",
@@ -321,7 +321,7 @@ class Config:
             kv_version=self.VAULT_KV_VERSION,
             timeout=self.VAULT_TIMEOUT,
             cacert=self.VAULT_CACERT,
-        )
+            )
 
         self._secret_provider = provider
 
@@ -360,7 +360,7 @@ class Config:
     def get_secret(self, key: str) -> Optional[str]:
         val = getattr(self, key, None)
         if val:
-            return val
+            return val if isinstance(val, str) else str(val)
         try:
             return self._secret_provider.get(key)
         except (OSError, RuntimeError, TypeError, ValueError):

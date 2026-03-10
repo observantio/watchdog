@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createRcaAnalyzeJob, deleteRcaReport, listRcaJobs } from "../api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createRcaAnalyzeJob,
+  deleteRcaReport,
+  getRcaJob,
+  listRcaJobs,
+} from "../api";
 import { useToast } from "../contexts/ToastContext";
 
 const JOB_POLL_MS = 5000;
+const RECONCILE_LOCAL_JOBS_LIMIT = 10;
 const ACTIVE_JOBS_STORAGE_KEY = "rcaPage.activeJobs";
 const DELETED_REPORTS_STORAGE_KEY = "rcaPage.deletedReportIds";
 const TERMINAL_JOB_STATUSES = new Set([
@@ -117,6 +123,7 @@ function filterDeletedJobs(items, deletedReportIds) {
 export function useRcaJobs() {
   const toast = useToast();
   const [jobs, setJobs] = useState(() => loadActiveJobsFromStorage());
+  const jobsRef = useRef(jobs);
   const [deletedReportIds, setDeletedReportIds] = useState(() =>
     loadDeletedReportIdsFromStorage(),
   );
@@ -124,6 +131,10 @@ export function useRcaJobs() {
   const [creatingJob, setCreatingJob] = useState(false);
   const [deletingReport, setDeletingReport] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
+
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
 
   const refreshJobs = useCallback(async () => {
     setLoadingJobs(true);
@@ -133,6 +144,38 @@ export function useRcaJobs() {
         Array.isArray(res?.items) ? res.items : [],
         deletedReportIds,
       );
+      const authoritativeJobIds = new Set(
+        items.map((job) => String(job?.job_id || "")).filter(Boolean),
+      );
+
+      const localOnlyActiveIds = Array.from(
+        new Set(
+          jobsRef.current
+            // use latest in-memory jobs to reconcile stale local queue entries
+            .filter((job) => {
+              const jobId = String(job?.job_id || "");
+              if (!jobId || jobId.startsWith("pending-")) return false;
+              if (isTerminalStatus(job?.status)) return false;
+              return !authoritativeJobIds.has(jobId);
+            })
+            .map((job) => String(job.job_id)),
+        ),
+      ).slice(0, RECONCILE_LOCAL_JOBS_LIMIT);
+
+      if (localOnlyActiveIds.length > 0) {
+        const reconciled = await Promise.allSettled(
+          localOnlyActiveIds.map((jobId) => getRcaJob(jobId)),
+        );
+        for (const result of reconciled) {
+          if (result.status !== "fulfilled") continue;
+          const job = result.value;
+          const jobId = String(job?.job_id || "");
+          if (!jobId) continue;
+          if (authoritativeJobIds.has(jobId)) continue;
+          items.push(job);
+        }
+      }
+
       setJobs((prev) => {
         const merged = mergeJobs(items, prev);
         if (

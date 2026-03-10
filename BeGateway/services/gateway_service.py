@@ -11,7 +11,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 import logging
-from ipaddress import ip_address, ip_network
+from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
 from typing import Optional
 from urllib.parse import quote
 
@@ -25,9 +25,11 @@ from .token_cache import make_token_cache
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["GatewayAuthService", "DatabaseUnavailable"]
 
-def _parse_networks(allowlist: str) -> list:
-    networks = []
+
+def _parse_networks(allowlist: str) -> list[IPv4Network | IPv6Network]:
+    networks: list[IPv4Network | IPv6Network] = []
     for entry in (e.strip() for e in allowlist.split(",") if e.strip()):
         if "/" not in entry:
             addr = ip_address(entry)
@@ -209,5 +211,5 @@ class GatewayAuthService:
         self._token_cache.set(token, org)
         return org
 
-    def health(self) -> dict:
+    def health(self) -> dict[str, str]:
         return {"status": "healthy", "service": "gateway-auth-service"}

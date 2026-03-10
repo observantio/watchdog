@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Index, Integer,
@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from config import config
+from custom_types.json import JSONDict, JSONList
 
 
 class Base(DeclarativeBase):
@@ -104,7 +105,7 @@ class Tenant(Base):
     name:         Mapped[str]            = mapped_column(String(100),  unique=True, nullable=False, index=True)
     display_name: Mapped[Optional[str]]  = mapped_column(String(200))
     is_active:    Mapped[bool]           = mapped_column(Boolean,      default=True, nullable=False)
-    settings:     Mapped[Dict[str, Any]] = mapped_column(JSON,         default=dict)
+    settings:     Mapped[JSONDict] = mapped_column(JSON,         default=dict)
     created_at:   Mapped[datetime]       = mapped_column(DateTime,     default=_now, nullable=False)
     updated_at:   Mapped[datetime]       = mapped_column(DateTime,     default=_now, onupdate=_now, nullable=False)
 
@@ -271,7 +272,7 @@ class AuditLog(Base):
     action:        Mapped[str]                  = mapped_column(String(100), nullable=False, index=True)
     resource_type: Mapped[str]                  = mapped_column(String(50),  nullable=False, index=True)
     resource_id:   Mapped[Optional[str]]        = mapped_column(String,      index=True)
-    details:       Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
+    details:       Mapped[Optional[JSONDict]] = mapped_column(JSON)
     ip_address:    Mapped[Optional[str]]        = mapped_column(String(45))
     user_agent:    Mapped[Optional[str]]        = mapped_column(Text)
     created_at:    Mapped[datetime]             = mapped_column(DateTime,    default=_now, nullable=False, index=True)
@@ -294,9 +295,9 @@ class GrafanaDashboard(Base):
     title:       Mapped[str]           = mapped_column(String(200), nullable=False)
     folder_uid:  Mapped[Optional[str]] = mapped_column(String(100))
     visibility:  Mapped[str]           = mapped_column(String(20),  nullable=False, default="private", index=True)
-    tags:        Mapped[List[Any]]     = mapped_column(JSON,        default=list)
+    tags:        Mapped[JSONList]     = mapped_column(JSON,        default=list)
     is_hidden:   Mapped[bool]          = mapped_column(Boolean,     default=False, nullable=False, index=True)
-    hidden_by:   Mapped[List[Any]]     = mapped_column(JSON,        default=list)
+    hidden_by:   Mapped[list[str]]     = mapped_column(JSON,        default=list)
     created_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, nullable=False)
     updated_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, onupdate=_now, nullable=False)
 
@@ -322,7 +323,7 @@ class GrafanaDatasource(Base):
     type:        Mapped[str]           = mapped_column(String(100), nullable=False)
     visibility:  Mapped[str]           = mapped_column(String(20),  nullable=False, default="private", index=True)
     is_hidden:   Mapped[bool]          = mapped_column(Boolean,     default=False, nullable=False, index=True)
-    hidden_by:   Mapped[List[Any]]     = mapped_column(JSON,        default=list)
+    hidden_by:   Mapped[list[str]]     = mapped_column(JSON,        default=list)
     created_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, nullable=False)
     updated_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, onupdate=_now, nullable=False)
 
@@ -347,7 +348,7 @@ class GrafanaFolder(Base):
     title:       Mapped[str]           = mapped_column(String(200), nullable=False)
     visibility:  Mapped[str]           = mapped_column(String(20),  nullable=False, default="private", index=True)
     allow_dashboard_writes: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    hidden_by:   Mapped[List[Any]]     = mapped_column(JSON, default=list)
+    hidden_by:   Mapped[list[str]]     = mapped_column(JSON, default=list)
     created_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, nullable=False)
     updated_at:  Mapped[datetime]      = mapped_column(DateTime,    default=_now, onupdate=_now, nullable=False)
 

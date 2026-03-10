@@ -9,17 +9,17 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import logging
-from typing import Dict, Any
 
 import psutil
+from custom_types.json import JSONDict
 
 logger = logging.getLogger(__name__)
 
-def _fallback(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _fallback(payload: JSONDict) -> JSONDict:
     return payload
 
 
-def cpu_metrics(proc: psutil.Process) -> Dict[str, Any]:
+def cpu_metrics(proc: psutil.Process) -> JSONDict:
     try:
         cpu_percent = proc.cpu_percent(interval=None)
         if cpu_percent == 0:
@@ -37,8 +37,8 @@ def cpu_metrics(proc: psutil.Process) -> Dict[str, Any]:
             "threads": num_threads,
             "frequency_mhz": None,
         }
-    except psutil.Error as e:
-        logger.error(f"Error getting CPU metrics: {e}")
+    except (psutil.Error, AttributeError, OSError, RuntimeError, ValueError) as exc:
+        logger.error("Error getting CPU metrics: %s", exc)
         return _fallback({
             "utilization": 0,
             "raw_utilization": 0,
@@ -48,7 +48,7 @@ def cpu_metrics(proc: psutil.Process) -> Dict[str, Any]:
         })
 
 
-def memory_metrics(proc: psutil.Process) -> Dict[str, Any]:
+def memory_metrics(proc: psutil.Process) -> JSONDict:
     try:
         mem_info = proc.memory_info()
         mem_percent = proc.memory_percent()
@@ -60,8 +60,8 @@ def memory_metrics(proc: psutil.Process) -> Dict[str, Any]:
             "vms_mb": round(vms_mb, 2),
             "utilization": round(mem_percent, 2),
         }
-    except psutil.Error as e:
-        logger.error(f"Error getting memory metrics: {e}")
+    except (psutil.Error, AttributeError, OSError, RuntimeError, ValueError) as exc:
+        logger.error("Error getting memory metrics: %s", exc)
         return _fallback({
             "rss_mb": 0,
             "vms_mb": 0,
@@ -69,7 +69,7 @@ def memory_metrics(proc: psutil.Process) -> Dict[str, Any]:
         })
 
 
-def disk_metrics(proc: psutil.Process) -> Dict[str, Any]:
+def disk_metrics(proc: psutil.Process) -> JSONDict:
     try:
         io_counters = proc.io_counters()
 
@@ -79,8 +79,8 @@ def disk_metrics(proc: psutil.Process) -> Dict[str, Any]:
             "read_count": io_counters.read_count,
             "write_count": io_counters.write_count,
         }
-    except psutil.Error as e:
-        logger.error(f"Error getting I/O metrics: {e}")
+    except (psutil.Error, AttributeError, OSError, RuntimeError, ValueError) as exc:
+        logger.error("Error getting I/O metrics: %s", exc)
         return _fallback({
             "read_mb": 0,
             "write_mb": 0,
@@ -89,7 +89,7 @@ def disk_metrics(proc: psutil.Process) -> Dict[str, Any]:
         })
 
 
-def network_metrics(proc: psutil.Process) -> Dict[str, Any]:
+def network_metrics(proc: psutil.Process) -> JSONDict:
     try:
         connections = proc.connections(kind="inet")
         status_counts: dict[str, int] = {}
@@ -104,8 +104,8 @@ def network_metrics(proc: psutil.Process) -> Dict[str, Any]:
             "time_wait": status_counts.get("TIME_WAIT", 0),
             "close_wait": status_counts.get("CLOSE_WAIT", 0),
         }
-    except psutil.Error as e:
-        logger.error(f"Error getting network metrics: {e}")
+    except (psutil.Error, AttributeError, OSError, RuntimeError, ValueError) as exc:
+        logger.error("Error getting network metrics: %s", exc)
         return _fallback({
             "total_connections": 0,
             "established": 0,
@@ -115,7 +115,7 @@ def network_metrics(proc: psutil.Process) -> Dict[str, Any]:
         })
 
 
-def determine_stress_status(cpu_percent: float, memory_percent: float, connections: int) -> Dict[str, Any]:
+def determine_stress_status(cpu_percent: float, memory_percent: float, connections: int) -> JSONDict:
     HIGH_CPU_THRESHOLD = 50
     HIGH_MEMORY_THRESHOLD = 80
     HIGH_CONNECTIONS_THRESHOLD = 100

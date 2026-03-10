@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "../hooks";
 import PageHeader from "../components/ui/PageHeader";
 import { Alert, Button, Card, Spinner } from "../components/ui";
@@ -44,6 +44,8 @@ export default function RCAPage() {
   const [lookupError, setLookupError] = useState(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [didRestoreSelectedJob, setDidRestoreSelectedJob] = useState(false);
+  const modalReloadedForJobRef = useRef(null);
 
   const {
     jobs,
@@ -131,6 +133,7 @@ export default function RCAPage() {
   }, [selectedJobId]);
 
   useEffect(() => {
+    if (didRestoreSelectedJob) return;
     try {
       const stored = localStorage.getItem(JOB_STORAGE_KEY);
       if (stored && jobs.some((j) => j.job_id === stored)) {
@@ -138,8 +141,10 @@ export default function RCAPage() {
       }
     } catch {
       // ignore
+    } finally {
+      setDidRestoreSelectedJob(true);
     }
-  }, [jobs, setSelectedJobId]);
+  }, [didRestoreSelectedJob, jobs, setSelectedJobId]);
 
   useEffect(() => {
     if (!jobs.length) return;
@@ -177,6 +182,24 @@ export default function RCAPage() {
       setViewModalOpen(true);
     }
   }, [reportLookupId]);
+
+  useEffect(() => {
+    if (!viewModalOpen) {
+      modalReloadedForJobRef.current = null;
+      return;
+    }
+    if (!selectedJobId) return;
+    if (hasReport || loadingPrimaryReport) return;
+    if (modalReloadedForJobRef.current === selectedJobId) return;
+    modalReloadedForJobRef.current = selectedJobId;
+    void reloadReport();
+  }, [
+    viewModalOpen,
+    selectedJobId,
+    hasReport,
+    loadingPrimaryReport,
+    reloadReport,
+  ]);
 
   useEffect(() => {
     if (reportErrorStatus === 404 && reportLookupId) {

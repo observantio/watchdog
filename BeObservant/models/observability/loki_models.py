@@ -8,9 +8,11 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
+
+from custom_types.json import JSONDict
 
 MAX_LOG_ENTRIES_DESC = "Maximum number of log entries to return"
 TIME_NS_START_DESC = "Start time in nanoseconds"
@@ -53,7 +55,7 @@ class LogStatsResponse(BaseModel):
 
 class LogResponse(BaseModel):
     status: str = Field(..., description=RESPONSE_STATUS_DESC)
-    data: Dict[str, Any] = Field(..., description="Log data containing streams and statistics")
+    data: JSONDict = Field(..., description="Log data containing streams and statistics")
     stats: Optional[LogStatsResponse] = None
 
 class LogLabelsResponse(BaseModel):

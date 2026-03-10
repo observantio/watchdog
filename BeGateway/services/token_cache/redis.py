@@ -28,7 +28,8 @@ class RedisTokenCache:
         if redis is None:
             raise RuntimeError("redis library not available")
         self._ttl = int(ttl)
-        self._client = redis.from_url(
+        redis_module = redis
+        self._client = redis_module.from_url(
             url,
             socket_timeout=socket_timeout,
             socket_connect_timeout=socket_timeout,
@@ -38,7 +39,7 @@ class RedisTokenCache:
         try:
             if not self._client.ping():
                 raise RuntimeError("redis ping returned falsy response")
-        except redis.RedisError as exc:
+        except redis_module.RedisError as exc:
             raise RuntimeError(f"unable to connect to Redis at {url}: {type(exc).__name__}") from exc
 
     @staticmethod

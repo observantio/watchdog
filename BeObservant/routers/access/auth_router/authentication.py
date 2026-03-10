@@ -31,7 +31,7 @@ from .shared import logger, notification_service, router, rtp
 
 
 @router.get("/mode", response_model=AuthModeResponse)
-async def auth_mode():
+async def auth_mode() -> AuthModeResponse:
     oidc_enabled = await rtp(auth_service.is_external_auth_enabled)
     password_enabled = await rtp(auth_service.is_password_auth_enabled) if oidc_enabled else True
     return AuthModeResponse(
@@ -44,7 +44,7 @@ async def auth_mode():
 
 
 @router.post("/login", response_model=Token)
-async def login(request: Request, login_request: LoginRequest, response: Response):
+async def login(request: Request, login_request: LoginRequest, response: Response) -> Token:
     rate_limit_func(request, "auth_login", config.RATE_LIMIT_LOGIN_PER_MINUTE, 60)
     token_or_challenge = await rtp(
         auth_service.login,
@@ -65,12 +65,13 @@ async def login(request: Request, login_request: LoginRequest, response: Respons
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "MFA required")
         if token_or_challenge.get("mfa_setup_required"):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=token_or_challenge)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication challenge could not be completed")
     set_auth_cookie(request, response, token_or_challenge.access_token)
     return token_or_challenge
 
 
 @router.post("/oidc/authorize-url", response_model=OIDCAuthURLResponse)
-async def oidc_authorize_url(request: Request, payload: OIDCAuthURLRequest):
+async def oidc_authorize_url(request: Request, payload: OIDCAuthURLRequest) -> OIDCAuthURLResponse:
     rate_limit_func(request, "auth_oidc_authorize", config.RATE_LIMIT_LOGIN_PER_MINUTE, 60)
     if not await rtp(auth_service.is_external_auth_enabled):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "OIDC is not enabled")
@@ -90,7 +91,7 @@ async def oidc_authorize_url(request: Request, payload: OIDCAuthURLRequest):
 
 
 @router.post("/oidc/exchange", response_model=Token)
-async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest, response: Response):
+async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest, response: Response) -> Token:
     rate_limit_func(request, "auth_oidc_exchange", config.RATE_LIMIT_LOGIN_PER_MINUTE, 60)
     if not await rtp(auth_service.is_external_auth_enabled):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "OIDC is not enabled")
@@ -112,19 +113,21 @@ async def oidc_exchange_token(request: Request, payload: OIDCCodeExchangeRequest
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "OIDC authentication failed")
     if isinstance(token_or_challenge, dict) and token_or_challenge.get("mfa_setup_required"):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=token_or_challenge)
+    if isinstance(token_or_challenge, dict):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "OIDC authentication challenge could not be completed")
     set_auth_cookie(request, response, token_or_challenge.access_token)
     return token_or_challenge
 
 
 @router.post("/logout")
-async def logout(request: Request, response: Response):
+async def logout(request: Request, response: Response) -> dict[str, str]:
     clear_auth_cookie(request, response)
     return {"message": "Logged out"}
 
 
 @router.post("/register", response_model=UserResponse)
 @handle_route_errors()
-async def register(request: Request, register_request: RegisterRequest):
+async def register(request: Request, register_request: RegisterRequest) -> UserResponse:
     if await rtp(auth_service.is_external_auth_enabled):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Registration is managed by the external identity provider")
     rate_limit_func(request, "auth_register", config.RATE_LIMIT_REGISTER_PER_HOUR, 3600)

@@ -26,6 +26,12 @@ def _normalize_username(v: str, *, full_check: bool = True) -> str:
         )
     return uname
 
+
+def _normalize_username_input(value: object, *, full_check: bool) -> str:
+    if not isinstance(value, str):
+        raise ValueError("username must be a string")
+    return _normalize_username(value, full_check=full_check)
+
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
@@ -37,8 +43,8 @@ class UserBase(BaseModel):
 
     @field_validator('username', mode='before')
     @classmethod
-    def normalize_username(cls, v):
-        return _normalize_username(v, full_check=True)
+    def normalize_username(cls, v: object) -> str:
+        return _normalize_username_input(v, full_check=True)
 
 class UserCreate(UserBase):
     password: Optional[str] = Field(None, min_length=8)
@@ -56,10 +62,10 @@ class UserUpdate(BaseModel):
 
     @field_validator("username", mode="before")
     @classmethod
-    def normalize_update_username(cls, v):
+    def normalize_update_username(cls, v: object) -> Optional[str]:
         if v is None:
             return None
-        return _normalize_username(v, full_check=True)
+        return _normalize_username_input(v, full_check=True)
 
 class UserPasswordUpdate(BaseModel):
     current_password: Optional[str] = None
@@ -111,8 +117,8 @@ class LoginRequest(BaseModel):
 
     @field_validator('username', mode='before')
     @classmethod
-    def normalize_login_username(cls, v):
-        return _normalize_username(v, full_check=False)
+    def normalize_login_username(cls, v: object) -> str:
+        return _normalize_username_input(v, full_check=False)
 
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -122,8 +128,8 @@ class RegisterRequest(BaseModel):
 
     @field_validator('username', mode='before')
     @classmethod
-    def normalize_register_username(cls, v):
-        return _normalize_username(v, full_check=True)
+    def normalize_register_username(cls, v: object) -> str:
+        return _normalize_username_input(v, full_check=True)
 
 class TotpEnrollResponse(BaseModel):
     otpauth_url: str

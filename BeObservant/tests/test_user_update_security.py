@@ -16,7 +16,7 @@ from config import config
 from services.database_auth_service import DatabaseAuthService
 from models.access.user_models import UserCreate, UserUpdate
 from models.access.auth_models import Role
-from db_models import Tenant
+from db_models import Tenant, User
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
 def test_non_admin_cannot_escalate_user_role():
@@ -62,3 +62,32 @@ def test_non_admin_cannot_create_admin_user():
             actor_is_superuser=False,
         )
     assert exc.value.status_code == 403
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_admin_cannot_demote_another_admin_but_can_deactivate():
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    actor = svc.create_user(UserCreate(username='admin-actor', email='admin-actor@example.com', password='pw', full_name='Actor'), tenant_id)
+    target = svc.create_user(UserCreate(username='admin-target', email='admin-target@example.com', password='pw', full_name='Target'), tenant_id)
+
+    with get_db_session() as db:
+        db_actor = db.query(User).filter_by(id=actor.id, tenant_id=tenant_id).first()
+        db_target = db.query(User).filter_by(id=target.id, tenant_id=tenant_id).first()
+        db_actor.role = Role.ADMIN.value
+        db_target.role = Role.ADMIN.value
+        db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        svc.update_user(target.id, UserUpdate(role=Role.USER), tenant_id, actor.id)
+    assert exc.value.status_code == 403
+    assert "cannot be demoted" in str(exc.value.detail).lower()
+
+    updated = svc.update_user(target.id, UserUpdate(is_active=False), tenant_id, actor.id)
+    assert updated is not None
+    assert updated.is_active is False

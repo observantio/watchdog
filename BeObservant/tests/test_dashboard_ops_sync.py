@@ -337,6 +337,42 @@ async def test_search_dashboards_honors_folder_ids_filter():
 
 
 @pytest.mark.asyncio
+async def test_search_dashboards_general_folder_filter_includes_dashboards_without_folder_id():
+    db = _session()
+    _seed_user_and_dashboard(db)
+
+    results = [
+        DashboardSearchResult(
+            id=101,
+            uid="dash-uid-1",
+            title="CPU Overview",
+            uri="db/cpu-overview",
+            url="/d/dash-uid-1/cpu-overview",
+            slug="cpu-overview",
+            type="dash-db",
+            tags=[],
+            folderId=None,
+            folderUid=None,
+            folderTitle=None,
+        )
+    ]
+    gs = _GrafanaServiceStub(search_results=results)
+    service = _ProxyStub(gs)
+
+    dashboards = await dashboard_ops.search_dashboards(
+        service,
+        db,
+        user_id="u1",
+        tenant_id="t1",
+        group_ids=[],
+        folder_ids=[0],
+    )
+
+    assert [d.uid for d in dashboards] == ["dash-uid-1"]
+    assert gs.last_search_kwargs.get("folder_ids") == [0]
+
+
+@pytest.mark.asyncio
 async def test_search_dashboards_excludes_foldered_when_requested_for_proxy_root_listing():
     db = _session()
     _seed_user_and_dashboard(db)

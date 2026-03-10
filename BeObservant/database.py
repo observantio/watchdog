@@ -15,7 +15,7 @@ import logging
 import os
 import threading
 from types import TracebackType
-from typing import Generator, Iterator, Optional
+from typing import Callable, Generator, Iterator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -27,7 +27,7 @@ from db_models import Base
 logger = logging.getLogger(__name__)
 
 _engine: Optional[Engine] = None
-_session_local: Optional[sessionmaker] = None
+_session_local: Optional[Callable[[], Session]] = None
 _init_lock = threading.Lock()
 
 
@@ -81,7 +81,7 @@ def init_database(
         )
 
 
-def _require_session_factory() -> sessionmaker:
+def _require_session_factory() -> Callable[[], Session]:
     if _session_local is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
     return _session_local

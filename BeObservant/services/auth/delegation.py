@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Set
+from typing import Iterable, Optional, Set, TYPE_CHECKING
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import Session, joinedload
 
 from db_models import Group, User
 from models.access.auth_models import Role
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 ADMIN_PERMISSION_PATTERNS = ("manage:",)
 ADMIN_ONLY_PERMISSION_EXACT = {"update:user_permissions", "update:group_permissions"}
 
 
-def role_to_text(value) -> str:
+def role_to_text(value: object) -> str:
     if isinstance(value, Role):
         return value.value
     normalized = str(value or "").strip().lower()
@@ -23,7 +26,7 @@ def role_to_text(value) -> str:
     return normalized
 
 
-def role_rank(value, role_rank_map: dict[str, int]) -> int:
+def role_rank(value: object, role_rank_map: dict[str, int]) -> int:
     return role_rank_map.get(role_to_text(value), 0)
 
 
@@ -62,9 +65,9 @@ def require_actor(actor_user_id: Optional[str], *, purpose: str) -> str:
 
 
 def resolve_actor_permissions(
-    service,
+    service: DatabaseAuthService,
     *,
-    db,
+    db: Session,
     actor_user_id: Optional[str],
     tenant_id: str,
     actor_permissions: Optional[list[str]],

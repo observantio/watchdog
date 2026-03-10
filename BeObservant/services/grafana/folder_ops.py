@@ -8,7 +8,9 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from typing import Dict, List, Optional
+from __future__ import annotations
+
+from typing import List, Optional, TYPE_CHECKING
 
 import httpx
 from fastapi import HTTPException
@@ -17,8 +19,12 @@ from sqlalchemy.orm import Session
 from config import config
 from db_models import GrafanaFolder
 from models.grafana.grafana_folder_models import Folder
+from custom_types.json import JSONDict
 from services.grafana.grafana_service import GrafanaAPIError
 from services.grafana.shared_ops import commit_session, group_id_strs, update_hidden_members
+
+if TYPE_CHECKING:
+    from services.grafana_proxy_service import GrafanaProxyService
 
 
 def _db_folder_by_uid(db: Session, tenant_id: str, uid: str) -> Optional[GrafanaFolder]:
@@ -87,7 +93,7 @@ def is_folder_accessible(
     return folder is not None
 
 
-def _folder_payload(folder_obj, *, db_folder: Optional[GrafanaFolder], user_id: str) -> Dict:
+def _folder_payload(folder_obj: object, *, db_folder: Optional[GrafanaFolder], user_id: str) -> JSONDict:
     if hasattr(folder_obj, "model_dump"):
         payload = folder_obj.model_dump()
     elif isinstance(folder_obj, dict):
@@ -100,11 +106,11 @@ def _folder_payload(folder_obj, *, db_folder: Optional[GrafanaFolder], user_id: 
     payload["allowDashboardWrites"] = bool(getattr(db_folder, "allow_dashboard_writes", False)) if db_folder else False
     payload["isHidden"] = bool(db_folder and user_id in (db_folder.hidden_by or []))
     payload["is_owned"] = bool(db_folder and db_folder.created_by == user_id)
-    return payload
+    return payload if isinstance(payload, dict) else {}
 
 
 async def get_folders(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     user_id: str,
     tenant_id: str,
@@ -144,7 +150,7 @@ async def get_folders(
 
 
 async def get_folder(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     uid: str,
     user_id: str,
@@ -167,7 +173,7 @@ async def get_folder(
 
 
 async def create_folder(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     title: str,
     user_id: str,
@@ -196,7 +202,7 @@ async def create_folder(
 
     uid = str(getattr(created, "uid", "") or "")
     if not uid:
-        return created
+        return created if isinstance(created, Folder) else Folder.model_validate(_folder_payload(created, db_folder=None, user_id=user_id))
 
     db_folder = GrafanaFolder(
         tenant_id=tenant_id,
@@ -218,7 +224,7 @@ async def create_folder(
 
 
 async def update_folder(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     uid: str,
     user_id: str,
@@ -274,7 +280,7 @@ async def update_folder(
 
 
 async def delete_folder(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     uid: str,
     user_id: str,

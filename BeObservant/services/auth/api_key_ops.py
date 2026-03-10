@@ -11,15 +11,19 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, cast
+from typing import List, Optional, TYPE_CHECKING
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import Session, joinedload
 
 from database import get_db_session
 from db_models import ApiKeyShare, Group, HiddenApiKey, User, UserApiKey
 from models.access.api_key_models import ApiKey, ApiKeyCreate, ApiKeyShareUser, ApiKeyUpdate
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 BACKFILL_BATCH_SIZE = 500
 ORG_SCOPE_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$")
@@ -42,21 +46,21 @@ def _normalize_scope_key(raw: Optional[str]) -> Optional[str]:
     return value
 
 
-def _require_user(db, user_id: str) -> User:
+def _require_user(db: Session, user_id: str) -> User:
     user = db.query(User).filter_by(id=user_id).first()
     if not user:
         raise ValueError("User not found")
     return user
 
 
-def _require_user_in_tenant(db, user_id: str, tenant_id: str) -> User:
+def _require_user_in_tenant(db: Session, user_id: str, tenant_id: str) -> User:
     user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
     if not user:
         raise ValueError("User not found")
     return user
 
 
-def _require_api_key_in_tenant(db, key_id: str, tenant_id: str) -> UserApiKey:
+def _require_api_key_in_tenant(db: Session, key_id: str, tenant_id: str) -> UserApiKey:
     api_key = db.query(UserApiKey).filter_by(id=key_id, tenant_id=tenant_id).first()
     if not api_key:
         raise ValueError("API key not found")
@@ -64,7 +68,7 @@ def _require_api_key_in_tenant(db, key_id: str, tenant_id: str) -> UserApiKey:
 
 
 def _disable_other_enabled_keys(
-    db, user_id: str, tenant_id: str, now: datetime, exclude_key_id: Optional[str] = None
+    db: Session, user_id: str, tenant_id: str, now: datetime, exclude_key_id: Optional[str] = None
 ) -> None:
     q = db.query(UserApiKey).filter(
         UserApiKey.user_id == user_id,
@@ -82,6 +86,37 @@ def _set_org_id(user: User, new_org_id: Optional[str], now: datetime) -> None:
     if str(user.org_id or "") != str(new_org_id or ""):
         user.org_id = new_org_id
         user.updated_at = now
+
+
+def _share_created_at(share: ApiKeyShare) -> datetime:
+    created_at = getattr(share, "created_at", None)
+    return created_at if isinstance(created_at, datetime) else datetime.now(timezone.utc)
+
+
+def _normalize_api_key_name(name: Optional[str]) -> str:
+    normalized = str(name or "").strip()
+    if not normalized:
+        raise ValueError("API key name is required")
+    return normalized
+
+
+def _assert_unique_api_key_name(
+    db: Session,
+    *,
+    tenant_id: str,
+    owner_user_id: str,
+    name: str,
+    exclude_key_id: Optional[str] = None,
+) -> None:
+    query = db.query(UserApiKey.id).filter(
+        UserApiKey.tenant_id == tenant_id,
+        UserApiKey.user_id == owner_user_id,
+        func.lower(UserApiKey.name) == name.lower(),
+    )
+    if exclude_key_id:
+        query = query.filter(UserApiKey.id != exclude_key_id)
+    if query.first():
+        raise ValueError("API key name already exists")
 
 
 def _api_key_to_schema(
@@ -102,7 +137,7 @@ def _api_key_to_schema(
                     username=getattr(shared_user, "username", None),
                     email=getattr(shared_user, "email", None),
                     can_use=bool(getattr(share, "can_use", True)),
-                    created_at=cast(datetime, getattr(share, "created_at")),
+                    created_at=_share_created_at(share),
                 )
             )
 
@@ -134,7 +169,7 @@ def _api_key_to_schema(
     return ApiKey.model_validate(payload)
 
 
-def list_api_keys(service, user_id: str, show_hidden: bool = False) -> List[ApiKey]:
+def list_api_keys(service: "DatabaseAuthService", user_id: str, show_hidden: bool = False) -> List[ApiKey]:
     service._lazy_init()
     with get_db_session() as db:
         viewer = db.query(User).filter_by(id=user_id).first()
@@ -174,26 +209,26 @@ def list_api_keys(service, user_id: str, show_hidden: bool = False) -> List[ApiK
             )
         }
 
-        for key in own_keys:
-            is_hidden = getattr(key, "id", None) in hidden_key_ids
+        for owned_key in own_keys:
+            is_hidden = getattr(owned_key, "id", None) in hidden_key_ids
             if is_hidden and not show_hidden:
                 continue
             output.append(
                 _api_key_to_schema(
-                    key,
+                    owned_key,
                     is_shared=False,
                     can_use=True,
-                    viewer_enabled=bool(getattr(key, "is_enabled", False)),
+                    viewer_enabled=bool(getattr(owned_key, "is_enabled", False)),
                     is_hidden=is_hidden,
                 )
             )
-            seen_ids.add(getattr(key, "id", None))
+            seen_ids.add(getattr(owned_key, "id", None))
 
         for link in shared_links:
-            key = getattr(link, "api_key", None)
-            if not key:
+            shared_key: Optional[UserApiKey] = getattr(link, "api_key", None)
+            if not shared_key:
                 continue
-            key_id = getattr(key, "id", None)
+            key_id = getattr(shared_key, "id", None)
             if key_id in seen_ids:
                 continue
 
@@ -201,14 +236,14 @@ def list_api_keys(service, user_id: str, show_hidden: bool = False) -> List[ApiK
             viewer_enabled = bool(
                 can_use
                 and (not has_enabled_owned_key)
-                and (str(viewer.org_id or "") == str(getattr(key, "key", None) or ""))
+                and (str(viewer.org_id or "") == str(getattr(shared_key, "key", None) or ""))
             )
             is_hidden = key_id in hidden_key_ids
             if is_hidden and not show_hidden:
                 continue
             output.append(
                 _api_key_to_schema(
-                    key,
+                    shared_key,
                     is_shared=True,
                     can_use=can_use,
                     viewer_enabled=viewer_enabled,
@@ -221,7 +256,7 @@ def list_api_keys(service, user_id: str, show_hidden: bool = False) -> List[ApiK
         return output
 
 
-def set_api_key_hidden(service, user_id: str, key_id: str, hidden: bool) -> bool:
+def set_api_key_hidden(service: "DatabaseAuthService", user_id: str, key_id: str, hidden: bool) -> bool:
     service._lazy_init()
     with get_db_session() as db:
         viewer = _require_user(db, user_id)
@@ -280,10 +315,17 @@ def set_api_key_hidden(service, user_id: str, key_id: str, hidden: bool) -> bool
         return True
 
 
-def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCreate) -> ApiKey:
+def create_api_key(service: "DatabaseAuthService", user_id: str, tenant_id: str, key_create: ApiKeyCreate) -> ApiKey:
     service._lazy_init()
     with get_db_session() as db:
         user = _require_user_in_tenant(db, user_id, tenant_id)
+        normalized_name = _normalize_api_key_name(key_create.name)
+        _assert_unique_api_key_name(
+            db,
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            name=normalized_name,
+        )
 
         requested_key = _normalize_scope_key(key_create.key)
         if requested_key:
@@ -307,7 +349,7 @@ def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCrea
         api_key = UserApiKey(
             tenant_id=tenant_id,
             user_id=user_id,
-            name=key_create.name,
+            name=normalized_name,
             key=key_value,
             otlp_token=None,
             otlp_token_hash=service._hash_otlp_token(raw_otlp_token),
@@ -346,7 +388,7 @@ def create_api_key(service, user_id: str, tenant_id: str, key_create: ApiKeyCrea
         )
 
 
-def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate) -> ApiKey:
+def update_api_key(service: "DatabaseAuthService", user_id: str, key_id: str, key_update: ApiKeyUpdate) -> ApiKey:
     service._lazy_init()
     with get_db_session() as db:
         viewer = _require_user(db, user_id)
@@ -396,7 +438,15 @@ def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate)
         now = _utcnow()
 
         if key_update.name is not None:
-            api_key.name = key_update.name
+            normalized_name = _normalize_api_key_name(key_update.name)
+            _assert_unique_api_key_name(
+                db,
+                tenant_id=viewer.tenant_id,
+                owner_user_id=user_id,
+                name=normalized_name,
+                exclude_key_id=key_id,
+            )
+            api_key.name = normalized_name
 
         if key_update.is_default is not None and key_update.is_default:
             has_shares = (
@@ -464,7 +514,7 @@ def update_api_key(service, user_id: str, key_id: str, key_update: ApiKeyUpdate)
         return _api_key_to_schema(api_key, is_shared=False, can_use=True, viewer_enabled=bool(api_key.is_enabled))
 
 
-def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
+def regenerate_api_key_otlp_token(service: "DatabaseAuthService", user_id: str, key_id: str) -> ApiKey:
     service._lazy_init()
     with get_db_session() as db:
         viewer = _require_user(db, user_id)
@@ -505,7 +555,7 @@ def regenerate_api_key_otlp_token(service, user_id: str, key_id: str) -> ApiKey:
         )
 
 
-def delete_api_key(service, user_id: str, key_id: str) -> bool:
+def delete_api_key(service: "DatabaseAuthService", user_id: str, key_id: str) -> bool:
     service._lazy_init()
     with get_db_session() as db:
         viewer = db.query(User).filter_by(id=user_id).first()
@@ -564,7 +614,7 @@ def delete_api_key(service, user_id: str, key_id: str) -> bool:
         return True
 
 
-def list_api_key_shares(service, owner_user_id: str, tenant_id: str, key_id: str) -> List[ApiKeyShareUser]:
+def list_api_key_shares(service: "DatabaseAuthService", owner_user_id: str, tenant_id: str, key_id: str) -> List[ApiKeyShareUser]:
     service._lazy_init()
     with get_db_session() as db:
         api_key = db.query(UserApiKey).filter_by(id=key_id, user_id=owner_user_id, tenant_id=tenant_id).first()
@@ -584,14 +634,14 @@ def list_api_key_shares(service, owner_user_id: str, tenant_id: str, key_id: str
                 username=getattr(getattr(share, "shared_user", None), "username", None),
                 email=getattr(getattr(share, "shared_user", None), "email", None),
                 can_use=bool(getattr(share, "can_use", True)),
-                created_at=cast(datetime, getattr(share, "created_at")),
+                created_at=_share_created_at(share),
             )
             for share in shares
         ]
 
 
 def replace_api_key_shares(
-    service,
+    service: "DatabaseAuthService",
     owner_user_id: str,
     tenant_id: str,
     key_id: str,
@@ -696,7 +746,7 @@ def replace_api_key_shares(
     return list_api_key_shares(service, owner_user_id, tenant_id, key_id)
 
 
-def delete_api_key_share(service, owner_user_id: str, tenant_id: str, key_id: str, shared_user_id: str) -> bool:
+def delete_api_key_share(service: "DatabaseAuthService", owner_user_id: str, tenant_id: str, key_id: str, shared_user_id: str) -> bool:
     service._lazy_init()
     with get_db_session() as db:
         api_key = db.query(UserApiKey).filter_by(id=key_id, user_id=owner_user_id, tenant_id=tenant_id).first()
@@ -729,7 +779,7 @@ def delete_api_key_share(service, owner_user_id: str, tenant_id: str, key_id: st
         return True
 
 
-def backfill_otlp_tokens(service) -> None:
+def backfill_otlp_tokens(service: "DatabaseAuthService") -> None:
     service._lazy_init()
     with get_db_session() as db:
         total = 0

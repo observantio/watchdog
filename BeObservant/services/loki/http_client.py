@@ -10,10 +10,16 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Dict, Mapping, Optional, Sequence
 import httpx
 
+from custom_types.json import JSONDict
+
 logger = logging.getLogger(__name__)
+
+QueryParamScalar = str | int | float | bool
+QueryParamValue = QueryParamScalar | Sequence[QueryParamScalar]
+QueryParams = Mapping[str, QueryParamValue]
 
 class LokiHttpClient:
     def __init__(self, metrics: Optional[Dict[str, float]] = None) -> None:
@@ -27,14 +33,15 @@ class LokiHttpClient:
         client: httpx.AsyncClient,
         url: str,
         *,
-        params: Dict[str, Any],
+        params: QueryParams,
         headers: Dict[str, str],
-    ) -> Dict[str, Any]:
+    ) -> JSONDict:
         started = time.perf_counter()
         try:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            return payload if isinstance(payload, dict) else {}
         finally:
             self._observe("loki_query_total")
             self._observe("loki_query_duration_sum_seconds", time.perf_counter() - started)
@@ -44,10 +51,10 @@ class LokiHttpClient:
         client: httpx.AsyncClient,
         url: str,
         *,
-        params: Dict[str, Any],
+        params: QueryParams,
         headers: Dict[str, str],
         quiet: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[JSONDict]:
         try:
             return await self.timed_get_json(client, url, params=params, headers=headers)
         except httpx.HTTPStatusError as e:

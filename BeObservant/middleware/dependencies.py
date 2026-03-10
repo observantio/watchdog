@@ -12,7 +12,8 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import logging
 from datetime import datetime, timezone
 from hmac import compare_digest
-from ipaddress import ip_address, ip_network
+from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
+from typing import Callable
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -160,7 +161,7 @@ def apply_scoped_rate_limit(current_user: TokenData, scope: str) -> None:
     )
 
 
-def _enforce_session_revocation(user, token_data: TokenData) -> None:
+def _enforce_session_revocation(user: object, token_data: TokenData) -> None:
     invalid_before = getattr(user, "session_invalid_before", None)
     if invalid_before is None:
         return
@@ -182,10 +183,10 @@ def _enforce_session_revocation(user, token_data: TokenData) -> None:
         )
 
 
-def _parse_ip_allowlist(allowlist: str | None) -> list:
+def _parse_ip_allowlist(allowlist: str | None) -> list[IPv4Network | IPv6Network]:
     if not allowlist:
         return []
-    networks = []
+    networks: list[IPv4Network | IPv6Network] = []
     for raw in allowlist.split(","):
         entry = raw.strip()
         if not entry:
@@ -299,16 +300,6 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if isinstance(token_data, dict):
-        try:
-            token_data = TokenData(**token_data)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Your session has expired or your token is invalid. Let's get you a new one.",
-                headers={"WWW-Authenticate": "Bearer"},
-            ) from exc
-
     if getattr(token_data, "is_mfa_setup", False):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -366,16 +357,6 @@ def get_current_user_or_mfa_setup(
             detail="Your session has expired or your token is invalid. Let's get you a new one.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if isinstance(token_data, dict):
-        try:
-            token_data = TokenData(**token_data)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Your session has expired or your token is invalid. Let's get you a new one.",
-                headers={"WWW-Authenticate": "Bearer"},
-            ) from exc
-
     if getattr(token_data, "is_mfa_setup", False):
         user = auth_service.get_user_by_id(token_data.user_id)
         if not user or not user.is_active:
@@ -388,10 +369,10 @@ def get_current_user_or_mfa_setup(
     return get_current_user(request, credentials)
 
 
-def require_permission(permission: Permission | str):
+def require_permission(permission: Permission | str) -> Callable[[TokenData], TokenData]:
     perm_value = permission.value if hasattr(permission, "value") else str(permission)
 
-    def permission_checker(current_user: TokenData = Depends(get_current_user)):
+    def permission_checker(current_user: TokenData = Depends(get_current_user)) -> TokenData:
         if perm_value not in current_user.permissions and not current_user.is_superuser:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -405,20 +386,20 @@ def require_permission(permission: Permission | str):
     return permission_checker
 
 
-def require_permission_with_scope(permission: Permission | str, scope: str):
+def require_permission_with_scope(permission: Permission | str, scope: str) -> Callable[[TokenData], TokenData]:
     perm_checker = require_permission(permission)
 
-    def dependency(current_user: TokenData = Depends(perm_checker)):
+    def dependency(current_user: TokenData = Depends(perm_checker)) -> TokenData:
         apply_scoped_rate_limit(current_user, scope)
         return current_user
 
     return dependency
 
 
-def require_any_permission(permissions: list[Permission | str]):
+def require_any_permission(permissions: list[Permission | str]) -> Callable[[TokenData], TokenData]:
     perm_values = [p.value if hasattr(p, "value") else str(p) for p in permissions]
 
-    def permission_checker(current_user: TokenData = Depends(get_current_user)):
+    def permission_checker(current_user: TokenData = Depends(get_current_user)) -> TokenData:
         if current_user.is_superuser:
             return current_user
         if any(pv in current_user.permissions for pv in perm_values):
@@ -434,18 +415,18 @@ def require_any_permission(permissions: list[Permission | str]):
     return permission_checker
 
 
-def require_any_permission_with_scope(permissions: list[Permission | str], scope: str):
+def require_any_permission_with_scope(permissions: list[Permission | str], scope: str) -> Callable[[TokenData], TokenData]:
     perm_checker = require_any_permission(permissions)
 
-    def dependency(current_user: TokenData = Depends(perm_checker)):
+    def dependency(current_user: TokenData = Depends(perm_checker)) -> TokenData:
         apply_scoped_rate_limit(current_user, scope)
         return current_user
 
     return dependency
 
 
-def require_authenticated_with_scope(scope: str):
-    def dependency(current_user: TokenData = Depends(get_current_user)):
+def require_authenticated_with_scope(scope: str) -> Callable[[TokenData], TokenData]:
+    def dependency(current_user: TokenData = Depends(get_current_user)) -> TokenData:
         apply_scoped_rate_limit(current_user, scope)
         return current_user
 

@@ -14,7 +14,7 @@ import asyncio
 import logging
 import random
 from functools import wraps
-from typing import Callable, ParamSpec, TypeVar
+from typing import Awaitable, Callable, ParamSpec, TypeVar
 
 import httpx
 
@@ -46,7 +46,7 @@ def _backoff_delay(attempt: int, base: float, cap: float, jitter_ratio: float) -
     if jr:
         jitter = delay * jr
         delay = max(0.0, delay + random.uniform(-jitter, jitter))
-    return delay
+    return float(delay)
 
 
 def with_retry(
@@ -56,10 +56,10 @@ def with_retry(
     max_backoff: float = config.RETRY_MAX_BACKOFF,
     jitter: float = config.RETRY_JITTER,
     retriable: Callable[[Exception], bool] = _is_retriable_httpx,
-) -> Callable[[Callable[P, T]], Callable[P, T]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     max_retries = max(0, int(max_retries))
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             last_exc: Exception | None = None
@@ -103,10 +103,10 @@ def with_retry(
 
 def with_timeout(
     timeout: float = config.DEFAULT_TIMEOUT,
-) -> Callable[[Callable[P, T]], Callable[P, T]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     timeout = float(timeout)
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             try:

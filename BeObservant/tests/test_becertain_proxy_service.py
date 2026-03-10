@@ -103,3 +103,64 @@ async def test_becertain_proxy_upstream_error_passthrough(monkeypatch):
         )
     assert exc.value.status_code == 502
     assert "upstream failed" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_becertain_proxy_does_not_cache_job_reads(monkeypatch):
+    service = BeCertainProxyService()
+    monkeypatch.setattr(service, "write_audit", lambda **_kwargs: None)
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_ALGORITHM", "HS256")
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_ISSUER", "beobservant-main")
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_AUDIENCE", "becertain")
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_TTL_SECONDS", 120)
+    monkeypatch.setattr(
+        config,
+        "get_secret",
+        lambda key: {
+            "BECERTAIN_SERVICE_TOKEN": "service-token",
+            "BECERTAIN_CONTEXT_SIGNING_KEY": "signing-key",
+        }.get(key),
+    )
+
+    calls = {"count": 0}
+
+    class DummyResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class DummyClient:
+        async def request(self, **_kwargs):
+            calls["count"] += 1
+            return DummyResponse(
+                {
+                    "job_id": "job-1",
+                    "report_id": "rep-1",
+                    "status": "completed",
+                    "tenant_id": "tenant-a",
+                    "requested_by": "u1",
+                    "result": None,
+                }
+            )
+
+    service._client = DummyClient()
+
+    first = await service.request_json(
+        method="GET",
+        upstream_path="/api/v1/jobs/job-1/result",
+        current_user=_user(),
+        tenant_id="tenant-a",
+    )
+    second = await service.request_json(
+        method="GET",
+        upstream_path="/api/v1/jobs/job-1/result",
+        current_user=_user(),
+        tenant_id="tenant-a",
+    )
+
+    assert first == second
+    assert calls["count"] == 2

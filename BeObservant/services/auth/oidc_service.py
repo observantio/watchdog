@@ -19,28 +19,42 @@ import logging
 import secrets
 import threading
 import time
-from typing import Any, Dict, Optional, Set, Tuple, Coroutine
+from typing import Optional, Set, Tuple, Coroutine, TypeVar
 from urllib.parse import urlencode
 
 import httpx
 import jwt
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from jwt.algorithms import ECAlgorithm, RSAAlgorithm
 
 from config import config
+from custom_types.json import JSONDict
 from services.common.ttl_cache import TTLCache
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_ALGORITHMS: Set[str] = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
 ALLOWED_CODE_CHALLENGE_METHODS: Set[str] = {"S256", "plain"}
+RunResult = TypeVar("RunResult")
+VerificationKey = rsa.RSAPublicKey | ec.EllipticCurvePublicKey
 
 
-def _jwk_to_verification_key(jwk_key: Dict[str, Any], alg: str):
+def _json_dict(value: object) -> JSONDict:
+    return value if isinstance(value, dict) else {}
+
+
+def _jwk_to_verification_key(jwk_key: JSONDict, alg: str) -> VerificationKey:
     jwk_json = json.dumps(jwk_key)
     if alg.startswith("RS"):
-        return RSAAlgorithm.from_jwk(jwk_json)
+        rsa_key = RSAAlgorithm.from_jwk(jwk_json)
+        if isinstance(rsa_key, rsa.RSAPublicKey):
+            return rsa_key
+        raise ValueError("Invalid RSA JWK key")
     if alg.startswith("ES"):
-        return ECAlgorithm.from_jwk(jwk_json)
+        ec_key = ECAlgorithm.from_jwk(jwk_json)
+        if isinstance(ec_key, ec.EllipticCurvePublicKey):
+            return ec_key
+        raise ValueError("Invalid EC JWK key")
     raise ValueError(f"Unsupported OIDC token algorithm: {alg}")
 
 
@@ -52,13 +66,13 @@ def _looks_like_jwt(token: str) -> bool:
 
 
 class OIDCService:
-    def __init__(self):
-        self._well_known_cache: Optional[Dict[str, Any]] = None
+    def __init__(self) -> None:
+        self._well_known_cache: Optional[JSONDict] = None
         self._well_known_cache_at: float = 0.0
-        self._jwks_cache: Optional[Dict[str, Any]] = None
+        self._jwks_cache: Optional[JSONDict] = None
         self._jwks_cache_at: float = 0.0
-        self._jwks_by_kid: Dict[str, Dict[str, Any]] = {}
-        self._verification_key_cache: Dict[Tuple[str, str], Any] = {}
+        self._jwks_by_kid: dict[str, JSONDict] = {}
+        self._verification_key_cache: dict[Tuple[str, str], VerificationKey] = {}
         self._admin_token_cache: Optional[str] = None
         self._admin_token_expires_at: float = 0.0
         self._cache_lock = threading.RLock()
@@ -91,7 +105,7 @@ class OIDCService:
     def _is_fresh(self, ts: float) -> bool:
         return (time.time() - ts) < self._cache_ttl_seconds
 
-    def _get_well_known(self) -> Dict[str, Any]:
+    def _get_well_known(self) -> JSONDict:
         with self._cache_lock:
             if self._well_known_cache and self._is_fresh(self._well_known_cache_at):
                 return self._well_known_cache
@@ -104,34 +118,50 @@ class OIDCService:
         response = self._http.get(url)
         response.raise_for_status()
         payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OIDC well-known configuration must be an object")
 
         with self._cache_lock:
             self._well_known_cache = payload
             self._well_known_cache_at = time.time()
         return payload
 
-    def _get_jwks(self) -> Dict[str, Any]:
+    def _get_jwks(self, *, force_refresh: bool = False) -> JSONDict:
         with self._cache_lock:
-            if self._jwks_cache and self._is_fresh(self._jwks_cache_at):
+            if (
+                not force_refresh
+                and self._jwks_cache
+                and self._is_fresh(self._jwks_cache_at)
+            ):
                 return self._jwks_cache
 
         jwks_url = config.OIDC_JWKS_URL
         if not jwks_url:
             well_known = self._get_well_known()
-            jwks_url = well_known.get("jwks_uri")
+            jwks_uri = well_known.get("jwks_uri")
+            jwks_url = jwks_uri if isinstance(jwks_uri, str) else None
         if not jwks_url:
             raise ValueError("OIDC JWKS URI is not configured")
 
         response = self._http.get(jwks_url)
         response.raise_for_status()
         payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OIDC JWKS response must be an object")
 
-        keys = payload.get("keys") or []
-        by_kid: Dict[str, Dict[str, Any]] = {}
+        raw_keys = payload.get("keys")
+        keys_raw = raw_keys if isinstance(raw_keys, list) else []
+        keys = [key for key in keys_raw if isinstance(key, dict)]
+        by_kid: dict[str, JSONDict] = {}
         for jwk_key in keys:
-            kid = str(jwk_key.get("kid") or "").strip()
-            if kid:
-                by_kid[kid] = jwk_key
+            identifiers = {
+                str(jwk_key.get("kid") or "").strip(),
+                str(jwk_key.get("x5t") or "").strip(),
+                str(jwk_key.get("x5t#S256") or "").strip(),
+            }
+            for key_id in identifiers:
+                if key_id:
+                    by_kid[key_id] = jwk_key
 
         with self._cache_lock:
             self._jwks_cache = payload
@@ -140,17 +170,73 @@ class OIDCService:
             self._verification_key_cache.clear()
         return payload
 
-    def _select_jwk(self, kid: Optional[str]) -> Optional[Dict[str, Any]]:
+    def _select_jwk(
+        self,
+        *,
+        kid: Optional[str],
+        x5t: Optional[str] = None,
+        x5t_s256: Optional[str] = None,
+        alg: Optional[str] = None,
+    ) -> Optional[JSONDict]:
         jwks = self._get_jwks()
-        keys = jwks.get("keys") or []
+        raw_keys = jwks.get("keys")
+        keys_raw = raw_keys if isinstance(raw_keys, list) else []
+        keys = [key for key in keys_raw if isinstance(key, dict)]
+
+        requested_ids = [
+            str(kid or "").strip(),
+            str(x5t or "").strip(),
+            str(x5t_s256 or "").strip(),
+        ]
+        requested_ids = [value for value in requested_ids if value]
+
+        def lookup_by_identifier() -> Optional[JSONDict]:
+            with self._cache_lock:
+                for key_id in requested_ids:
+                    if key_id in self._jwks_by_kid:
+                        return self._jwks_by_kid[key_id]
+            return None
+
+        key = lookup_by_identifier()
+        if key is not None:
+            return key
+
+        # Try one forced refresh to handle IdP key rotation and stale JWKS cache.
+        if requested_ids:
+            refreshed = self._get_jwks(force_refresh=True)
+            refreshed_raw_keys = refreshed.get("keys")
+            refreshed_keys_raw = refreshed_raw_keys if isinstance(refreshed_raw_keys, list) else []
+            keys = [key_item for key_item in refreshed_keys_raw if isinstance(key_item, dict)]
+            key = lookup_by_identifier()
+            if key is not None:
+                return key
+
         with self._cache_lock:
             if kid and kid in self._jwks_by_kid:
                 return self._jwks_by_kid[kid]
+
+        if alg:
+            candidates = [
+                key_item
+                for key_item in keys
+                if str(key_item.get("kty") or "").strip()
+                and (
+                    not str(key_item.get("alg") or "").strip()
+                    or str(key_item.get("alg") or "").strip() == alg
+                )
+                and (
+                    not str(key_item.get("use") or "").strip()
+                    or str(key_item.get("use") or "").strip() == "sig"
+                )
+            ]
+            if len(candidates) == 1:
+                return candidates[0]
+
         if len(keys) == 1:
             return keys[0]
         return None
 
-    def _verification_key_for(self, jwk_key: Dict[str, Any], alg: str, kid: Optional[str]) -> Any:
+    def _verification_key_for(self, jwk_key: JSONDict, alg: str, kid: Optional[str]) -> VerificationKey:
         cache_kid = kid or "__single__"
         cache_key = (cache_kid, alg)
         with self._cache_lock:
@@ -169,7 +255,7 @@ class OIDCService:
         *,
         nonce: Optional[str] = None,
         require_nonce: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[JSONDict]:
         if not token or not _looks_like_jwt(token):
             return None
 
@@ -196,29 +282,36 @@ class OIDCService:
                     return None
 
             kid = str(unverified_header.get("kid") or "").strip() or None
-            jwk_key = self._select_jwk(kid)
+            x5t = str(unverified_header.get("x5t") or "").strip() or None
+            x5t_s256 = str(unverified_header.get("x5t#S256") or "").strip() or None
+            jwk_key = self._select_jwk(
+                kid=kid,
+                x5t=x5t,
+                x5t_s256=x5t_s256,
+                alg=header_alg,
+            )
             if jwk_key is None:
-                logger.warning("OIDC token key id not found in JWKS")
+                logger.warning(
+                    "OIDC token signing key not found in JWKS (kid=%s, x5t=%s, x5t#S256=%s)",
+                    kid or "<none>",
+                    x5t or "<none>",
+                    x5t_s256 or "<none>",
+                )
                 return None
 
             well_known = self._get_well_known()
             issuer = (str(well_known.get("issuer") or "") or (config.OIDC_ISSUER_URL or "")).rstrip("/")
             audience = config.OIDC_AUDIENCE or config.OIDC_CLIENT_ID
 
-            decode_kwargs: Dict[str, Any] = {
-                "algorithms": [header_alg],
-                "options": {
-                    "verify_aud": bool(audience),
-                    "require": ["exp", "iat"],
-                },
-            }
-            if issuer:
-                decode_kwargs["issuer"] = issuer
-            if audience:
-                decode_kwargs["audience"] = audience
-
             verification_key = self._verification_key_for(jwk_key, header_alg, kid)
-            claims = jwt.decode(token, verification_key, **decode_kwargs)
+            claims = jwt.decode(
+                token,
+                verification_key,
+                algorithms=[header_alg],
+                options={"verify_aud": bool(audience), "require": ["exp", "iat"]},
+                issuer=issuer or None,
+                audience=audience or None,
+            )
             if not isinstance(claims, dict):
                 return None
 
@@ -242,19 +335,19 @@ class OIDCService:
             logger.error("OIDC token validation error")
             return None
 
-    def verify_id_token(self, token: str, *, nonce: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def verify_id_token(self, token: str, *, nonce: Optional[str] = None) -> Optional[JSONDict]:
         return self._verify_jwt(token, nonce=nonce, require_nonce=bool(nonce))
 
-    def verify_access_token(self, token: str) -> Optional[Dict[str, Any]]:
+    def verify_access_token(self, token: str) -> Optional[JSONDict]:
         return self._verify_jwt(token)
 
-    def fetch_userinfo(self, access_token: str) -> Optional[Dict[str, Any]]:
+    def fetch_userinfo(self, access_token: str) -> Optional[JSONDict]:
         if not access_token:
             return None
         try:
             well_known = self._get_well_known()
             endpoint = well_known.get("userinfo_endpoint")
-            if not endpoint:
+            if not isinstance(endpoint, str) or not endpoint:
                 return None
             resp = self._http.get(endpoint, headers={"Authorization": f"Bearer {access_token}"})
             resp.raise_for_status()
@@ -264,10 +357,10 @@ class OIDCService:
             logger.warning("OIDC userinfo fetch failed")
             return None
 
-    def exchange_password(self, username: str, password: str) -> Dict[str, Any]:
+    def exchange_password(self, username: str, password: str) -> JSONDict:
         well_known = self._get_well_known()
         token_endpoint = well_known.get("token_endpoint")
-        if not token_endpoint:
+        if not isinstance(token_endpoint, str) or not token_endpoint:
             raise ValueError("OIDC token endpoint not available")
 
         payload = {
@@ -282,7 +375,10 @@ class OIDCService:
 
         response = self._http.post(token_endpoint, data=payload)
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OIDC token endpoint returned invalid payload")
+        return {str(key): value for key, value in payload.items()}
 
     def exchange_authorization_code(
         self,
@@ -290,10 +386,10 @@ class OIDCService:
         redirect_uri: str,
         *,
         code_verifier: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> JSONDict:
         well_known = self._get_well_known()
         token_endpoint = well_known.get("token_endpoint")
-        if not token_endpoint:
+        if not isinstance(token_endpoint, str) or not token_endpoint:
             raise ValueError("OIDC token endpoint not available")
 
         payload = {
@@ -309,7 +405,10 @@ class OIDCService:
 
         response = self._http.post(token_endpoint, data=payload)
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OIDC token endpoint returned invalid payload")
+        return {str(key): value for key, value in payload.items()}
 
     def build_authorization_url(
         self,
@@ -370,7 +469,7 @@ class OIDCService:
 
             self._bg_ready.clear()
 
-            def runner():
+            def runner() -> None:
                 bg_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(bg_loop)
                 self._bg_loop = bg_loop
@@ -382,9 +481,11 @@ class OIDCService:
             self._bg_thread = t
             t.start()
             self._bg_ready.wait()
+            if self._bg_loop is None:
+                raise RuntimeError("Failed to start OIDC background event loop")
             return self._bg_loop
 
-    def _run_async(self, coro: Coroutine[Any, Any, Any]):
+    def _run_async(self, coro: Coroutine[object, object, RunResult]) -> RunResult:
         if self._in_event_loop():
             raise RuntimeError("OIDCService sync methods cannot run inside an event loop; use *_async variants")
         loop = self._ensure_bg_loop()
@@ -406,7 +507,7 @@ class OIDCService:
         nonce: Optional[str] = None,
         code_challenge: Optional[str] = None,
         code_challenge_method: Optional[str] = None,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         resolved_state = str(state or "").strip() or self._random_token(18)
         resolved_nonce = str(nonce or "").strip() or self._random_token(18)
         resolved_method = str(code_challenge_method or "").strip() or "S256"
@@ -421,7 +522,7 @@ class OIDCService:
 
         tx_id = self._random_token(24)
         now = time.time()
-        record: Dict[str, Any] = {
+        record: JSONDict = {
             "state": resolved_state,
             "nonce": resolved_nonce,
             "redirect_uri": redirect_uri,
@@ -455,14 +556,15 @@ class OIDCService:
         state: Optional[str],
         redirect_uri: str,
         code_verifier: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> JSONDict:
         tx_id = str(transaction_id or "").strip()
         state_value = str(state or "").strip()
         now = time.time()
 
         if not tx_id:
             idx = await self._ttl_cache.get(self._state_index_key(state_value, redirect_uri))
-            tx_id = str((idx or {}).get("tx_id") or "").strip()
+            if isinstance(idx, dict):
+                tx_id = str(idx.get("tx_id") or "").strip()
 
         if not tx_id:
             raise ValueError("OIDC transaction not found")
@@ -508,8 +610,8 @@ class OIDCService:
         nonce: Optional[str] = None,
         code_challenge: Optional[str] = None,
         code_challenge_method: Optional[str] = None,
-    ) -> Dict[str, str]:
-        return self._run_async(
+    ) -> dict[str, str]:
+        result = self._run_async(
             self.start_authorization_transaction_async(
                 redirect_uri=redirect_uri,
                 state=state,
@@ -518,6 +620,7 @@ class OIDCService:
                 code_challenge_method=code_challenge_method,
             )
         )
+        return {str(key): str(value) for key, value in result.items()}
 
     def consume_authorization_transaction(
         self,
@@ -526,8 +629,8 @@ class OIDCService:
         state: Optional[str],
         redirect_uri: str,
         code_verifier: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        return self._run_async(
+    ) -> JSONDict:
+        result = self._run_async(
             self.consume_authorization_transaction_async(
                 transaction_id=transaction_id,
                 state=state,
@@ -535,6 +638,7 @@ class OIDCService:
                 code_verifier=code_verifier,
             )
         )
+        return dict(result)
 
     def _get_admin_token(self) -> Optional[str]:
         if not (
@@ -562,8 +666,12 @@ class OIDCService:
         response = self._http.post(token_url, data=payload)
         response.raise_for_status()
         body = response.json()
+        if not isinstance(body, dict):
+            return None
 
         token = body.get("access_token")
+        if not isinstance(token, str) or not token:
+            return None
         expires_in = int(body.get("expires_in", 60))
 
         with self._cache_lock:
@@ -596,7 +704,8 @@ class OIDCService:
             if len(parts) > 1:
                 last_name = " ".join(parts[1:])
 
-        realm_admin_base = f"{config.KEYCLOAK_ADMIN_URL.rstrip('/')}/admin/realms/{config.KEYCLOAK_ADMIN_REALM}"
+        admin_url = str(config.KEYCLOAK_ADMIN_URL or "").rstrip("/")
+        realm_admin_base = f"{admin_url}/admin/realms/{config.KEYCLOAK_ADMIN_REALM}"
         payload = {
             "email": email,
             "username": username or email,
@@ -621,7 +730,8 @@ class OIDCService:
                 params={"email": email, "exact": "true"},
             )
             query.raise_for_status()
-            users = query.json() or []
+            users_raw = query.json() or []
+            users = [user for user in users_raw if isinstance(user, dict)] if isinstance(users_raw, list) else []
             return users[0].get("id") if users else None
 
         location = response.headers.get("Location") or ""

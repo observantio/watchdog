@@ -138,7 +138,60 @@ async def test_get_analyze_job_result_tolerates_unknown_running_status(monkeypat
         request=_request(),
         current_user=_user(),
     )
-    assert result.status.value == "pending"
+    assert result.status.value == "running"
+
+
+@pytest.mark.asyncio
+async def test_get_analyze_job_result_maps_succeeded_status_to_completed(monkeypatch):
+    async def fake_request_json(**kwargs):
+        return {
+            "job_id": "job-2b",
+            "report_id": "rep-2b",
+            "status": "succeeded",
+            "tenant_id": "tenant-a",
+            "requested_by": "u1",
+            "result": {"summary": "ok"},
+        }
+
+    monkeypatch.setattr("routers.observability.becertain_router.becertain_proxy_service.request_json", fake_request_json)
+    result = await becertain_router.get_analyze_job_result(
+        job_id="job-2b",
+        request=_request(),
+        current_user=_user(),
+    )
+    assert result.status.value == "completed"
+    assert result.result == {"summary": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_get_analyze_job_result_maps_conflict_to_job_summary(monkeypatch):
+    calls = []
+
+    async def fake_request_json(**kwargs):
+        calls.append(kwargs["upstream_path"])
+        if kwargs["upstream_path"] == "/api/v1/jobs/job-3/result":
+            raise becertain_router.HTTPException(status_code=409, detail="result not ready")
+        return {
+            "job_id": "job-3",
+            "report_id": "rep-3",
+            "status": "completed",
+            "created_at": "2026-03-08T00:00:00Z",
+            "tenant_id": "tenant-a",
+            "requested_by": "u1",
+            "result": None,
+        }
+
+    monkeypatch.setattr("routers.observability.becertain_router.becertain_proxy_service.request_json", fake_request_json)
+    result = await becertain_router.get_analyze_job_result(
+        job_id="job-3",
+        request=_request(),
+        current_user=_user(),
+    )
+    assert result.job_id == "job-3"
+    assert result.report_id == "rep-3"
+    assert result.status.value == "completed"
+    assert result.result is None
+    assert calls == ["/api/v1/jobs/job-3/result", "/api/v1/jobs/job-3"]
 
 
 @pytest.mark.asyncio

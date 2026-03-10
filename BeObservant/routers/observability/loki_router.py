@@ -8,8 +8,10 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 import asyncio
+from typing import Awaitable, Optional, TypeVar
+
 from fastapi import APIRouter, Query, Body, Depends, Request, HTTPException, status
-from typing import Optional
+from custom_types.json import JSONDict
 from models.observability.loki_models import (
     LogQuery, LogResponse, LogLabelsResponse,
     LogLabelValuesResponse, LogDirection, LogFilterRequest, LogSearchRequest
@@ -26,8 +28,10 @@ router = APIRouter(prefix="/api/loki", tags=["loki"])
 
 loki_service = LokiService()
 
+ResponseT = TypeVar("ResponseT")
 
-async def _handle_timeout(coro, detail: str):
+
+async def _handle_timeout(coro: Awaitable[ResponseT], detail: str) -> ResponseT:
     try:
         return await coro
     except asyncio.TimeoutError as exc:
@@ -69,7 +73,7 @@ async def query_logs_instant(
     time: Optional[int] = Query(None, description="Query time in nanoseconds"),
     limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT, description="Maximum log lines to return"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> LogResponse:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.query_logs_instant(query, time, tenant_id=tenant_id, limit=limit),
@@ -83,7 +87,7 @@ async def get_labels(
     start: Optional[int] = Query(None, description=START_TIME_DESC),
     end: Optional[int] = Query(None, description=END_TIME_DESC),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> LogLabelsResponse:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.get_labels(start, end, tenant_id=tenant_id),
@@ -99,7 +103,7 @@ async def get_label_values(
     end: Optional[int] = Query(None, description=END_TIME_DESC),
     query: Optional[str] = Query(None, description="Optional LogQL query filter"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> LogLabelValuesResponse:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.get_label_values(label, start, end, query, tenant_id=tenant_id),
@@ -112,7 +116,7 @@ async def search_logs(
     request: Request,
     payload: LogSearchRequest = Body(..., description="Log search request"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> LogResponse:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.search_logs_by_pattern(
@@ -132,7 +136,7 @@ async def filter_logs(
     request: Request,
     payload: LogFilterRequest = Body(..., description="Log filtering request"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> LogResponse:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.filter_logs(
@@ -155,7 +159,7 @@ async def aggregate_logs(
     end: Optional[int] = Query(None, description=END_TIME_DESC),
     step: int = Query(60, ge=1, description="Query resolution step in seconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> JSONDict:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.aggregate_logs(query, start, end, step, tenant_id=tenant_id),
@@ -171,7 +175,7 @@ async def get_log_volume(
     end: Optional[int] = Query(None, description=END_TIME_DESC),
     step: int = Query(300, ge=1, description="Time step in seconds"),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_LOGS, "loki"))
-):
+) -> JSONDict:
     tenant_id = await resolve_tenant_id(request, current_user)
     return await _handle_timeout(
         loki_service.get_log_volume(query, start, end, step, tenant_id=tenant_id),

@@ -10,11 +10,11 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import json
 from functools import lru_cache
-from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from config import config as app_config
+from custom_types.json import JSONDict
 
 @lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
@@ -27,7 +27,7 @@ def _get_fernet() -> Fernet:
         raise RuntimeError("Invalid DATA_ENCRYPTION_KEY format") from exc
 
 
-def encrypt_config(cfg: dict[str, Any]) -> dict[str, Any]:
+def encrypt_config(cfg: JSONDict) -> JSONDict:
     try:
         f = _get_fernet()
         payload = json.dumps(cfg, default=str).encode()
@@ -38,12 +38,16 @@ def encrypt_config(cfg: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Failed to encrypt channel config") from exc
 
 
-def decrypt_config(cfg: dict[str, Any]) -> dict[str, Any]:
+def decrypt_config(cfg: JSONDict) -> JSONDict:
     if "__encrypted__" not in cfg:
         return cfg
     try:
         f = _get_fernet()
-        return json.loads(f.decrypt(cfg["__encrypted__"].encode()).decode())
+        encrypted_value = cfg.get("__encrypted__")
+        if not isinstance(encrypted_value, str):
+            return cfg
+        decrypted = json.loads(f.decrypt(encrypted_value.encode()).decode())
+        return decrypted if isinstance(decrypted, dict) else cfg
     except RuntimeError:
         raise
     except InvalidToken as exc:

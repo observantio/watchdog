@@ -8,12 +8,14 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
+
+from custom_types.json import JSONDict, JSONValue
 
 class SpanAttribute(BaseModel):
     key: str = Field(..., description="Attribute key")
-    value: Any = Field(..., description="Attribute value")
+    value: JSONValue = Field(..., description="Attribute value")
 
 class Span(BaseModel):
     span_id: str = Field(..., alias="spanID", description="Unique identifier for the span")
@@ -24,7 +26,7 @@ class Span(BaseModel):
     duration: int = Field(..., description="Duration of the span in microseconds")
     tags: List[SpanAttribute] = Field(default_factory=list, description="Tags associated with the span")
     service_name: Optional[str] = Field(None, alias="serviceName", description="Service name that emitted this span")
-    attributes: Optional[Dict[str, Any]] = Field(None, description="Span attributes as a key-value map")
+    attributes: Optional[JSONDict] = Field(None, description="Span attributes as a key-value map")
     process_id: Optional[str] = Field(None, alias="processID", description="Identifier of the process that created this span")
     warnings: Optional[List[str]] = Field(None, description="Warnings related to this span")
     model_config = ConfigDict(populate_by_name=True)
@@ -32,7 +34,7 @@ class Span(BaseModel):
 class Trace(BaseModel):
     trace_id: str = Field(..., alias="traceID", description="Unique identifier for the trace")
     spans: List[Span] = Field(..., description="List of spans in this trace")
-    processes: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Process information for spans in this trace")
+    processes: Optional[JSONDict] = Field(default_factory=dict, description="Process information for spans in this trace")
     warnings: Optional[List[str]] = Field(None, description="Warnings related to this trace")
     model_config = ConfigDict(populate_by_name=True)
 
@@ -52,4 +54,4 @@ class TraceResponse(BaseModel):
     total: int = Field(..., description="Total number of traces available")
     limit: int = Field(..., description="Maximum number of traces requested")
     offset: int = Field(0, description="Offset for pagination")
-    errors: Optional[List[str]] = Field(None, description="Any errors that occurred during the query")
+    errors: Optional[List[str]] = Field(None, description="Errors that occurred during the query")

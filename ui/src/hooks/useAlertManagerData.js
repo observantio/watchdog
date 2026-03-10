@@ -7,7 +7,12 @@ import {
 } from "../api";
 import { normalizeRuleForUI } from "../utils/alertmanagerRuleUtils";
 
-export const useAlertManagerData = ({ showHiddenRules = false, showHiddenSilences = false } = {}) => {
+export const useAlertManagerData = ({
+  showHiddenRules = false,
+  showHiddenSilences = false,
+  alertFilters = {},
+  ruleFilters = {},
+} = {}) => {
   const [alerts, setAlerts] = useState([]);
   const [silences, setSilences] = useState([]);
   const [rules, setRules] = useState([]);
@@ -24,9 +29,20 @@ export const useAlertManagerData = ({ showHiddenRules = false, showHiddenSilence
     try {
       const [alertsData, silencesData, rulesData, channelsData] =
         await Promise.all([
-          getAlerts().catch(() => []),
+          getAlerts({
+            severity: alertFilters?.severity,
+            correlationId: alertFilters?.correlationId,
+            label: alertFilters?.label,
+          }).catch(() => []),
           getSilences({ showHidden: showHiddenSilences }).catch(() => []),
-          getAlertRules({ showHidden: showHiddenRules }).catch(() => []),
+          getAlertRules({
+            showHidden: showHiddenRules,
+            owner: ruleFilters?.owner,
+            status: ruleFilters?.status,
+            severity: ruleFilters?.severity,
+            orgId: ruleFilters?.orgId,
+            correlationId: ruleFilters?.correlationId,
+          }).catch(() => []),
           getNotificationChannels().catch(() => []),
         ]);
       if (requestId !== requestIdRef.current) return;
@@ -52,7 +68,18 @@ export const useAlertManagerData = ({ showHiddenRules = false, showHiddenSilence
         setLoading(false);
       }
     }
-  }, [showHiddenRules, showHiddenSilences]);
+  }, [
+    showHiddenRules,
+    showHiddenSilences,
+    alertFilters?.severity,
+    alertFilters?.correlationId,
+    alertFilters?.label,
+    ruleFilters?.owner,
+    ruleFilters?.status,
+    ruleFilters?.severity,
+    ruleFilters?.orgId,
+    ruleFilters?.correlationId,
+  ]);
 
   useEffect(() => {
     loadData();

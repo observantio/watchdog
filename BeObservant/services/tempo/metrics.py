@@ -10,21 +10,25 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import httpx
 
 from config import config
+from custom_types.json import JSONDict
 
 logger = logging.getLogger(__name__)
 
 
-def _empty_response() -> Dict[str, Any]:
+QueryParams = dict[str, str | int | float | bool]
+
+
+def _empty_response() -> JSONDict:
     return {"status": "error", "data": {"result": []}}
 
 
 async def query_metrics_range(
-    client: Any,
+    client: httpx.AsyncClient,
     promql: str,
     start_us: Optional[int],
     end_us: Optional[int],
@@ -34,11 +38,11 @@ async def query_metrics_range(
     get_headers: Callable[[str], Dict[str, str]] = lambda tid: {"X-Scope-OrgID": tid},
     observe: Callable[[str, float], None] = lambda metric, value: None,
     metrics_enabled: bool = True,
-) -> Tuple[Dict[str, Any], bool]:
+) -> Tuple[JSONDict, bool]:
     if not metrics_enabled:
         return _empty_response(), False
 
-    params: Dict[str, Any] = {"query": promql, "step": step_s}
+    params: QueryParams = {"query": promql, "step": step_s}
     if start_us:
         params["start"] = int(start_us / 1_000_000)
     if end_us:
@@ -52,14 +56,15 @@ async def query_metrics_range(
         )
         resp.raise_for_status()
         observe("tempo_metrics_queries_total", 1.0)
-        return resp.json(), True
+        payload = resp.json()
+        return (payload if isinstance(payload, dict) else _empty_response()), True
     except httpx.HTTPError as e:
         observe("tempo_metrics_query_errors_total", 1.0)
         logger.debug("Mimir metrics query failed: %s", e)
         return _empty_response(), False
 
 
-def extract_metric_values(metrics_resp: Dict[str, Any]) -> List[List[Any]]:
+def extract_metric_values(metrics_resp: object) -> List[List[object]]:
     if not isinstance(metrics_resp, dict):
         return []
     results = (metrics_resp.get("data") or {}).get("result")

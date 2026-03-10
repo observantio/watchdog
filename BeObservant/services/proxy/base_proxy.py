@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import httpx
 import jwt
@@ -21,6 +21,7 @@ import jwt
 from database import get_db_session
 from db_models import AuditLog
 from models.access.auth_models import TokenData
+from custom_types.json import JSONDict
 
 
 class BaseProxyService:
@@ -49,7 +50,7 @@ class BaseProxyService:
         current_user: Optional[TokenData],
         action: str,
         resource_id: str,
-        details: Dict[str, Any],
+        details: JSONDict,
     ) -> None:
         with get_db_session() as db:
             db.add(
@@ -71,7 +72,7 @@ class BaseProxyService:
         issuer: str,
         audience: str,
         ttl_seconds: int,
-    ) -> Dict[str, Any]:
+    ) -> JSONDict:
         now = datetime.now(timezone.utc)
         return {
             "iss": issuer,
@@ -94,7 +95,7 @@ class BaseProxyService:
         }
 
     @staticmethod
-    def _encode_jwt(payload: Dict[str, Any], key: str, algorithm: str) -> str:
+    def _encode_jwt(payload: JSONDict, key: str, algorithm: str) -> str:
         return jwt.encode(payload, key, algorithm=algorithm)
 
     @staticmethod

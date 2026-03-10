@@ -229,6 +229,27 @@ def test_api_key_value_cannot_collide_across_tenants():
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_api_key_name_must_be_unique_case_insensitive_per_owner():
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    owner = svc.create_user(
+        UserCreate(username='owner-name-check', email='owner-name-check@example.com', password='pw', full_name='Owner'),
+        tenant_id,
+    )
+
+    created = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='ProdKey', key='org-prod-name-check'))
+    assert created.name == 'ProdKey'
+
+    with pytest.raises(ValueError, match="name already exists"):
+        svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='prodkey', key='org-prod-name-check-2'))
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
 def test_regenerate_otlp_token_returns_one_time_reveal():
     svc = DatabaseAuthService()
     svc._lazy_init()

@@ -15,6 +15,7 @@ import logging
 from typing import Optional
 
 from starlette.responses import PlainTextResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def _inc_concurrency_busy() -> int:
 class ConcurrencyLimitMiddleware:
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         max_concurrent: int = 200,
         acquire_timeout: float = 1.0,
     ) -> None:
@@ -43,7 +44,7 @@ class ConcurrencyLimitMiddleware:
             self._sem = asyncio.Semaphore(self._max_concurrent)
         return self._sem
 
-    async def __call__(self, scope, receive, send) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return

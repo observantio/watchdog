@@ -12,7 +12,8 @@ import logging
 
 from fastapi import APIRouter, Request, Response, HTTPException, status
 
-from services.gateway_service import GatewayAuthService, DatabaseUnavailable
+from models.exceptions import DatabaseUnavailable
+from services.gateway_service import GatewayAuthService
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ service = GatewayAuthService()
 
 @router.api_route("/validate", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 @router.api_route("/validate/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def validate_otlp_token(request: Request, _path: str = ""):
+async def validate_otlp_token(request: Request, _path: str = "") -> Response:
     service.enforce_ip_allowlist(request)
     service.enforce_rate_limit(request)
 
@@ -51,5 +52,5 @@ async def validate_otlp_token(request: Request, _path: str = ""):
     return response
 
 @router.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return service.health()

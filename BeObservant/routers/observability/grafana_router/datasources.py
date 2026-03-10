@@ -25,6 +25,7 @@ from models.observability.grafana_request_models import GrafanaDatasourceQueryRe
 from services.grafana.route_payloads import validate_visibility
 
 from .shared import hidden_toggle_context, proxy, router, rtp, scope_context
+from custom_types.json import JSONDict
 
 
 @router.post("/ds/query")
@@ -33,7 +34,7 @@ async def datasource_query(
     payload: GrafanaDatasourceQueryRequest,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.QUERY_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> object:
     user_id, tenant_id, group_ids, _ = scope_context(current_user)
     await proxy.enforce_datasource_query_access(
         db=db,
@@ -49,7 +50,7 @@ async def datasource_query(
 async def get_datasource_filter_metadata(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     return await rtp(proxy.get_datasource_metadata, db=db, tenant_id=current_user.tenant_id)
 
 
@@ -58,7 +59,7 @@ async def get_datasource_by_name(
     name: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> Datasource:
     user_id, tenant_id, group_ids, _ = scope_context(current_user)
     datasource = await proxy.get_datasource_by_name(
         db=db,
@@ -81,7 +82,7 @@ async def get_datasources(
     offset: int = Query(0, ge=0),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> List[Datasource]:
     user_id, tenant_id, group_ids, _ = scope_context(current_user)
     datasource_context = await rtp(proxy.build_datasource_list_context, db, tenant_id=tenant_id, uid=uid)
     return await proxy.get_datasources(
@@ -103,7 +104,7 @@ async def get_datasource_by_uid(
     uid: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> Datasource:
     user_id, tenant_id, group_ids, _ = scope_context(current_user)
     datasource = await proxy.get_datasource(
         db=db,
@@ -125,7 +126,7 @@ async def create_datasource(
     shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.CREATE_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> Datasource:
     validate_visibility(visibility)
     user_id, tenant_id, group_ids, is_admin = scope_context(current_user)
     result = await proxy.create_datasource(
@@ -152,7 +153,7 @@ async def update_datasource(
     shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> Datasource:
     validate_visibility(visibility)
     user_id, tenant_id, group_ids, is_admin = scope_context(current_user)
     result = await proxy.update_datasource(
@@ -177,7 +178,7 @@ async def delete_datasource(
     uid: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.DELETE_DATASOURCES, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     user_id, tenant_id, group_ids, _ = scope_context(current_user)
     ok = await proxy.delete_datasource(
         db=db,
@@ -200,7 +201,7 @@ async def hide_datasource(
         require_any_permission_with_scope([Permission.UPDATE_DATASOURCES, Permission.CREATE_DATASOURCES], "grafana")
     ),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     user_id, tenant_id = hidden_toggle_context(current_user)
     ok = await rtp(
         proxy.toggle_datasource_hidden,

@@ -6,11 +6,12 @@ Copyright (c) 2026 Stefan Kumarasinghe
 Licensed under the Apache License, Version 2.0 (the "License");
 """
 
-from typing import Optional, Set, List, Dict, Any
+from typing import Optional, Set, List, Callable, Awaitable
 import httpx
 from fastapi import HTTPException, Request, status
 from models.access.auth_models import TokenData, Permission
 from config import config
+from custom_types.json import JSONDict
 from services.benotified_proxy_service import benotified_proxy_service
 from json import JSONDecodeError
 import json
@@ -94,7 +95,7 @@ def is_mutating(method: str) -> bool:
     return method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
 
 
-def normalize_group_ids(raw: Any) -> List[str]:
+def normalize_group_ids(raw: object) -> List[str]:
     seen: Set[str] = set()
     result: List[str] = []
     for gid in (raw if isinstance(raw, list) else []):
@@ -107,8 +108,8 @@ def normalize_group_ids(raw: Any) -> List[str]:
     return result
 
 
-def _extract_silence_meta(silence: Dict[str, Any]) -> Dict[str, Any]:
-    def _try_parse(v) -> Dict[str, Any]:
+def _extract_silence_meta(silence: JSONDict) -> JSONDict:
+    def _try_parse(v: object) -> JSONDict:
         if isinstance(v, dict):
             return v
         if isinstance(v, str):
@@ -128,7 +129,7 @@ def _extract_silence_meta(silence: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def validate_and_normalize_silence_payload(payload: Dict[str, Any], current_user: TokenData) -> Dict[str, Any]:
+def validate_and_normalize_silence_payload(payload: JSONDict, current_user: TokenData) -> JSONDict:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid silence payload")
 
@@ -156,7 +157,7 @@ def validate_and_normalize_silence_payload(payload: Dict[str, Any], current_user
     return normalized
 
 
-def assert_silence_owner(current_user: TokenData, silence: Dict[str, Any]) -> None:
+def assert_silence_owner(current_user: TokenData, silence: JSONDict) -> None:
     if current_user.is_superuser:
         return
     meta = _extract_silence_meta(silence)
@@ -173,7 +174,7 @@ def assert_silence_owner(current_user: TokenData, silence: Dict[str, Any]) -> No
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only update or delete silences that you created")
 
 
-def extract_silence_id(path: str, payload: Optional[Dict[str, Any]]) -> Optional[str]:
+def extract_silence_id(path: str, payload: Optional[JSONDict]) -> Optional[str]:
     parts = [p for p in path.strip("/").split("/") if p]
     if len(parts) >= 2 and parts[0] == "silences":
         return parts[1]
@@ -188,7 +189,7 @@ def extract_silence_id(path: str, payload: Optional[Dict[str, Any]]) -> Optional
 
 async def find_silence_for_mutation(
     *, request: Request, current_user: TokenData, silence_id: str
-) -> Dict[str, Any]:
+) -> JSONDict:
     service_token = config.get_secret("BENOTIFIED_SERVICE_TOKEN")
     if not service_token:
         raise HTTPException(
@@ -231,8 +232,8 @@ async def find_silence_for_mutation(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Silence not found")
 
 
-def webhook_route(upstream_suffix: str, audit_action: str, scope: str):
-    async def handler(request: Request):
+def webhook_route(upstream_suffix: str, audit_action: str, scope: str) -> Callable[[Request], Awaitable[object]]:
+    async def handler(request: Request) -> object:
         enforce_public_endpoint_security(
             request,
             scope=scope,

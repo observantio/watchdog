@@ -9,7 +9,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import asyncio
-from typing import Dict, List
 
 import httpx
 from fastapi import APIRouter, Request, Depends
@@ -17,6 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from models.observability.agent_models import AgentHeartbeat
 from services.agent_service import AgentService
+from services.agent.helpers import KeyActivity
 from models.access.auth_models import Permission, TokenData
 from config import config
 
@@ -44,30 +44,30 @@ async def close_mimir_client() -> None:
 
 
 @router.get("/")
-async def list_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))):
+async def list_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))) -> list[dict[str, object]]:
     return [agent.model_dump() for agent in agent_service.list_agents()]
 
 
 @router.get("/active")
-async def list_active_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))):
+async def list_active_agents(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_AGENTS, "agents"))) -> list[dict[str, object]]:
     api_keys = await rtp(auth_service.list_api_keys, current_user.user_id)
 
-    tasks: List[asyncio.Task] = []
+    tasks: list[asyncio.Task[KeyActivity]] = []
     for key in api_keys:
         tasks.append(asyncio.create_task(agent_service.key_activity(key.key, mimir_client)))
 
     results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
 
     recent_agents = agent_service.list_agents()
-    host_names_by_tenant: Dict[str, set[str]] = {}
+    host_names_by_tenant: dict[str, set[str]] = {}
     for agent in recent_agents:
         if not agent.host_name:
             continue
         host_names_by_tenant.setdefault(agent.tenant_id, set()).add(agent.host_name)
 
-    activity = []
+    activity: list[dict[str, object]] = []
     for key, result in zip(api_keys, results):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             activity.append({
                 "name": key.name,
                 "is_enabled": key.is_enabled,
@@ -96,7 +96,7 @@ async def list_active_agents(current_user: TokenData = Depends(require_permissio
 
 
 @router.post("/heartbeat")
-async def heartbeat(request: Request, payload: AgentHeartbeat):
+async def heartbeat(request: Request, payload: AgentHeartbeat) -> dict[str, str]:
     enforce_public_endpoint_security(
         request,
         scope="agents_heartbeat",

@@ -8,13 +8,15 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
+from __future__ import annotations
+
 import hashlib
 import re
 import threading
 import time
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Dict, Optional, Set, TYPE_CHECKING, TypedDict
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import joinedload
 
@@ -22,8 +24,22 @@ from config import config
 from database import get_db_session
 from db_models import GrafanaDashboard, GrafanaDatasource, GrafanaFolder, Group, User
 from models.access.auth_models import Permission, Role, TokenData
+from custom_types.json import JSONDict
 
-PROXY_AUTH_CACHE: Dict[str, Dict[str, Any]] = {}
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+    from services.grafana_proxy_service import GrafanaProxyService
+
+class ProxyAuthCacheEntry(TypedDict):
+    expires: float
+    headers: Dict[str, str]
+
+
+def _json_dict(value: object) -> JSONDict:
+    return value if isinstance(value, dict) else {}
+
+
+PROXY_AUTH_CACHE: Dict[str, ProxyAuthCacheEntry] = {}
 PROXY_AUTH_CACHE_TTL = int(getattr(config, "GRAFANA_PROXY_CACHE_TTL", 60))
 PROXY_AUTH_CACHE_LOCK = threading.Lock()
 PROXY_AUTH_CACHE_GC_EVERY = 500
@@ -74,8 +90,8 @@ def _cache_get(token: str, method: str, path: str, tenant_id: str) -> Optional[D
     now = time.monotonic()
     with PROXY_AUTH_CACHE_LOCK:
         entry = PROXY_AUTH_CACHE.get(key)
-        if entry and entry.get("expires", 0) > now:
-            return entry.get("headers")
+        if entry and entry["expires"] > now:
+            return entry["headers"]
         if entry:
             PROXY_AUTH_CACHE.pop(key, None)
     return None
@@ -88,7 +104,7 @@ def _cache_set(token: str, method: str, path: str, tenant_id: str, headers: Dict
     with PROXY_AUTH_CACHE_LOCK:
         proxy_auth_cache_ops += 1
         if proxy_auth_cache_ops % PROXY_AUTH_CACHE_GC_EVERY == 0:
-            expired = [k for k, v in PROXY_AUTH_CACHE.items() if v.get("expires", 0) <= now]
+            expired = [k for k, v in PROXY_AUTH_CACHE.items() if v["expires"] <= now]
             for k in expired:
                 PROXY_AUTH_CACHE.pop(k, None)
         PROXY_AUTH_CACHE[key] = {"expires": now + PROXY_AUTH_CACHE_TTL, "headers": headers}
@@ -199,9 +215,7 @@ def _is_folder_write_intent(path: str, method: str) -> bool:
     p = (path or "").lower()
     m = (method or "GET").upper()
     return p.startswith("/grafana/api/folders") and m in {"POST", "PUT", "PATCH", "DELETE"}
-
-
-async def _enforce_writable_datasource(service, datasource_uid: str) -> None:
+async def _enforce_writable_datasource(service: GrafanaProxyService, datasource_uid: str) -> None:
     datasource = await service.grafana_service.get_datasource(datasource_uid)
     if datasource and (
         bool(getattr(datasource, "is_default", False)) or bool(getattr(datasource, "read_only", False))
@@ -213,7 +227,12 @@ def is_admin_user(token_data: TokenData) -> bool:
     return token_data.role == Role.ADMIN or bool(getattr(token_data, "is_superuser", False))
 
 
-def is_resource_accessible(resource, token_data: TokenData, *, require_write: bool = False) -> bool:
+def is_resource_accessible(
+    resource: GrafanaDashboard | GrafanaDatasource | GrafanaFolder | None,
+    token_data: TokenData,
+    *,
+    require_write: bool = False,
+) -> bool:
     if not resource:
         return False
     if resource.tenant_id != token_data.tenant_id:
@@ -283,15 +302,16 @@ def extract_folder_uid(path: str) -> Optional[str]:
     return uid
 
 
-def extract_proxy_token(request, token: Optional[str] = None) -> Optional[str]:
+def extract_proxy_token(request: Request, token: Optional[str] = None) -> Optional[str]:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        return auth_header.split(" ", 1)[1].strip()
+        return str(auth_header.split(" ", 1)[1].strip())
     for cookie_name in ("beobservant_token", "access_token"):
         cookie_token = request.cookies.get(cookie_name)
         if cookie_token:
-            return cookie_token
-    return request.headers.get("X-Auth-Token") or token
+            return str(cookie_token)
+    header_token = request.headers.get("X-Auth-Token")
+    return str(header_token) if header_token else token
 
 
 def _grafana_role(token_data: TokenData) -> str:
@@ -321,13 +341,13 @@ def _headers_for(token_data: TokenData) -> Dict[str, str]:
 
 
 def _db_load_context(
-    auth_service,
+    auth_service: DatabaseAuthService,
     token_data: TokenData,
     dashboard_uid: Optional[str],
     datasource_uid: Optional[str],
     datasource_id: Optional[int],
     folder_uid: Optional[str],
-) -> Tuple[Any, Optional[GrafanaDashboard], Optional[GrafanaDatasource], Optional[GrafanaDatasource], Optional[GrafanaFolder]]:
+) -> tuple[User, Optional[GrafanaDashboard], Optional[GrafanaDatasource], Optional[GrafanaDatasource], Optional[GrafanaFolder]]:
     with get_db_session() as s:
         orm_user = (
             s.query(User)
@@ -411,7 +431,7 @@ def _db_load_folder(tenant_id: str, folder_uid: Optional[str]) -> Optional[Grafa
 
 
 def _db_load_folder_by_id(tenant_id: str, folder_id: Optional[int]) -> Optional[GrafanaFolder]:
-    if folder_id in (None, 0, "", "0"):
+    if folder_id is None:
         return None
     try:
         folder_id_int = int(folder_id)
@@ -473,7 +493,7 @@ def _db_clear_dashboard_folder_uid(tenant_id: str, dashboard_uid: str) -> None:
             raise
 
 
-def _is_safe_system_datasource(datasource: Any) -> bool:
+def _is_safe_system_datasource(datasource: object) -> bool:
     return bool(
         getattr(datasource, "is_default", False)
         or getattr(datasource, "isDefault", False)
@@ -482,7 +502,7 @@ def _is_safe_system_datasource(datasource: Any) -> bool:
     )
 
 
-async def _lookup_safe_system_datasource(service, *, datasource_uid: Optional[str], datasource_id: Optional[int]) -> bool:
+async def _lookup_safe_system_datasource(service: GrafanaProxyService, *, datasource_uid: Optional[str], datasource_id: Optional[int]) -> bool:
     if datasource_uid:
         ds = await service.grafana_service.get_datasource(datasource_uid)
         return bool(ds and _is_safe_system_datasource(ds))
@@ -497,9 +517,9 @@ async def _lookup_safe_system_datasource(service, *, datasource_uid: Optional[st
 
 
 async def authorize_proxy_request(
-    service,
-    request,
-    auth_service,
+    service: GrafanaProxyService,
+    request: Request,
+    auth_service: DatabaseAuthService,
     token: Optional[str] = None,
     orig: Optional[str] = None,
 ) -> Dict[str, str]:
@@ -513,9 +533,6 @@ async def authorize_proxy_request(
             status_code=401,
             detail="Your session has expired or your token is invalid. Let's get you a new one.",
         )
-    if isinstance(token_data, dict):
-        token_data = TokenData(**token_data)
-
     original_uri = orig or request.headers.get("X-Original-URI", "")
     original_method = (request.headers.get("X-Original-Method") or request.method or "GET").upper()
     original_path = original_uri.split("?", 1)[0] if original_uri else ""
@@ -582,9 +599,10 @@ async def authorize_proxy_request(
         if not dash or not is_resource_accessible(dash, token_data, require_write=dashboard_write_intent):
             raise HTTPException(status_code=403, detail="Dashboard access denied")
         dash_payload = await service.grafana_service.get_dashboard(dashboard_uid)
-        meta = (dash_payload or {}).get("meta") or {}
+        meta = _json_dict((dash_payload or {}).get("meta"))
         dash_folder_uid = str(meta.get("folderUid") or "")
-        dash_folder_id = meta.get("folderId")
+        dash_folder_id_value = meta.get("folderId")
+        dash_folder_id = dash_folder_id_value if isinstance(dash_folder_id_value, int) else None
         if dash_folder_uid:
             if not folder_obj:
                 folder_obj = await run_in_threadpool(_db_load_folder, token_data.tenant_id, dash_folder_uid)

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 import uvicorn
 from fastapi import FastAPI
@@ -34,7 +35,7 @@ STARTUP_CHECK_ERRORS = (RuntimeError, DatabaseUnavailable)
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting standalone gateway auth service")
 
     max_retries = gw_config.GATEWAY_STARTUP_RETRIES
@@ -92,22 +93,23 @@ app.include_router(gateway_router)
 
 
 @app.get("/health")
-async def health_root():
+async def health_root() -> dict[str, str]:
     return service.health()
 
 
 if __name__ == "__main__":
-    uvicorn_kwargs: dict = {
-        "app": "main:app",
-        "host": gw_config.HOST,
-        "port": gw_config.PORT,
-        "log_level": gw_config.LOG_LEVEL.lower(),
-    }
+    ssl_certfile = gw_config.SSL_CERTFILE or None
+    ssl_keyfile = gw_config.SSL_KEYFILE or None
+    ssl_ca_certs = gw_config.SSL_CA_CERTS or None
     if gw_config.SSL_CERTFILE and gw_config.SSL_KEYFILE:
-        uvicorn_kwargs["ssl_certfile"] = gw_config.SSL_CERTFILE
-        uvicorn_kwargs["ssl_keyfile"] = gw_config.SSL_KEYFILE
-        if gw_config.SSL_CA_CERTS:
-            uvicorn_kwargs["ssl_ca_certs"] = gw_config.SSL_CA_CERTS
         logger.info("TLS enabled")
 
-    uvicorn.run(**uvicorn_kwargs)
+    uvicorn.run(
+        app="main:app",
+        host=gw_config.HOST,
+        port=gw_config.PORT,
+        log_level=gw_config.LOG_LEVEL.lower(),
+        ssl_certfile=ssl_certfile,
+        ssl_keyfile=ssl_keyfile,
+        ssl_ca_certs=ssl_ca_certs,
+    )

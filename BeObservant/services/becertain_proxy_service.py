@@ -14,14 +14,18 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Dict, Optional, TypeAlias
 import httpx
 from fastapi import HTTPException, status
 from config import config
 from models.access.auth_models import TokenData
+from custom_types.json import JSONDict, JSONValue, is_json_value
 from services.common.ttl_cache import TTLCache
 from services.proxy.base_proxy import BaseProxyService
 from middleware.resilience import with_retry, with_timeout
+
+QueryParamValue: TypeAlias = str | int | float | bool
+QueryParams: TypeAlias = dict[str, QueryParamValue]
 
 
 class BeCertainProxyService(BaseProxyService):
@@ -38,8 +42,31 @@ class BeCertainProxyService(BaseProxyService):
             0, int(getattr(config, "BECERTAIN_PROXY_CACHE_TTL_SECONDS", 15))
         )
         self._read_cache = TTLCache()
-        self._read_inflight: Dict[str, asyncio.Future] = {}
+        self._read_inflight: Dict[str, asyncio.Future[JSONValue]] = {}
         self._read_inflight_lock = asyncio.Lock()
+
+    @staticmethod
+    def _is_volatile_read(upstream_path: str) -> bool:
+        return (
+            upstream_path.startswith("/api/v1/jobs")
+            or upstream_path.startswith("/api/v1/reports")
+        )
+
+    def _resolve_cache_ttl(
+        self,
+        *,
+        method: str,
+        upstream_path: str,
+        cache_ttl_seconds: Optional[int],
+    ) -> int:
+        configured_cache_ttl = (
+            self._cache_ttl_seconds
+            if cache_ttl_seconds is None
+            else max(0, int(cache_ttl_seconds))
+        )
+        if method.upper() == "GET" and self._is_volatile_read(upstream_path):
+            return 0
+        return configured_cache_ttl
 
     @staticmethod
     def _cache_key(
@@ -47,8 +74,8 @@ class BeCertainProxyService(BaseProxyService):
         method: str,
         upstream_path: str,
         tenant_id: str,
-        params: Optional[Dict[str, Any]],
-        payload: Optional[Dict[str, Any]],
+        params: Optional[QueryParams],
+        payload: Optional[JSONDict],
     ) -> str:
         return json.dumps(
             {
@@ -85,7 +112,7 @@ class BeCertainProxyService(BaseProxyService):
     def _resolve_inflight_error(
         self,
         owner: bool,
-        future: Optional[asyncio.Future],
+        future: Optional[asyncio.Future[JSONValue]],
         exc: HTTPException,
     ) -> None:
         if owner and future is not None and not future.done():
@@ -101,12 +128,12 @@ class BeCertainProxyService(BaseProxyService):
         upstream_path: str,
         current_user: TokenData,
         tenant_id: str,
-        payload: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        payload: Optional[JSONDict] = None,
+        params: Optional[QueryParams] = None,
         audit_action: str = "becertain.proxy",
         correlation_id: Optional[str] = None,
         cache_ttl_seconds: Optional[int] = None,
-    ) -> Any:
+    ) -> JSONValue:
         service_token = config.get_secret("BECERTAIN_SERVICE_TOKEN")
         if not service_token:
             raise HTTPException(
@@ -115,13 +142,13 @@ class BeCertainProxyService(BaseProxyService):
             )
 
         method_upper = method.upper()
-        effective_cache_ttl = (
-            self._cache_ttl_seconds
-            if cache_ttl_seconds is None
-            else max(0, int(cache_ttl_seconds))
+        effective_cache_ttl = self._resolve_cache_ttl(
+            method=method_upper,
+            upstream_path=upstream_path,
+            cache_ttl_seconds=cache_ttl_seconds,
         )
         cache_key: Optional[str] = None
-        inflight_future: Optional[asyncio.Future] = None
+        inflight_future: Optional[asyncio.Future[JSONValue]] = None
         owner = False
 
         if method_upper == "GET" and effective_cache_ttl > 0:
@@ -224,6 +251,8 @@ class BeCertainProxyService(BaseProxyService):
 
         try:
             result = response.json()
+            if not is_json_value(result):
+                raise ValueError("BeCertain returned non-JSON data")
             if cache_key:
                 await self._read_cache.set(cache_key, result, effective_cache_ttl)
             if owner and inflight_future is not None and not inflight_future.done():

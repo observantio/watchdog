@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-try:
-    import redis as _redis
-except ImportError:
-    _redis = None
+from importlib import import_module
+from types import ModuleType
 
-redis = _redis
+_redis_module: ModuleType | None
+
+try:
+    _redis_module = import_module("redis")
+except ImportError:
+    _redis_module = None
+
+redis: ModuleType | None = _redis_module
 
 __all__ = ["redis"]

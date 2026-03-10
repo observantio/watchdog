@@ -10,16 +10,20 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import List, Optional, Set, TYPE_CHECKING
 
 from sqlalchemy.orm import selectinload
 
 from database import get_db_session
 from db_models import Group, Permission, User
 from models.access.auth_models import ROLE_PERMISSIONS, Role
+from models.access.user_models import User as UserSchema
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 
-def get_user_permissions(service, user: User) -> List[str]:
+def get_user_permissions(service: DatabaseAuthService, user: User | UserSchema) -> List[str]:
     user_id = getattr(user, "id", None)
     if not user_id:
         return []
@@ -37,7 +41,7 @@ def get_user_permissions(service, user: User) -> List[str]:
         return collect_permissions(db_user) if db_user else []
 
 
-def get_user_direct_permissions(user: User) -> List[str]:
+def get_user_direct_permissions(user: User | UserSchema) -> List[str]:
     user_id = getattr(user, "id", None)
     if not user_id:
         return []
@@ -54,7 +58,7 @@ def get_user_direct_permissions(user: User) -> List[str]:
         return sorted({p.name for p in (db_user.permissions or []) if getattr(p, "name", None)})
 
 
-def collect_permissions(user: User) -> List[str]:
+def collect_permissions(user: User | None) -> List[str]:
     perms: Set[str] = set()
 
     role = _safe_role(getattr(user, "role", None))
@@ -79,7 +83,7 @@ def collect_permissions(user: User) -> List[str]:
     return sorted(perms)
 
 
-def list_all_permissions() -> List[Dict[str, Any]]:
+def list_all_permissions() -> List[dict[str, object]]:
     with get_db_session() as db:
         perms = (
             db.query(Permission)

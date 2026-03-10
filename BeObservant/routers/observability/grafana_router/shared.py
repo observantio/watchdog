@@ -16,6 +16,7 @@ from typing import List
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
+from custom_types.json import JSONDict
 from models.access.auth_models import TokenData
 from models.observability.grafana_request_models import GrafanaDashboardPayloadRequest
 from services.database_auth_service import DatabaseAuthService
@@ -45,12 +46,12 @@ def hidden_toggle_context(current_user: TokenData) -> tuple[str, str]:
     return user_id, tenant_id
 
 
-def dashboard_payload(payload: GrafanaDashboardPayloadRequest) -> dict:
+def dashboard_payload(payload: GrafanaDashboardPayloadRequest) -> JSONDict:
     raw = payload.model_dump(exclude_none=True)
     return raw if isinstance(raw, dict) else {}
 
 
-def dashboard_uid(raw: dict) -> str:
+def dashboard_uid(raw: JSONDict) -> str:
     dashboard = raw.get("dashboard")
     if not isinstance(dashboard, dict):
         return ""

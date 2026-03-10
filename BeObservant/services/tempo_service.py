@@ -14,13 +14,14 @@ import json
 import logging
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 import httpx
 
 from config import config
 from middleware.resilience import with_retry, with_timeout
 from models.observability.tempo_models import Trace, TraceQuery, TraceResponse
+from custom_types.json import JSONDict
 from services.common.http_client import create_async_client
 from services.common.ttl_cache import TTLCache
 from services.tempo import params as tempo_params
@@ -31,6 +32,23 @@ logger = logging.getLogger(__name__)
 SERVICE_NAME_KEY = "service.name"
 SERVICE_ALIAS_KEY = "service"
 SERVICE_KEYS = {SERVICE_NAME_KEY, SERVICE_ALIAS_KEY}
+QueryParamValue = str | int | float | bool | None
+
+
+def _json_dict(value: object) -> JSONDict:
+    return value if isinstance(value, dict) else {}
+
+
+def _dict_list(value: object) -> list[JSONDict]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item is not None]
 
 
 def _escape_traceql(value: str) -> str:
@@ -38,7 +56,7 @@ def _escape_traceql(value: str) -> str:
 
 
 class TempoService:
-    def __init__(self, tempo_url: str = config.TEMPO_URL):
+    def __init__(self, tempo_url: str = config.TEMPO_URL) -> None:
         self.tempo_url = tempo_url.rstrip("/")
         self._client = create_async_client(config.DEFAULT_TIMEOUT)
         self._cache_ttl_seconds = max(1, int(config.SERVICE_CACHE_TTL_SECONDS))
@@ -58,14 +76,15 @@ class TempoService:
         self,
         url: str,
         *,
-        params: Optional[Dict[str, Any]] = None,
+        params: Optional[Mapping[str, QueryParamValue]] = None,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> JSONDict:
         started = time.perf_counter()
         try:
             response = await self._client.get(url, params=params, headers=headers)
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            return payload if isinstance(payload, dict) else {}
         except Exception:
             self._observe("tempo_search_errors_total")
             raise
@@ -87,7 +106,7 @@ class TempoService:
         headers = self._get_headers(tenant_id)
         try:
             data = await self._get_json(f"{self.tempo_url}/api/search", params=params, headers=headers)
-            raw_traces = data.get("traces", [])
+            raw_traces = _dict_list(data.get("traces"))
 
             if fetch_full_traces:
                 semaphore = asyncio.Semaphore(max(1, config.TEMPO_TRACE_FETCH_CONCURRENCY))
@@ -112,7 +131,7 @@ class TempoService:
                             )
 
                 traces = list(await asyncio.gather(
-                    *[_fetch_one(t["traceID"]) for t in raw_traces if t.get("traceID")],
+                    *[_fetch_one(str(t["traceID"])) for t in raw_traces if isinstance(t.get("traceID"), str) and t.get("traceID")],
                 ))
             else:
                 traces = [t for t in (tempo_parsers.build_summary_trace(r) for r in raw_traces) if t]
@@ -149,7 +168,7 @@ class TempoService:
             except json.JSONDecodeError:
                 logger.debug("Non-JSON response for trace %s", trace_id)
                 return None
-            return tempo_parsers.parse_tempo_trace(trace_id, data) if "batches" in data else None
+            return tempo_parsers.parse_tempo_trace(trace_id, data) if isinstance(data, dict) and "batches" in data else None
         except httpx.HTTPError as e:
             logger.error("Error fetching trace %s: %s", trace_id, e)
             return None
@@ -165,14 +184,9 @@ class TempoService:
 
                 tag_names: List[str] = []
                 if isinstance(data, dict):
-                    tag_names = (
-                        data.get("tagNames")
-                        or (data.get("data") or {}).get("tagNames")
-                        or []
-                    )
-                elif isinstance(data, list):
-                    tag_names = [item.get("tagName") for item in data if isinstance(item, dict)]
-
+                    tag_names = _string_list(data.get("tagNames"))
+                    if not tag_names:
+                        tag_names = _string_list(_json_dict(data.get("data")).get("tagNames"))
                 services: List[str] = []
                 for tag in tag_names:
                     if tag not in SERVICE_KEYS:
@@ -183,7 +197,7 @@ class TempoService:
                         )
                         resp.raise_for_status()
                         vd = resp.json()
-                        raw_values: List[Any] = []
+                        raw_values: List[object] = []
                         if isinstance(vd, dict):
                             raw_values = vd.get("tagValues") or vd.get("values") or vd.get("data") or []
                         elif isinstance(vd, list):
@@ -201,14 +215,14 @@ class TempoService:
                 if not services:
                     logger.debug("No services from tags, inferring from recent traces")
                     try:
-                        resp = await self.search_traces(
+                        trace_response = await self.search_traces(
                             TraceQuery.model_validate({"limit": 50}),
                             tenant_id=tenant_id,
                             fetch_full_traces=False,
                         )
                         services = [
                             span.service_name
-                            for trace in resp.data
+                            for trace in trace_response.data
                             for span in trace.spans
                             if span.service_name
                         ]
@@ -221,7 +235,7 @@ class TempoService:
                 return None
 
         result = await self._services_cache.get_or_set(tenant_id, _fetch, self._cache_ttl_seconds)
-        return list(result) if result else []
+        return _string_list(result)
 
     @with_retry()
     @with_timeout()
@@ -239,9 +253,9 @@ class TempoService:
                 vd = resp.json()
                 values: List[str] = []
                 if isinstance(vd, dict):
-                    values = vd.get("tagValues") or vd.get("values") or vd.get("data") or []
+                    values = _string_list(vd.get("tagValues") or vd.get("values") or vd.get("data"))
                 elif isinstance(vd, list):
-                    values = vd
+                    values = _string_list(vd)
                 if values:
                     return sorted(set(filter(None, map(str, values))))
             except httpx.HTTPError:

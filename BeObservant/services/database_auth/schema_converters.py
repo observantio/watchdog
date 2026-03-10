@@ -10,15 +10,19 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
+from db_models import Group, Permission, User, UserApiKey
 from models.access.api_key_models import ApiKey
 from models.access.auth_models import Permission as PermissionEnum
 from models.access.group_models import Group as GroupSchema, PermissionInfo
 from models.access.user_models import User as UserSchema
 from models.access.user_models import UserResponse
 
-def to_user_schema(service, user) -> UserSchema:
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+
+def to_user_schema(service: DatabaseAuthService, user: User) -> UserSchema:
     groups = user.groups or []
     raw_api_keys = getattr(user, "api_keys", None) or []
     api_keys = [service._to_api_key_schema(k) for k in raw_api_keys]
@@ -49,10 +53,10 @@ def to_user_schema(service, user) -> UserSchema:
     if grafana_uid is not None:
         kwargs["grafana_user_id"] = grafana_uid
 
-    return UserSchema(**kwargs)
+    return UserSchema.model_validate(kwargs)
 
 def build_user_response(
-    service,
+    service: DatabaseAuthService,
     user: UserSchema,
     fallback_permissions: Optional[List[str]] = None,
 ) -> UserResponse:
@@ -66,7 +70,7 @@ def build_user_response(
     )
 
 
-def to_api_key_schema(key) -> ApiKey:
+def to_api_key_schema(key: UserApiKey) -> ApiKey:
     owner_username = None
     owner = getattr(key, "user", None)
     if owner is not None:
@@ -86,7 +90,7 @@ def to_api_key_schema(key) -> ApiKey:
     )
 
 
-def to_group_schema(group) -> GroupSchema:
+def to_group_schema(group: Group) -> GroupSchema:
     perms = group.permissions or []
     return GroupSchema(
         id=group.id,
@@ -99,7 +103,7 @@ def to_group_schema(group) -> GroupSchema:
     )
 
 
-def _to_permission_info(p) -> PermissionInfo:
+def _to_permission_info(p: Permission) -> PermissionInfo:
     return PermissionInfo(
         id=p.id,
         name=p.name,
@@ -110,7 +114,7 @@ def _to_permission_info(p) -> PermissionInfo:
     )
 
 
-def _coerce_permission(p) -> PermissionEnum:
+def _coerce_permission(p: object) -> PermissionEnum:
     if isinstance(p, PermissionEnum):
         return p
     return PermissionEnum(str(p))

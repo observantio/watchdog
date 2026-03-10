@@ -9,15 +9,21 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 from __future__ import annotations
+
+from importlib import import_module
 import time
+from types import ModuleType
 from urllib.parse import urlparse, urlunparse
-from fastapi import HTTPException
+from fastapi import HTTPException, status
+
+_redis_module: ModuleType | None
 
 try:
-    import redis
-    redis: object
+    _redis_module = import_module("redis")
 except ImportError:
-    redis = None
+    _redis_module = None
+
+redis: ModuleType | None = _redis_module
 
 def _sanitize_redis_url(url: str) -> str:
     try:
@@ -40,7 +46,8 @@ class RedisTokenRateLimiter:
         if redis is None:
             raise RuntimeError("redis library not available")
         self._limit = max(1, int(limit_per_minute))
-        self._client = redis.from_url(
+        redis_module = redis
+        self._client = redis_module.from_url(
             url,
             socket_timeout=socket_timeout,
             socket_connect_timeout=socket_timeout,
@@ -50,7 +57,7 @@ class RedisTokenRateLimiter:
         try:
             if not self._client.ping():
                 raise RuntimeError("redis ping returned falsy response")
-        except Exception as exc:
+        except redis_module.RedisError as exc:
             raise RuntimeError(
                 f"unable to connect to Redis at {_sanitize_redis_url(url)}: {type(exc).__name__}"
             ) from exc

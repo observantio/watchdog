@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable, Dict, Optional
+from importlib import import_module
+from types import ModuleType
+from typing import Callable, Optional
 
 
 class _VaultForbiddenFallback(Exception):
@@ -26,9 +28,17 @@ class _VaultInvalidPathFallback(Exception):
 class _VaultErrorFallback(Exception):
     pass
 
+hvac: ModuleType | None
+
 try:
-    import hvac
-    from hvac.exceptions import Forbidden, InvalidPath, VaultError
+    hvac = import_module("hvac")
+    hvac_exceptions = import_module("hvac.exceptions")
+    forbidden_exc = getattr(hvac_exceptions, "Forbidden", _VaultForbiddenFallback)
+    invalid_path_exc = getattr(hvac_exceptions, "InvalidPath", _VaultInvalidPathFallback)
+    vault_error_exc = getattr(hvac_exceptions, "VaultError", _VaultErrorFallback)
+    Forbidden = forbidden_exc if isinstance(forbidden_exc, type) and issubclass(forbidden_exc, Exception) else _VaultForbiddenFallback
+    InvalidPath = invalid_path_exc if isinstance(invalid_path_exc, type) and issubclass(invalid_path_exc, Exception) else _VaultInvalidPathFallback
+    VaultError = vault_error_exc if isinstance(vault_error_exc, type) and issubclass(vault_error_exc, Exception) else _VaultErrorFallback
 except ImportError:
     hvac = None
     Forbidden = _VaultForbiddenFallback
@@ -67,7 +77,7 @@ class VaultSecretProvider:
 
         self._prefix = prefix.strip("/")
         self._kv_version = kv_version
-        self._cache: Dict[str, tuple[float, object]] = {}
+        self._cache: dict[str, tuple[float, object]] = {}
         self._cache_ttl = float(cache_ttl)
         self._lock = threading.Lock()
         self._approle_credentials = (role_id, secret_id_fn)
@@ -123,7 +133,7 @@ class VaultSecretProvider:
     def get(self, key: str) -> Optional[str]:
         cached = self._from_cache(key)
         if cached is not SENTINEL:
-            return cached
+            return cached if isinstance(cached, str) or cached is None else None
 
         self._ensure_authenticated()
 
@@ -162,5 +172,5 @@ class VaultSecretProvider:
         self._to_cache(key, val)
         return val
 
-    def get_many(self, keys: list[str]) -> Dict[str, Optional[str]]:
+    def get_many(self, keys: list[str]) -> dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}

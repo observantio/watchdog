@@ -47,6 +47,7 @@ async def search_traces(
     query = TraceQuery(
         service=service,
         operation=operation,
+        tags=None,
         minDuration=min_duration,
         maxDuration=max_duration,
         start=start,

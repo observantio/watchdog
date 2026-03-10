@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from datetime import datetime, timezone
 import secrets
-from typing import List, Optional, Set
+from typing import List, Optional, Set, TYPE_CHECKING
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
@@ -31,6 +31,9 @@ from services.auth.delegation import (
     role_to_text as _role_to_text,
 )
 from services.auth.group_ops import _prune_removed_member_grafana_group_shares
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 
 MUTABLE_USER_FIELDS = {
@@ -57,12 +60,12 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _role_rank(value) -> int:
+def _role_rank(value: object) -> int:
     return _shared_role_rank(value, ROLE_RANK)
 
 
 def _get_user(
-    db,
+    db: Session,
     *,
     user_id: str,
     tenant_id: str,
@@ -125,7 +128,7 @@ def _role_default_permissions(role_value: str) -> Set[str]:
         if str(getattr(perm, "value", perm)).strip()
     }
 
-def get_user_by_id(service, user_id: str,tenant_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[UserSchema]:
+def get_user_by_id(service: "DatabaseAuthService", user_id: str,tenant_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[UserSchema]:
     if not user_id:
         return None
 
@@ -155,7 +158,7 @@ def get_user_by_id(service, user_id: str,tenant_id: Optional[str] = None, db: Op
         return _query(s)
 
 
-def get_user_by_username(service, username: str) -> Optional[UserSchema]:
+def get_user_by_username(service: "DatabaseAuthService", username: str) -> Optional[UserSchema]:
     service._lazy_init()
     username = (username or "").strip().lower()
     with get_db_session() as db:
@@ -167,11 +170,11 @@ def get_user_by_username(service, username: str) -> Optional[UserSchema]:
         )
         if not user:
             return None
-        return service._to_user_schema(user)
+        return UserSchema.model_validate(service._to_user_schema(user))
 
 
 def create_user(
-    service,
+    service: "DatabaseAuthService",
     user_create: UserCreate,
     tenant_id: str,
     creator_id: Optional[str] = None,
@@ -272,10 +275,7 @@ def create_user(
             if requested_org:
                 org_value = requested_org
 
-        # New users should rotate away from the bootstrap password on first use,
-        # including externally provisioned accounts that may later move to local auth.
         enforce_change = True
-
         user = User(
             tenant_id=tenant_id,
             username=normalized_username,
@@ -316,10 +316,10 @@ def create_user(
             )
 
         db.commit()
-        return service._to_user_schema(user)
+        return UserSchema.model_validate(service._to_user_schema(user))
 
 
-def list_users(service, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
+def list_users(service: "DatabaseAuthService", tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
     service._lazy_init()
     try:
         requested_limit = int(limit) if limit is not None else int(getattr(config, "DEFAULT_QUERY_LIMIT", 100))
@@ -342,7 +342,7 @@ def list_users(service, tenant_id: str, *, limit: Optional[int] = None, offset: 
 
 
 def update_user(
-    service,
+    service: "DatabaseAuthService",
     user_id: str,
     user_update: UserUpdate,
     tenant_id: str,
@@ -388,6 +388,16 @@ def update_user(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Cannot assign a role higher than your own",
+                )
+            if (
+                _is_admin_user(user)
+                and str(user_id) != str(updater_id)
+                and requested_role is not None
+                and _role_to_text(requested_role) != Role.ADMIN.value
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin accounts cannot be demoted; only deactivation is allowed",
                 )
 
         if getattr(user, "auth_provider", "local") != "local" and "email" in update_data:
@@ -448,7 +458,7 @@ def update_user(
             service._log_audit(db, tenant_id, updater_id, "update_user", "users", user_id, update_data)
 
         db.commit()
-        return service._to_user_schema(user)
+        return UserSchema.model_validate(service._to_user_schema(user))
 
 
 def set_grafana_user_id(user_id: str, grafana_user_id: int, tenant_id: str) -> bool:
@@ -461,7 +471,7 @@ def set_grafana_user_id(user_id: str, grafana_user_id: int, tenant_id: str) -> b
         return True
 
 
-def delete_user(service, user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
+def delete_user(service: "DatabaseAuthService", user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
     service._lazy_init()
     if deleter_id and user_id == deleter_id:
         raise ValueError("Users cannot delete their own account")
@@ -503,7 +513,7 @@ def delete_user(service, user_id: str, tenant_id: str, deleter_id: Optional[str]
 
 
 def update_user_permissions(
-    service,
+    service: "DatabaseAuthService",
     user_id: str,
     permission_names: List[str],
     tenant_id: str,

@@ -8,9 +8,11 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
+from __future__ import annotations
+
 import re
 import uuid
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, TypedDict
 
 from fastapi import HTTPException
 from sqlalchemy import and_, or_
@@ -19,10 +21,20 @@ from sqlalchemy.orm import Session
 from config import config
 from db_models import ApiKeyShare, GrafanaDatasource, Group, User, UserApiKey
 from models.grafana.grafana_datasource_models import Datasource, DatasourceCreate, DatasourceUpdate
+from custom_types.json import JSONDict
 from services.grafana.grafana_service import GrafanaAPIError
 from services.grafana.shared_ops import commit_session, group_id_strs, update_hidden_members
 
+if TYPE_CHECKING:
+    from services.grafana_proxy_service import GrafanaProxyService
+
 DS_PROXY_ID_RE = re.compile(r"/api/datasources/proxy/(\d+)")
+
+
+class DatasourceListContext(TypedDict, total=False):
+    uid_db_datasource: Optional[GrafanaDatasource]
+    db_entries: Dict[str, GrafanaDatasource]
+    all_registered_uids: Set[str]
 
 
 def _cap(limit: Optional[int], offset: int) -> tuple[int, int]:
@@ -31,7 +43,7 @@ def _cap(limit: Optional[int], offset: int) -> tuple[int, int]:
     return max(1, min(req, mx)), max(0, int(offset))
 
 
-def _sanitize_datasource_payload(payload: Dict[str, Any], *, is_owner: bool) -> Dict[str, Any]:
+def _sanitize_datasource_payload(payload: JSONDict, *, is_owner: bool) -> JSONDict:
     if is_owner:
         return payload
     sanitized = dict(payload)
@@ -41,7 +53,7 @@ def _sanitize_datasource_payload(payload: Dict[str, Any], *, is_owner: bool) -> 
     return sanitized
 
 
-def _is_safe_system_datasource(datasource: Any) -> bool:
+def _is_safe_system_datasource(datasource: object) -> bool:
     return bool(
         getattr(datasource, "is_default", False)
         or getattr(datasource, "isDefault", False)
@@ -68,12 +80,12 @@ def _db_datasource_by_uid(db: Session, tenant_id: str, uid: str) -> Optional[Gra
 
 
 def _enrich_datasource_payload(
-    payload: Dict[str, Any],
+    payload: JSONDict,
     *,
     db_ds: Optional[GrafanaDatasource],
     user_id: str,
     is_unregistered_safe_system: bool = False,
-) -> Dict[str, Any]:
+) -> JSONDict:
     is_owner = bool(db_ds and db_ds.created_by == user_id)
     if db_ds and db_ds.name:
         payload["name"] = db_ds.name
@@ -149,7 +161,7 @@ def _resolve_datasource_org_scope(
 
 
 async def _has_accessible_name_conflict(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     *,
     tenant_id: str,
@@ -250,7 +262,7 @@ def check_datasource_access_by_id(
 
 
 def get_accessible_datasource_uids(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     user_id: str,
     tenant_id: str,
@@ -275,12 +287,12 @@ def get_accessible_datasource_uids(
 
 
 def build_datasource_list_context(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     *,
     tenant_id: str,
     uid: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> DatasourceListContext:
     if uid:
         return {"uid_db_datasource": _db_datasource_by_uid(db, tenant_id, uid)}
     rows = (
@@ -293,10 +305,10 @@ def build_datasource_list_context(
     return {"db_entries": db_entries, "all_registered_uids": set(db_entries.keys())}
 
 
-def collect_datasource_refs_from_query_payload(payload: Any) -> Set[str]:
+def collect_datasource_refs_from_query_payload(payload: object) -> Set[str]:
     refs: Set[str] = set()
 
-    def walk(value: Any):
+    def walk(value: object) -> None:
         if isinstance(value, dict):
             uid = value.get("datasourceUid")
             if isinstance(uid, str) and uid:
@@ -317,14 +329,14 @@ def collect_datasource_refs_from_query_payload(payload: Any) -> Set[str]:
 
 
 async def enforce_datasource_query_access(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     user_id: str,
     tenant_id: str,
     group_ids: List[str],
     path: str,
     method: str,
-    body: Any,
+    body: object,
 ) -> None:
     if method.upper() != "POST":
         return
@@ -364,7 +376,7 @@ async def enforce_datasource_query_access(
 
 
 async def get_datasources(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     user_id: str,
     tenant_id: str,
@@ -374,7 +386,7 @@ async def get_datasources(
     show_hidden: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
-    datasource_context: Optional[Dict[str, Any]] = None,
+    datasource_context: Optional[DatasourceListContext] = None,
 ) -> List[Datasource]:
     capped_limit, capped_offset = _cap(limit, offset)
 
@@ -392,7 +404,7 @@ async def get_datasources(
         elif not _is_safe_system_datasource(datasource):
             return []
         payload = _enrich_datasource_payload(datasource.model_dump(), db_ds=db_ds, user_id=user_id)
-        return [Datasource(**payload)]
+        return [Datasource.model_validate(payload)]
 
     all_datasources = await service.grafana_service.get_datasources()
     accessible_uids, allow_system = get_accessible_datasource_uids(service, db, user_id, tenant_id, group_ids)
@@ -419,13 +431,13 @@ async def get_datasources(
             if str(team_id) not in {str(g.id) for g in (db_ds.shared_groups or [])}:
                 continue
         payload = _enrich_datasource_payload(d.model_dump(), db_ds=db_ds, user_id=user_id, is_unregistered_safe_system=is_unregistered_safe)
-        out.append(Datasource(**payload))
+        out.append(Datasource.model_validate(payload))
 
     return out[capped_offset: capped_offset + capped_limit]
 
 
 async def get_datasource(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     uid: str,
     user_id: str,
@@ -442,11 +454,11 @@ async def get_datasource(
     elif not _is_safe_system_datasource(ds):
         return None
     payload = _enrich_datasource_payload(ds.model_dump(), db_ds=db_ds, user_id=user_id)
-    return Datasource(**payload)
+    return Datasource.model_validate(payload)
 
 
 async def get_datasource_by_name(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     name: str,
     user_id: str,
@@ -464,11 +476,11 @@ async def get_datasource_by_name(
     elif not _is_safe_system_datasource(ds):
         return None
     payload = _enrich_datasource_payload(ds.model_dump(), db_ds=db_ds, user_id=user_id)
-    return Datasource(**payload)
+    return Datasource.model_validate(payload)
 
 
 async def create_datasource(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     datasource_create: DatasourceCreate,
     user_id: str,
@@ -552,11 +564,11 @@ async def create_datasource(
     sgids = [g.id for g in (db_ds.shared_groups or [])]
     payload["shared_group_ids"] = sgids
     payload["sharedGroupIds"] = sgids
-    return Datasource(**payload)
+    return Datasource.model_validate(payload)
 
 
 async def update_datasource(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     uid: str,
     datasource_update: DatasourceUpdate,
@@ -644,11 +656,11 @@ async def update_datasource(
     sgids = [g.id for g in (db_ds.shared_groups or [])]
     payload["shared_group_ids"] = sgids
     payload["sharedGroupIds"] = sgids
-    return Datasource(**payload)
+    return Datasource.model_validate(payload)
 
 
 async def delete_datasource(
-    service,
+    service: GrafanaProxyService,
     db: Session,
     uid: str,
     user_id: str,
@@ -669,8 +681,9 @@ async def delete_datasource(
     return True
 
 
-async def query_datasource(service, payload: Dict[str, Any]) -> Dict[str, Any]:
-    return await service.grafana_service.query_datasource(payload)
+async def query_datasource(service: GrafanaProxyService, payload: JSONDict) -> JSONDict:
+    result = await service.grafana_service.query_datasource(payload)
+    return result if isinstance(result, dict) else {}
 
 
 def toggle_datasource_hidden(db: Session, uid: str, user_id: str, tenant_id: str, hidden: bool) -> bool:
@@ -682,7 +695,7 @@ def toggle_datasource_hidden(db: Session, uid: str, user_id: str, tenant_id: str
     return True
 
 
-def get_datasource_metadata(db: Session, tenant_id: str) -> Dict[str, Any]:
+def get_datasource_metadata(db: Session, tenant_id: str) -> dict[str, list[str]]:
     rows = (
         db.query(GrafanaDatasource)
         .filter(GrafanaDatasource.tenant_id == tenant_id)

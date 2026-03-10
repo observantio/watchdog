@@ -39,7 +39,7 @@ def make_default_rate_limiter(
     *,
     socket_timeout: float = 1.0,
     max_connections: int = 50,
-) -> TokenRateLimiter | HybridTokenRateLimiter:
+) -> TokenRateLimiter | RedisTokenRateLimiter | HybridTokenRateLimiter:
     backend = (backend or "auto").strip().lower()
     strict = gw_config.GATEWAY_RATE_LIMIT_STRICT
 
@@ -51,7 +51,7 @@ def make_default_rate_limiter(
     if strict:
         try:
             r = _make_redis()
-            logger.info("Gateway rate limiting backend: redis (strict) %s", _sanitize_redis_url(redis_url))
+            logger.info("Gateway rate limiting backend: redis (strict) %s", _sanitize_redis_url(redis_url or ""))
             return r
         except RuntimeError as exc:
             logger.error("Redis init failed in strict mode: %s", exc)
@@ -65,7 +65,7 @@ def make_default_rate_limiter(
 
     try:
         primary = _make_redis()
-        logger.info("Gateway rate limiting backend: redis (%s)", _sanitize_redis_url(redis_url))
+        logger.info("Gateway rate limiting backend: redis (%s)", _sanitize_redis_url(redis_url or ""))
         return HybridTokenRateLimiter(primary, TokenRateLimiter(limit))
     except RuntimeError as exc:
         logger.warning("Redis rate limiter init failed (%s), using in-memory fallback", type(exc).__name__)

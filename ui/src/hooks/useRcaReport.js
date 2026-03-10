@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  getRcaJob,
   getRcaReportById,
   getRcaJobResult,
   fetchRcaBayesian,
@@ -71,6 +72,8 @@ const TERMINAL_JOB_STATUSES = new Set([
   "cancelled",
   "deleted",
 ]);
+const FAILED_JOB_STATUSES = new Set(["failed", "cancelled", "deleted"]);
+const REPORT_POLL_MS = 5000;
 
 const TAB_INSIGHT_KEYS = {
   topology: ["topology"],
@@ -92,6 +95,25 @@ function normalizeEmbeddedInsights(reportData) {
   };
 }
 
+function isIncompleteJobMessage(err) {
+  const message = String(err?.body?.detail || err?.message || "").toLowerCase();
+  return (
+    Number(err?.status) === 409 ||
+    message.includes("not completed yet") ||
+    message.includes("not ready") ||
+    message.includes("not available")
+  );
+}
+
+function isReportNotFoundError(err) {
+  const message = String(err?.body?.detail || err?.message || "").toLowerCase();
+  return Number(err?.status) === 404 || message.includes("report not found");
+}
+
+function normalizeJobStatus(value) {
+  return String(value || "").toLowerCase();
+}
+
 export function useRcaReport(
   selectedJobId,
   selectedJob,
@@ -111,6 +133,7 @@ export function useRcaReport(
   const [insightErrors, setInsightErrors] = useState(EMPTY_INSIGHT_ERRORS);
   const insightsRef = useRef(EMPTY_INSIGHTS);
   const insightErrorsRef = useRef(EMPTY_INSIGHT_ERRORS);
+  const deferredReportIdsRef = useRef(new Set());
 
   useEffect(() => {
     insightsRef.current = insights;
@@ -248,9 +271,35 @@ export function useRcaReport(
     setLoadingInsights(false);
   }, []);
 
+  const clearReportData = useCallback(() => {
+    setReport(null);
+    setInsights(EMPTY_INSIGHTS);
+    setInsightErrors(EMPTY_INSIGHT_ERRORS);
+    insightsRef.current = EMPTY_INSIGHTS;
+    insightErrorsRef.current = EMPTY_INSIGHT_ERRORS;
+    setLoadingInsights(false);
+  }, []);
+
+  const applyLoadedReport = useCallback(
+    (reportData, reportId) => {
+      if (reportId) {
+        deferredReportIdsRef.current.delete(reportId);
+      }
+      setReport(reportData);
+      const initialInsights = normalizeEmbeddedInsights(reportData);
+      setInsights(initialInsights);
+      setInsightErrors(EMPTY_INSIGHT_ERRORS);
+      insightsRef.current = initialInsights;
+      insightErrorsRef.current = EMPTY_INSIGHT_ERRORS;
+      setLoadingInsights(false);
+    },
+    [],
+  );
+
   const loadReport = useCallback(async () => {
     const seq = requestSeq.current + 1;
     requestSeq.current = seq;
+    const selectedReportId = String(selectedJob?.report_id || "").trim();
 
     if (
       !reportIdOverride &&
@@ -266,45 +315,85 @@ export function useRcaReport(
     setReportError(null);
     setReportErrorStatus(null);
     try {
-      const res = reportIdOverride
-        ? await getRcaReportById(reportIdOverride)
-        : await getRcaJobResult(selectedJobId);
+      let liveJob = null;
+      if (!reportIdOverride && selectedJobId && !selectedJobId.startsWith("pending-")) {
+        try {
+          liveJob = await getRcaJob(selectedJobId);
+        } catch {
+          liveJob = null;
+        }
+      }
+      const effectiveReportId = String(
+        liveJob?.report_id || selectedReportId || "",
+      ).trim();
+      const shouldPreferJobResult =
+        !reportIdOverride &&
+        effectiveReportId &&
+        deferredReportIdsRef.current.has(effectiveReportId);
+
+      let res;
+      if (reportIdOverride) {
+        res = await getRcaReportById(reportIdOverride);
+      } else if (effectiveReportId && !shouldPreferJobResult) {
+        // Prefer fetching by report id when available; it is more stable than
+        // job-result during status propagation delays.
+        try {
+          res = await getRcaReportById(effectiveReportId);
+        } catch (err) {
+          if (!isIncompleteJobMessage(err) && !isReportNotFoundError(err)) {
+            throw err;
+          }
+          deferredReportIdsRef.current.add(effectiveReportId);
+          res = await getRcaJobResult(selectedJobId);
+        }
+      } else {
+        res = await getRcaJobResult(selectedJobId);
+      }
+      if (
+        !reportIdOverride &&
+        (!res || (res?.status == null && res?.result == null))
+      ) {
+        res = await getRcaJobResult(selectedJobId);
+      }
       if (seq !== requestSeq.current) return;
 
       setReportMeta({
-        job_id: res?.job_id,
-        report_id: res?.report_id,
-        status: res?.status,
-        tenant_id: res?.tenant_id,
-        requested_by: res?.requested_by,
+        job_id: res?.job_id || liveJob?.job_id,
+        report_id: res?.report_id || liveJob?.report_id,
+        status: res?.status || liveJob?.status,
+        tenant_id: res?.tenant_id || liveJob?.tenant_id,
+        requested_by: res?.requested_by || liveJob?.requested_by,
       });
       if (res?.status !== "completed" || !res?.result) {
-        setReport(null);
-        setInsights(EMPTY_INSIGHTS);
-        setInsightErrors(EMPTY_INSIGHT_ERRORS);
-        setLoadingInsights(false);
+        clearReportData();
       } else {
-        setReport(res.result);
-        const initialInsights = normalizeEmbeddedInsights(res.result);
-        setInsights(initialInsights);
-        setInsightErrors(EMPTY_INSIGHT_ERRORS);
-        insightsRef.current = initialInsights;
-        insightErrorsRef.current = EMPTY_INSIGHT_ERRORS;
-        setLoadingInsights(false);
+        applyLoadedReport(res.result, effectiveReportId);
         setLoadingPrimaryReport(false);
         return;
       }
     } catch (err) {
       if (seq !== requestSeq.current) return;
-      setReportError(err?.message || "Failed to load RCA report");
-      setReportErrorStatus(err?.status || null);
+      if (isIncompleteJobMessage(err) || isReportNotFoundError(err)) {
+        setReportError(null);
+        setReportErrorStatus(isReportNotFoundError(err) ? 404 : null);
+      } else {
+        setReportError(err?.message || "Failed to load RCA report");
+        setReportErrorStatus(err?.status || null);
+      }
       reset();
     } finally {
       if (seq === requestSeq.current) {
         setLoadingPrimaryReport(false);
       }
     }
-  }, [reportIdOverride, reset, selectedJobId]);
+  }, [
+    applyLoadedReport,
+    clearReportData,
+    reportIdOverride,
+    reset,
+    selectedJob,
+    selectedJobId,
+  ]);
 
   useEffect(() => {
     if (reportIdOverride) {
@@ -319,25 +408,55 @@ export function useRcaReport(
       setReportErrorStatus(null);
       return;
     }
-    const normalizedStatus = String(selectedJob?.status || "").toLowerCase();
-    if (normalizedStatus === "completed") {
-      loadReport();
-    } else if (
-      normalizedStatus === "failed" ||
-      normalizedStatus === "cancelled" ||
-      normalizedStatus === "deleted"
+    const normalizedStatus = normalizeJobStatus(selectedJob?.status);
+    if (
+      normalizedStatus === "completed" ||
+      !TERMINAL_JOB_STATUSES.has(normalizedStatus)
     ) {
+      loadReport();
+    } else if (FAILED_JOB_STATUSES.has(normalizedStatus)) {
       requestSeq.current += 1;
       reset();
       setReportError(selectedJob?.error || "RCA job did not complete");
       setReportErrorStatus(null);
-    } else if (!TERMINAL_JOB_STATUSES.has(normalizedStatus)) {
-      requestSeq.current += 1;
-      reset();
-      setReportError(null);
-      setReportErrorStatus(null);
     }
   }, [loadReport, reportIdOverride, reset, selectedJob, selectedJobId]);
+
+  useEffect(() => {
+    if (reportIdOverride || !selectedJobId) return undefined;
+    const normalizedStatus = normalizeJobStatus(selectedJob?.status);
+    const shouldAwaitCompletedPayload =
+      normalizedStatus === "completed" && !report;
+    if (FAILED_JOB_STATUSES.has(normalizedStatus)) {
+      return undefined;
+    }
+    if (!shouldAwaitCompletedPayload && normalizedStatus === "completed") {
+      return undefined;
+    }
+
+    const poll = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      loadReport();
+    };
+    const timer = setInterval(() => {
+      poll();
+    }, REPORT_POLL_MS);
+
+    const onVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        poll();
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    return () => {
+      clearInterval(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+    };
+  }, [loadReport, report, reportIdOverride, selectedJob?.status, selectedJobId]);
 
   useEffect(() => {
     if (!enableInsights || !report) return;

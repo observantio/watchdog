@@ -13,9 +13,11 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
-from config import config
 from typing import Sequence
-from urllib.request import Request
+
+from fastapi import Request
+
+from config import config
 
 Network = IPv4Network | IPv6Network
 
@@ -23,7 +25,7 @@ def _parse_networks(cidrs: Sequence[str]) -> list[Network]:
     return [ip_network(c, strict=False) for c in cidrs]
 
 def is_secure_cookie_request(
-    request,
+    request: Request,
     *,
     trust_proxy_headers: bool,
     trusted_proxy_cidrs: Sequence[str] | None = None,

@@ -8,8 +8,10 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
+
+from custom_types.json import JSONDict
 
 class DashboardMeta(BaseModel):
     is_starred: bool = Field(False, alias="isStarred", description="Whether the dashboard is starred")
@@ -28,10 +30,10 @@ class Dashboard(BaseModel):
     schema_version: int = Field(16, alias="schemaVersion", description="Schema version of the dashboard")
     version: Optional[int] = Field(None, description="Version number of the dashboard")
     refresh: Optional[str] = Field(None, description="Auto-refresh interval")
-    panels: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="List of panels in the dashboard")
-    templating: Optional[Dict[str, Any]] = Field(None, description="Template variables configuration")
-    time: Optional[Dict[str, Any]] = Field(None, description="Time range configuration")
-    time_picker: Optional[Dict[str, Any]] = Field(None, alias="timePicker", description="Time picker configuration")
+    panels: Optional[List[JSONDict]] = Field(default_factory=list, description="List of panels in the dashboard")
+    templating: Optional[JSONDict] = Field(None, description="Template variables configuration")
+    time: Optional[JSONDict] = Field(None, description="Time range configuration")
+    time_picker: Optional[JSONDict] = Field(None, alias="timePicker", description="Time picker configuration")
     editable: bool = Field(True, description="Whether the dashboard is editable")
     model_config = ConfigDict(populate_by_name=True)
 
