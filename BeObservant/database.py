@@ -16,7 +16,7 @@ import os
 import threading
 from contextlib import contextmanager
 from types import TracebackType
-from typing import Callable, Generator, Iterator, Optional
+from typing import Any, Callable, Generator, Iterator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
@@ -61,7 +61,7 @@ def init_database(
         resolved_max_overflow = _env_int("DB_MAX_OVERFLOW", 20)
         resolved_pool_timeout = _env_int("DB_POOL_TIMEOUT", 30)
         resolved_pool_recycle = _env_int("DB_POOL_RECYCLE", 1800)
-        engine_kwargs = {
+        engine_kwargs: dict[str, Any] = {
             "pool_pre_ping": True,
             "echo": echo,
             "future": True,

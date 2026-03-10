@@ -25,6 +25,7 @@ from database import get_db_session
 from db_models import ApiKeyShare, User, UserApiKey
 from middleware.rate_limit import enforce_rate_limit, enforce_ip_rate_limit, client_ip
 from models.access.auth_models import Permission, TokenData
+from models.access.user_models import User as UserSchema
 from services.database_auth_service import DatabaseAuthService
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ def _normalize_group_ids(group_ids: object) -> list[str]:
     return normalized
 
 
-def _hydrate_authenticated_user(token_data: TokenData, user: object) -> TokenData:
+def _hydrate_authenticated_user(token_data: TokenData, user: User | UserSchema) -> TokenData:
     token_data.org_id = getattr(user, "org_id", token_data.org_id)
     token_data.permissions = auth_service.get_user_permissions(user)
     token_data.group_ids = _normalize_group_ids(getattr(user, "group_ids", None))
