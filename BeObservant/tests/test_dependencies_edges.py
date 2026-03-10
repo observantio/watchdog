@@ -197,6 +197,34 @@ def test_load_allowed_org_ids_and_scope_conflict(monkeypatch):
     assert dependencies._scope_exists_in_other_tenants(org_id="org-own", tenant_id="tenant-a") is True
 
 
+def test_dependency_helper_misc_branches(monkeypatch):
+    assert dependencies._normalize_group_ids([" a ", "", "a", "b"]) == ["a", "b"]
+    assert set(dependencies._normalize_group_ids({" a ", "b"})) == {"a", "b"}
+    assert dependencies._normalize_group_ids(object()) == []
+    assert dependencies._validate_rate_limit_fallback_mode(" ") is None
+    assert dependencies._validate_rate_limit_fallback_mode(" MEMORY ") == "memory"
+    assert dependencies._scope_exists_in_other_tenants(scope_id=None, org_id=None, tenant_id="tenant-a") is False
+    assert [str(item) for item in dependencies._parse_ip_allowlist("10.0.0.0/24")] == ["10.0.0.0/24"]
+    assert [str(item) for item in dependencies._parse_ip_allowlist("127.0.0.1, ,10.0.0.1")] == ["127.0.0.1/32", "10.0.0.1/32"]
+
+    class QueryStub:
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return types.SimpleNamespace(is_active=False)
+
+    @contextmanager
+    def session():
+        yield types.SimpleNamespace(query=lambda model: QueryStub())
+
+    monkeypatch.setattr(dependencies, "get_db_session", session)
+    assert dependencies._load_allowed_scope_ids_for_user(
+        current_user=_token_data(),
+        default_scope_id="org-default",
+    ) == {"org-default"}
+
+
 def test_current_user_and_permission_dependency_edges(monkeypatch):
     with pytest.raises(HTTPException, match="Authentication required"):
         dependencies.get_current_user(_request(), None)
@@ -323,3 +351,24 @@ def test_scope_aware_current_user_dependency_does_not_require_body(monkeypatch):
 
     operation = app.openapi()["paths"]["/scoped"]["get"]
     assert "requestBody" not in operation
+
+
+def test_scoped_permission_dependencies_cover_forbidden_and_superuser_paths(monkeypatch):
+    scoped_calls = []
+    monkeypatch.setattr(dependencies, "apply_scoped_rate_limit", lambda current_user, scope: scoped_calls.append((current_user.user_id, scope)))
+
+    perm_dependency = dependencies.require_permission_with_scope("read:users", "tempo")
+    perm_checker = perm_dependency.__defaults__[0].dependency
+    with pytest.raises(HTTPException, match="READ:USERS"):
+        perm_checker(_token_data(permissions=[]))
+    assert perm_checker(_token_data(permissions=["read:users"])).permissions == ["read:users"]
+
+    any_scoped = dependencies.require_any_permission_with_scope(["read:users"], "tempo")
+    any_checker = any_scoped.__defaults__[0].dependency
+    assert any_checker(_token_data(is_superuser=True, permissions=[])).is_superuser is True
+    assert any_checker(_token_data(permissions=["read:users"])).permissions == ["read:users"]
+    assert any_scoped(_token_data(is_superuser=True, permissions=[])).is_superuser is True
+    assert scoped_calls[-1] == ("u1", "tempo")
+
+    with pytest.raises(HTTPException, match="READ:USERS"):
+        any_checker(_token_data(permissions=[]))

@@ -127,6 +127,83 @@ def test_database_lifecycle_and_session_paths(monkeypatch):
         database_module._require_session_factory()
 
 
+def test_database_remaining_helper_branches(monkeypatch):
+    database_module.dispose_database()
+    monkeypatch.setattr(database_module.os, "getenv", lambda name: None)
+    assert database_module._env_int("MISSING", 9) == 9
+    assert database_module.connection_test() is False
+    with pytest.raises(RuntimeError, match="Database not initialized"):
+        database_module.init_db()
+
+    create_engine_calls = []
+    fake_engine = SimpleNamespace(dispose=lambda: None)
+    monkeypatch.setattr(
+        database_module,
+        "create_engine",
+        lambda *args, **kwargs: create_engine_calls.append((args, kwargs)) or fake_engine,
+    )
+    monkeypatch.setattr(database_module, "sessionmaker", lambda **kwargs: (lambda: SimpleNamespace()))
+    database_module.init_database("postgresql://db/app", echo=False, pool_size=7)
+    engine_kwargs = create_engine_calls[0][1]
+    assert engine_kwargs["pool_size"] == 7
+    assert engine_kwargs["max_overflow"] == 20
+    assert engine_kwargs["pool_timeout"] == 30
+    assert engine_kwargs["pool_recycle"] == 1800
+    database_module.dispose_database()
+
+    create_engine_calls.clear()
+    monkeypatch.setattr(database_module.os, "getenv", lambda name: "13" if name == "DB_POOL_SIZE" else None)
+    database_module.init_database("postgresql://db/app", echo=False, pool_size=None)
+    assert create_engine_calls[0][1]["pool_size"] == 13
+    database_module.dispose_database()
+
+    session_events = []
+    managed_session = SimpleNamespace(
+        commit=lambda: session_events.append("commit"),
+        rollback=lambda: session_events.append("rollback"),
+        close=lambda: session_events.append("close"),
+    )
+    database_module._session_local = lambda: managed_session
+    with database_module._session_scope() as session:
+        assert session is managed_session
+    assert session_events == ["commit", "close"]
+
+    session_events.clear()
+    with pytest.raises(RuntimeError, match="boom"):
+        with database_module._session_scope():
+            raise RuntimeError("boom")
+    assert session_events == ["rollback", "close"]
+
+    context = database_module._SessionContext()
+    assert context.__exit__(None, None, None) is None
+    database_module._session_local = None
+
+
+def test_init_database_returns_when_initialized_inside_lock(monkeypatch):
+    database_module.dispose_database()
+
+    class EngineStub:
+        def dispose(self):
+            return None
+
+    class LockStub:
+        def __enter__(self):
+            database_module._engine = EngineStub()
+            database_module._session_local = lambda: SimpleNamespace()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    create_engine_calls = []
+    monkeypatch.setattr(database_module, "_init_lock", LockStub())
+    monkeypatch.setattr(database_module, "create_engine", lambda *args, **kwargs: create_engine_calls.append((args, kwargs)))
+
+    database_module.init_database("sqlite:///tmp.db")
+    assert create_engine_calls == []
+    database_module.dispose_database()
+
+
 def test_schema_converters_and_shared_helper_paths():
     now = datetime.now(timezone.utc)
     service = SimpleNamespace(

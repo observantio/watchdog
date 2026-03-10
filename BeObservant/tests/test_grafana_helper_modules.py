@@ -60,8 +60,10 @@ def test_route_payload_helpers_cover_coercion_and_validation():
     assert route_payloads._coerce_int(4.7) == 4
     assert route_payloads._coerce_int("7") == 7
     assert route_payloads._coerce_int("bad", 3) == 3
+    assert route_payloads._coerce_int(object(), 4) == 4
     assert route_payloads._coerce_optional_str("x") == "x"
     assert route_payloads._coerce_optional_str(1) is None
+    assert route_payloads._coerce_bool(2) is True
     assert route_payloads._coerce_bool("yes") is True
     assert route_payloads._coerce_bool("off", True) is False
     assert route_payloads._coerce_bool(object(), True) is True
