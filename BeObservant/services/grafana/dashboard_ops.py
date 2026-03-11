@@ -122,18 +122,20 @@ async def _has_accessible_title_conflict(
     if not target:
         return False
     all_dashboards = await service.grafana_service.search_dashboards()
-    live_uids = {str(d.uid) for d in all_dashboards if getattr(d, "uid", None)}
-    if not live_uids:
+    live_conflicting_uids = {
+        str(getattr(d, "uid"))
+        for d in all_dashboards
+        if getattr(d, "uid", None) and _normalize_title(getattr(d, "title", None)) == target
+    }
+    if not live_conflicting_uids:
         return False
 
     q = db.query(GrafanaDashboard).filter(
         GrafanaDashboard.tenant_id == tenant_id,
-        GrafanaDashboard.grafana_uid.in_(live_uids),
+        GrafanaDashboard.grafana_uid.in_(live_conflicting_uids),
     )
     for dash in q.all():
         if exclude_uid and dash.grafana_uid == str(exclude_uid):
-            continue
-        if _normalize_title(dash.title) != target:
             continue
         if check_dashboard_access(db, dash.grafana_uid, user_id, tenant_id, group_ids) is not None:
             return True

@@ -129,6 +129,7 @@ async def test_accessible_title_conflict_detects_live_dashboard():
 
     class _DashObj:
         uid = "dash-uid-1"
+        title = "CPU Overview"
 
     service = _ProxyStub(_GrafanaServiceStub(search_results=[_DashObj()]))
 
@@ -142,6 +143,29 @@ async def test_accessible_title_conflict_detects_live_dashboard():
     )
 
     assert has_conflict is True
+
+
+@pytest.mark.asyncio
+async def test_accessible_title_conflict_ignores_stale_db_title_when_live_title_changed():
+    db = _session()
+    _seed_user_and_dashboard(db)
+
+    class _DashObj:
+        uid = "dash-uid-1"
+        title = "Renamed Dashboard"
+
+    service = _ProxyStub(_GrafanaServiceStub(search_results=[_DashObj()]))
+
+    has_conflict = await dashboard_ops._has_accessible_title_conflict(
+        service,
+        db,
+        tenant_id="t1",
+        user_id="u1",
+        group_ids=[],
+        title="CPU Overview",
+    )
+
+    assert has_conflict is False
 
 
 @pytest.mark.asyncio
