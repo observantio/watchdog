@@ -152,13 +152,13 @@ async def test_resolve_tenant_id_rejects_scope_conflict(monkeypatch):
     current_user = _token_data()
     monkeypatch.setattr(
         dependencies,
-        "_load_allowed_org_ids_for_user",
-        lambda *, current_user, default_org_id: {"tenant-a", "org-shared"},
+        "_load_allowed_scope_ids_for_user",
+        lambda *, current_user, default_scope_id: {"tenant-a", "org-shared"},
     )
     monkeypatch.setattr(
         dependencies,
         "_scope_exists_in_other_tenants",
-        lambda *, org_id, tenant_id: True,
+        lambda *, scope_id=None, org_id=None, tenant_id: True,
     )
     with pytest.raises(HTTPException) as exc:
         await dependencies.resolve_tenant_id(req, current_user)
@@ -171,12 +171,12 @@ async def test_resolve_tenant_id_allows_non_conflicting_allowed_scope(monkeypatc
     current_user = _token_data()
     monkeypatch.setattr(
         dependencies,
-        "_load_allowed_org_ids_for_user",
-        lambda *, current_user, default_org_id: {"tenant-a", "org-owned"},
+        "_load_allowed_scope_ids_for_user",
+        lambda *, current_user, default_scope_id: {"tenant-a", "org-owned"},
     )
     monkeypatch.setattr(
         dependencies,
         "_scope_exists_in_other_tenants",
-        lambda *, org_id, tenant_id: False,
+        lambda *, scope_id=None, org_id=None, tenant_id: False,
     )
     assert await dependencies.resolve_tenant_id(req, current_user) == "org-owned"

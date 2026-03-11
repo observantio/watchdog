@@ -1,3 +1,4 @@
+# pylint: disable=invalid-name
 """
 Copyright (c) 2026 Stefan Kumarasinghe
 

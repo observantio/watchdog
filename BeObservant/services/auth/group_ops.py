@@ -12,22 +12,32 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
-from typing import Optional, List, Set, Tuple, Iterable
+from typing import List, Optional, Set, Tuple, TYPE_CHECKING
 
 import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import Session, joinedload
 
 from config import config
 from database import get_db_session
 from db_models import GrafanaDashboard, GrafanaDatasource, GrafanaFolder, Group, Permission, User
 from models.access.group_models import GroupCreate, GroupUpdate, Group as GroupSchema
 from models.access.auth_models import Role
+from services.auth.delegation import (
+    is_admin_actor as _is_admin_actor,
+    normalize_permissions as _normalize_permissions,
+    permission_is_admin_only as _permission_is_admin_only,
+    require_actor as _require_actor,
+    resolve_actor_permissions as _resolve_actor_permissions,
+    role_rank as _shared_role_rank,
+    role_to_text as _role_to_text,
+)
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 MUTABLE_GROUP_FIELDS = {"name", "description", "is_active"}
-ADMIN_PERMISSION_PATTERNS = ("manage:",)
-ADMIN_ONLY_PERMISSION_EXACT = {"update:user_permissions", "update:group_permissions"}
 
 ROLE_RANK = {
     Role.VIEWER.value: 0,
@@ -42,57 +52,59 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _role_to_text(value) -> str:
-    if isinstance(value, Role):
-        return value.value
-    normalized = str(value or "").strip().lower()
-    if normalized.startswith("role."):
-        normalized = normalized.split(".", 1)[1]
-    return normalized
+def _role_rank(value: object) -> int:
+    return _shared_role_rank(value, ROLE_RANK)
 
 
-def _role_rank(value) -> int:
-    return ROLE_RANK.get(_role_to_text(value), 0)
+def _load_usernames_for_ids(db: Session, *, tenant_id: str, user_ids: list[str]) -> list[str]:
+    normalized_ids = [str(user_id).strip() for user_id in (user_ids or []) if str(user_id).strip()]
+    if not normalized_ids:
+        return []
+    return [
+        str(username).strip()
+        for (username,) in (
+            db.query(User.username)
+            .filter(User.tenant_id == tenant_id, User.id.in_(normalized_ids))
+            .all()
+        )
+        if str(username).strip()
+    ]
 
 
-def _is_admin_actor(*, actor_role: Optional[str], actor_is_superuser: bool) -> bool:
-    return bool(actor_is_superuser or _role_to_text(actor_role) == Role.ADMIN.value)
+def _propagate_removed_member_group_shares(
+    *,
+    tenant_id: str,
+    group_id: str,
+    removed_user_ids: list[str],
+    removed_usernames: list[str] | None = None,
+) -> None:
+    try:
+        _prune_removed_member_benotified_group_shares(
+            tenant_id=tenant_id,
+            group_id=group_id,
+            removed_user_ids=removed_user_ids,
+            removed_usernames=removed_usernames,
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "Failed to propagate group-share revocation for tenant=%s group=%s: %s",
+            tenant_id,
+            group_id,
+            exc.detail,
+        )
 
 
-def _permission_is_admin_only(name: str) -> bool:
-    perm = str(name or "").strip()
-    if not perm:
-        return False
-    if perm in ADMIN_ONLY_PERMISSION_EXACT:
-        return True
-    if any(perm.startswith(prefix) for prefix in ADMIN_PERMISSION_PATTERNS):
-        return True
-    return perm.startswith("update:") and perm.endswith("permissions")
-
-
-def _normalize_permissions(values: Optional[Iterable[str]]) -> Set[str]:
-    return {str(v).strip() for v in (values or []) if str(v).strip()}
-
-
-def _require_actor(actor_user_id: Optional[str], *, purpose: str) -> str:
-    if actor_user_id:
-        return actor_user_id
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Actor context is required for {purpose}",
-    )
-
-
-def _get_group(db, *, group_id: str, tenant_id: str, load_members: bool = False) -> Optional[Group]:
+def _get_group(db: Session, *, group_id: str, tenant_id: str, load_members: bool = False) -> Optional[Group]:
     opts = [joinedload(Group.permissions)]
     if load_members:
         opts.append(joinedload(Group.members))
-    return (
+    group = (
         db.query(Group)
         .options(*opts)
         .filter_by(id=group_id, tenant_id=tenant_id)
         .first()
     )
+    return group if isinstance(group, Group) else None
 
 
 def _can_access_group(
@@ -110,29 +122,10 @@ def _can_access_group(
     return any(str(getattr(member, "id", "")).strip() == actor_id for member in (group.members or []))
 
 
-def _resolve_actor_permissions(service, *, db, actor_user_id: str, tenant_id: str, actor_permissions: Optional[List[str]]) -> Set[str]:
-    provided = _normalize_permissions(actor_permissions)
-    if provided:
-        return provided
-
-    actor = (
-        db.query(User)
-        .options(
-            joinedload(User.groups).joinedload(Group.permissions),
-            joinedload(User.permissions),
-        )
-        .filter_by(id=actor_user_id, tenant_id=tenant_id)
-        .first()
-    )
-    if not actor:
-        return set()
-    return set(service._collect_permissions(actor))
-
-
 def _get_actor_context(
-    service,
+    service: DatabaseAuthService,
     *,
-    db,
+    db: Session,
     actor_user_id: str,
     tenant_id: str,
     actor_role: Optional[str],
@@ -168,7 +161,6 @@ def _enforce_permission_delegation(
     actor_is_admin = _is_admin_actor(actor_role=actor_role, actor_is_superuser=False)
 
     if not requested_permissions.issubset(actor_permissions):
-        forbidden = sorted(requested_permissions - actor_permissions)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can't set group permissions higher than your own",
@@ -185,7 +177,7 @@ def _enforce_permission_delegation(
         )
 
 
-def create_group(service, group_create: GroupCreate, tenant_id: str, creator_id: Optional[str] = None) -> GroupSchema:
+def create_group(service: DatabaseAuthService, group_create: GroupCreate, tenant_id: str, creator_id: Optional[str] = None) -> GroupSchema:
     name = (group_create.name or "").strip()
     if not name:
         raise ValueError("Group name is required")
@@ -210,7 +202,7 @@ def create_group(service, group_create: GroupCreate, tenant_id: str, creator_id:
 
         if creator_id:
             creator = db.query(User).filter_by(id=creator_id, tenant_id=tenant_id).first()
-            if creator and all(str(member.id) != str(creator.id) for member in (group.members or [])):
+            if creator:
                 group.members.append(creator)
 
         if creator_id:
@@ -218,12 +210,14 @@ def create_group(service, group_create: GroupCreate, tenant_id: str, creator_id:
 
         db.commit()
 
-        group = _get_group(db, group_id=group.id, tenant_id=tenant_id)
-        return service._to_group_schema(group)
+        refreshed_group = _get_group(db, group_id=group.id, tenant_id=tenant_id)
+        if refreshed_group is None:
+            raise ValueError("Group was not found after creation")
+        return GroupSchema.model_validate(service._to_group_schema(refreshed_group))
 
 
 def list_groups(
-    service,
+    service: DatabaseAuthService,
     tenant_id: str,
     actor_user_id: Optional[str] = None,
     actor_role: Optional[str] = None,
@@ -245,7 +239,7 @@ def list_groups(
 
 
 def get_group(
-    service,
+    service: DatabaseAuthService,
     group_id: str,
     tenant_id: str,
     actor_user_id: Optional[str] = None,
@@ -261,11 +255,11 @@ def get_group(
             actor_is_superuser=actor_is_superuser,
         ):
             return None
-        return service._to_group_schema(group) if group else None
+        return GroupSchema.model_validate(service._to_group_schema(group)) if group else None
 
 
 def delete_group(
-    service,
+    service: DatabaseAuthService,
     group_id: str,
     tenant_id: str,
     deleter_id: Optional[str] = None,
@@ -293,7 +287,7 @@ def delete_group(
 
 
 def update_group(
-    service,
+    service: DatabaseAuthService,
     group_id: str,
     group_update: GroupUpdate,
     tenant_id: str,
@@ -349,11 +343,11 @@ def update_group(
         db.commit()
 
         group = _get_group(db, group_id=group_id, tenant_id=tenant_id)
-        return service._to_group_schema(group)
+        return service._to_group_schema(group) if group else None
 
 
 def update_group_permissions(
-    service,
+    service: DatabaseAuthService,
     group_id: str,
     permission_names: List[str],
     tenant_id: str,
@@ -368,6 +362,14 @@ def update_group_permissions(
         group = _get_group(db, group_id=group_id, tenant_id=tenant_id, load_members=True)
         if not group:
             return False
+
+        if not _can_access_group(
+            group,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+            actor_is_superuser=actor_is_superuser,
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to manage this group")
 
         _, role_text, is_superuser, perm_set = _get_actor_context(
             service,
@@ -388,14 +390,6 @@ def update_group_permissions(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Missing permission to modify group permissions",
             )
-
-        if not _can_access_group(
-            group,
-            actor_user_id=actor_user_id,
-            actor_role=role_text,
-            actor_is_superuser=is_superuser,
-        ):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to manage this group")
 
         requested = _normalize_permissions(permission_names)
         existing_permissions = {
@@ -461,7 +455,7 @@ def update_group_permissions(
 
 
 def update_group_members(
-    service,
+    service: DatabaseAuthService,
     group_id: str,
     user_ids: List[str],
     tenant_id: str,
@@ -545,6 +539,7 @@ def update_group_members(
 
         requested_member_ids = {str(u.id) for u in members}
         removed_member_ids = sorted(existing_member_ids - requested_member_ids)
+        removed_member_usernames = _load_usernames_for_ids(db, tenant_id=tenant_id, user_ids=removed_member_ids)
 
         group.members = members
 
@@ -568,6 +563,13 @@ def update_group_members(
             )
             db.delete(group)
             db.commit()
+            if removed_member_ids:
+                _propagate_removed_member_group_shares(
+                    tenant_id=tenant_id,
+                    group_id=group_id,
+                    removed_user_ids=removed_member_ids,
+                    removed_usernames=removed_member_usernames,
+                )
             return True
 
         service._log_audit(
@@ -581,11 +583,18 @@ def update_group_members(
         )
 
         db.commit()
+        if removed_member_ids:
+            _propagate_removed_member_group_shares(
+                tenant_id=tenant_id,
+                group_id=group_id,
+                removed_user_ids=removed_member_ids,
+                removed_usernames=removed_member_usernames,
+            )
         return True
 
 
 def _prune_removed_member_grafana_group_shares(
-    db,
+    db: Session,
     *,
     tenant_id: str,
     group_id: str,
@@ -596,41 +605,53 @@ def _prune_removed_member_grafana_group_shares(
     if not removed_ids:
         return
 
-    def _prune(model) -> None:
-        rows = (
-            db.query(model)
-            .options(joinedload(model.shared_groups))
-            .filter(
-                model.tenant_id == tenant_id,
-                model.created_by.in_(removed_ids),
-                model.visibility == "group",
-                model.shared_groups.any(Group.id == target_group_id),
-            )
-            .all()
+    dashboard_rows = (
+        db.query(GrafanaDashboard)
+        .options(joinedload(GrafanaDashboard.shared_groups))
+        .filter(
+            GrafanaDashboard.tenant_id == tenant_id,
+            GrafanaDashboard.created_by.in_(removed_ids),
+            GrafanaDashboard.visibility == "group",
+            GrafanaDashboard.shared_groups.any(Group.id == target_group_id),
         )
-        for row in rows:
-            row.shared_groups = [g for g in (row.shared_groups or []) if str(getattr(g, "id", "")) != target_group_id]
-            if not row.shared_groups:
-                row.visibility = "private"
-
-    _prune(GrafanaDashboard)
-    _prune(GrafanaDatasource)
-    _prune(GrafanaFolder)
-    removed_usernames = [
-        str(username).strip()
-        for (username,) in (
-            db.query(User.username)
-            .filter(User.tenant_id == tenant_id, User.id.in_(removed_ids))
-            .all()
-        )
-        if str(username).strip()
-    ]
-    _prune_removed_member_benotified_group_shares(
-        tenant_id=tenant_id,
-        group_id=target_group_id,
-        removed_user_ids=removed_ids,
-        removed_usernames=removed_usernames,
+        .all()
     )
+    for dashboard_row in dashboard_rows:
+        dashboard_row.shared_groups = [g for g in (dashboard_row.shared_groups or []) if str(getattr(g, "id", "")) != target_group_id]
+        if not dashboard_row.shared_groups:
+            dashboard_row.visibility = "private"
+
+    datasource_rows = (
+        db.query(GrafanaDatasource)
+        .options(joinedload(GrafanaDatasource.shared_groups))
+        .filter(
+            GrafanaDatasource.tenant_id == tenant_id,
+            GrafanaDatasource.created_by.in_(removed_ids),
+            GrafanaDatasource.visibility == "group",
+            GrafanaDatasource.shared_groups.any(Group.id == target_group_id),
+        )
+        .all()
+    )
+    for datasource_row in datasource_rows:
+        datasource_row.shared_groups = [g for g in (datasource_row.shared_groups or []) if str(getattr(g, "id", "")) != target_group_id]
+        if not datasource_row.shared_groups:
+            datasource_row.visibility = "private"
+
+    folder_rows = (
+        db.query(GrafanaFolder)
+        .options(joinedload(GrafanaFolder.shared_groups))
+        .filter(
+            GrafanaFolder.tenant_id == tenant_id,
+            GrafanaFolder.created_by.in_(removed_ids),
+            GrafanaFolder.visibility == "group",
+            GrafanaFolder.shared_groups.any(Group.id == target_group_id),
+        )
+        .all()
+    )
+    for folder_row in folder_rows:
+        folder_row.shared_groups = [g for g in (folder_row.shared_groups or []) if str(getattr(g, "id", "")) != target_group_id]
+        if not folder_row.shared_groups:
+            folder_row.visibility = "private"
 
 
 def _prune_removed_member_benotified_group_shares(

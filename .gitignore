@@ -25,9 +25,9 @@ coverage/
 *.zip
 *.tar.gz
 *.log
+*.venv/
 .mypy_cache/
 .ruff_cache/
 BeCertain/
 BeNotified/
 showcase/
-mypy.ini 

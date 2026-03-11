@@ -668,22 +668,22 @@ export default function ApiKeyPage() {
                         </div>
                       </td>
                       <td className="py-2 px-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-4">
                           {!key.is_shared && !key.is_default && (
-                            <span
-                              className="material-icons text-base text-sre-primary hover:text-sre-primary/80 cursor-pointer"
-                              role="button"
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center rounded p-1 text-sre-primary hover:bg-sre-primary/10 hover:text-sre-primary/80"
                               title="Share key"
                               aria-label={`Share ${key.name}`}
                               onClick={() => openShareModal(key)}
                             >
-                              share
-                            </span>
+                              <span className="material-icons text-base">share</span>
+                            </button>
                           )}
                           {!key.is_default && (
-                            <span
-                              className="material-icons text-base text-red-500 hover:text-red-600 cursor-pointer"
-                              role="button"
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center rounded p-1 text-red-500 hover:bg-red-500/10 hover:text-red-600"
                               title="Delete key"
                               aria-label={`Delete ${key.name}`}
                               onClick={() => {
@@ -691,18 +691,21 @@ export default function ApiKeyPage() {
                                 setShowDeleteConfirm(true);
                               }}
                             >
-                              delete
-                            </span>
+                              <span className="material-icons text-base">delete</span>
+                            </button>
                           )}
                           {key.is_shared && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center rounded p-1 text-sre-text-muted hover:bg-sre-border/40 hover:text-sre-text"
                               onClick={() => handleToggleHiddenKey(key)}
+                              title={key.is_hidden ? "Unhide key" : "Hide key"}
                               aria-label={key.is_hidden ? `Unhide ${key.name}` : `Hide ${key.name}`}
                             >
-                              {key.is_hidden ? "Unhide" : "Hide"}
-                            </Button>
+                              <span className="material-icons text-base">
+                                {key.is_hidden ? "visibility" : "visibility_off"}
+                              </span>
+                            </button>
                           )}
                         </div>
                       </td>

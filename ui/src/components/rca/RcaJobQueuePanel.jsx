@@ -43,7 +43,7 @@ export default function RcaJobQueuePanel({
             const statusText = displayStatus(job.status);
             return (
               <div
-                key={job.job_id}x
+                key={job.job_id}
                 onClick={() => onSelectJob(job.job_id)}
                 className={`relative w-full rounded-lg border px-3 py-2 transition cursor-pointer ${
                   isSelected

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import secrets
+from typing import Dict
+
 from fastapi import HTTPException, Header, status
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,13 +37,13 @@ class InternalService:
         if not secrets.compare_digest(x_internal_token, token):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
 
-    def validate_token_or_404(self, token: str):
+    def validate_token_or_404(self, token: str) -> Dict[str, str]:
         try:
             org_id = self._auth_service.validate_otlp_token(token, suppress_errors=False)
-        except SQLAlchemyError:
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Auth database unavailable")
-        except Exception:
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Auth database unavailable")
+        except SQLAlchemyError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Auth database unavailable") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Auth database unavailable") from exc
 
         if not org_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND)

@@ -12,18 +12,40 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
+from importlib import import_module
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from types import ModuleType
+from typing import Callable, Optional, Sequence
+
+
+class _VaultForbiddenFallback(Exception):
+    pass
+
+
+class _VaultInvalidPathFallback(Exception):
+    pass
+
+
+class _VaultErrorFallback(Exception):
+    pass
+
+hvac: ModuleType | None
 
 try:
-    import hvac
-    from hvac.exceptions import Forbidden, InvalidPath, VaultError
-except ImportError: 
+    hvac = import_module("hvac")
+    hvac_exceptions = import_module("hvac.exceptions")
+    forbidden_exc = getattr(hvac_exceptions, "Forbidden", _VaultForbiddenFallback)
+    invalid_path_exc = getattr(hvac_exceptions, "InvalidPath", _VaultInvalidPathFallback)
+    vault_error_exc = getattr(hvac_exceptions, "VaultError", _VaultErrorFallback)
+    Forbidden = forbidden_exc if isinstance(forbidden_exc, type) and issubclass(forbidden_exc, Exception) else _VaultForbiddenFallback
+    InvalidPath = invalid_path_exc if isinstance(invalid_path_exc, type) and issubclass(invalid_path_exc, Exception) else _VaultInvalidPathFallback
+    VaultError = vault_error_exc if isinstance(vault_error_exc, type) and issubclass(vault_error_exc, Exception) else _VaultErrorFallback
+except ImportError:
     hvac = None
-    Forbidden = Exception
-    InvalidPath = Exception
-    VaultError = Exception
+    Forbidden = _VaultForbiddenFallback
+    InvalidPath = _VaultInvalidPathFallback
+    VaultError = _VaultErrorFallback
 
 
 class VaultClientError(RuntimeError):
@@ -62,7 +84,7 @@ class VaultSecretProvider:
         self._prefix = prefix.strip("/")
         self._kv_version = kv_version
         self._cache_ttl = float(cache_ttl)
-        self._cache: Dict[str, Tuple[float, Optional[str]]] = {}
+        self._cache: dict[str, tuple[float, Optional[str]]] = {}
         self._lock = threading.Lock()
 
         self._role_id = role_id
@@ -105,6 +127,9 @@ class VaultSecretProvider:
             entry = self._cache.get(key, _S)
             if entry is _S:
                 return _S
+            if not isinstance(entry, tuple) or len(entry) != 2:
+                self._cache.pop(key, None)
+                return _S
             ts, value = entry
             if time.monotonic() - ts > self._cache_ttl:
                 self._cache.pop(key, None)
@@ -118,7 +143,7 @@ class VaultSecretProvider:
     def get(self, key: str) -> Optional[str]:
         cached = self._from_cache(key)
         if cached is not _S:
-            return cached  # type: ignore[return-value]
+            return cached if isinstance(cached, str) or cached is None else None
 
         self._ensure_authenticated()
 
@@ -159,5 +184,5 @@ class VaultSecretProvider:
         self._to_cache(key, val)
         return val
 
-    def get_many(self, keys: list[str]) -> Dict[str, Optional[str]]:
+    def get_many(self, keys: Sequence[str]) -> dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}

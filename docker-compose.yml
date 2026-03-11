@@ -100,6 +100,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      beobservant:
+        condition: service_healthy
     environment:
       GATEWAY_HOST: 0.0.0.0
     networks: [obs]

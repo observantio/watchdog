@@ -47,6 +47,7 @@ async def search_traces(
     query = TraceQuery(
         service=service,
         operation=operation,
+        tags=None,
         minDuration=min_duration,
         maxDuration=max_duration,
         start=start,
@@ -56,11 +57,11 @@ async def search_traces(
     tenant_id = await resolve_tenant_id(request, current_user)
     try:
         return await tempo_service.search_traces(query, tenant_id=tenant_id, fetch_full_traces=fetch_full)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Tempo search timed out",
-        )
+        ) from exc
 
 
 @router.get("/traces/{trace_id}", response_model=Trace)
@@ -72,11 +73,11 @@ async def get_trace(
     tenant_id = await resolve_tenant_id(request, current_user)
     try:
         trace = await tempo_service.get_trace(trace_id, tenant_id=tenant_id)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail=f"Tempo trace lookup timed out for {trace_id}",
-        )
+        ) from exc
     if not trace:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Trace {trace_id} not found")
     return trace
@@ -90,11 +91,11 @@ async def get_services(
     tenant_id = await resolve_tenant_id(request, current_user)
     try:
         return await tempo_service.get_services(tenant_id=tenant_id)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Tempo services lookup timed out",
-        )
+        ) from exc
 
 
 @router.get("/services/{service}/operations", response_model=List[str])
@@ -106,8 +107,8 @@ async def get_operations(
     tenant_id = await resolve_tenant_id(request, current_user)
     try:
         return await tempo_service.get_operations(service, tenant_id=tenant_id)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail=f"Tempo operations lookup timed out for service {service}",
-        )
+        ) from exc

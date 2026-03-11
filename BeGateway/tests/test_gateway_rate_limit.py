@@ -75,7 +75,7 @@ class GatewayRateLimitTests(unittest.TestCase):
             if prev is None:
                 os.environ.pop("GATEWAY_ALLOWLIST_FAIL_OPEN", None)
             else:
-                os.environ["GATEWAY_ALLOWLIST_FAIL_OPEN"] = prev
+                os.environ["GATEWAY_ALLOWLIST_FAIL_OPEN"] = prev  # pragma: no cover
             importlib.reload(__import__("config", fromlist=["*"]))
             importlib.reload(__import__("services.gateway_service", fromlist=["*"]))
 
@@ -206,5 +206,5 @@ class GatewayRateLimitTests(unittest.TestCase):
             rl_mod.gw_config.GATEWAY_RATE_LIMIT_STRICT = prev_strict_rl
             RedisTokenRateLimiter.__init__ = orig_init
 
-    if __name__ == "__main__":
+    if __name__ == "__main__":  # pragma: no cover
         unittest.main()

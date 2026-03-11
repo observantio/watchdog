@@ -5,15 +5,17 @@ Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
 from __future__ import annotations
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from custom_types.json import JSONDict
 
 class AnalyzeRequestPayload(BaseModel):
     tenant_id: Optional[str] = None
@@ -49,10 +51,24 @@ class AnalyzeJobStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     DELETED = "deleted"
+
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> "AnalyzeJobStatus":
         if isinstance(value, str):
             normalized = value.strip().lower()
+            aliases = {
+                "success": cls.COMPLETED,
+                "succeeded": cls.COMPLETED,
+                "done": cls.COMPLETED,
+                "finished": cls.COMPLETED,
+                "complete": cls.COMPLETED,
+                "in_progress": cls.RUNNING,
+                "started": cls.RUNNING,
+                "error": cls.FAILED,
+            }
+            aliased = aliases.get(normalized)
+            if aliased is not None:
+                return aliased
             for member in cls:
                 if member.value == normalized:
                     return member
@@ -101,7 +117,7 @@ class RootCausePayload(BaseModel):
     model_config = ConfigDict(extra="allow")
     hypothesis: Optional[str] = None
     corroboration_summary: Optional[str] = None
-    suppression_diagnostics: Dict[str, Any] = Field(default_factory=dict)
+    suppression_diagnostics: JSONDict = Field(default_factory=dict)
     selection_score_components: Dict[str, float] = Field(default_factory=dict)
 
 class AnalyzeResultPayload(BaseModel):
@@ -116,7 +132,7 @@ class AnalyzeJobResultResponse(BaseModel):
     status: AnalyzeJobStatus
     tenant_id: str
     requested_by: str
-    result: Optional[AnalyzeResultPayload | Dict[str, Any]] = None
+    result: Optional[AnalyzeResultPayload | JSONDict] = None
 
 class AnalyzeReportResponse(BaseModel):
     job_id: str
@@ -124,7 +140,7 @@ class AnalyzeReportResponse(BaseModel):
     status: AnalyzeJobStatus
     tenant_id: str
     requested_by: str
-    result: Optional[AnalyzeResultPayload | Dict[str, Any]] = None
+    result: Optional[AnalyzeResultPayload | JSONDict] = None
 
 class AnalyzeReportDeleteResponse(BaseModel):
     report_id: str

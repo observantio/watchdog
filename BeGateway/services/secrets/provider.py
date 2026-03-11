@@ -25,4 +25,3 @@ class EnvSecretProvider:
 
     def get_many(self, keys: List[str]) -> Dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}
-

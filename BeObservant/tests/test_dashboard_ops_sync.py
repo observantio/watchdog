@@ -1,3 +1,13 @@
+
+"""
+Copyright (c) 2026 Stefan Kumarasinghe
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+"""
+
+
 import os
 
 import pytest
@@ -119,6 +129,7 @@ async def test_accessible_title_conflict_detects_live_dashboard():
 
     class _DashObj:
         uid = "dash-uid-1"
+        title = "CPU Overview"
 
     service = _ProxyStub(_GrafanaServiceStub(search_results=[_DashObj()]))
 
@@ -132,6 +143,29 @@ async def test_accessible_title_conflict_detects_live_dashboard():
     )
 
     assert has_conflict is True
+
+
+@pytest.mark.asyncio
+async def test_accessible_title_conflict_ignores_stale_db_title_when_live_title_changed():
+    db = _session()
+    _seed_user_and_dashboard(db)
+
+    class _DashObj:
+        uid = "dash-uid-1"
+        title = "Renamed Dashboard"
+
+    service = _ProxyStub(_GrafanaServiceStub(search_results=[_DashObj()]))
+
+    has_conflict = await dashboard_ops._has_accessible_title_conflict(
+        service,
+        db,
+        tenant_id="t1",
+        user_id="u1",
+        group_ids=[],
+        title="CPU Overview",
+    )
+
+    assert has_conflict is False
 
 
 @pytest.mark.asyncio
@@ -334,6 +368,42 @@ async def test_search_dashboards_honors_folder_ids_filter():
 
     assert [d.uid for d in dashboards] == ["dash-uid-1"]
     assert gs.last_search_kwargs.get("folder_ids") == [7]
+
+
+@pytest.mark.asyncio
+async def test_search_dashboards_general_folder_filter_includes_dashboards_without_folder_id():
+    db = _session()
+    _seed_user_and_dashboard(db)
+
+    results = [
+        DashboardSearchResult(
+            id=101,
+            uid="dash-uid-1",
+            title="CPU Overview",
+            uri="db/cpu-overview",
+            url="/d/dash-uid-1/cpu-overview",
+            slug="cpu-overview",
+            type="dash-db",
+            tags=[],
+            folderId=None,
+            folderUid=None,
+            folderTitle=None,
+        )
+    ]
+    gs = _GrafanaServiceStub(search_results=results)
+    service = _ProxyStub(gs)
+
+    dashboards = await dashboard_ops.search_dashboards(
+        service,
+        db,
+        user_id="u1",
+        tenant_id="t1",
+        group_ids=[],
+        folder_ids=[0],
+    )
+
+    assert [d.uid for d in dashboards] == ["dash-uid-1"]
+    assert gs.last_search_kwargs.get("folder_ids") == [0]
 
 
 @pytest.mark.asyncio

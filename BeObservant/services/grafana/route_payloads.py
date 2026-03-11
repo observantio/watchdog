@@ -10,10 +10,12 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from models.access.auth_models import Role, TokenData
 from models.grafana.grafana_dashboard_models import Dashboard, DashboardCreate, DashboardUpdate
+from custom_types.json import JSONDict
+from services.auth.delegation import role_to_text as _role_to_text
 
 VALID_VISIBILITIES = {"private", "group", "tenant"}
 
@@ -23,7 +25,10 @@ def user_group_ids(current_user: TokenData) -> List[str]:
 
 
 def is_admin_user(token_data: TokenData) -> bool:
-    return bool(getattr(token_data, "is_superuser", False) or token_data.role == Role.ADMIN)
+    return bool(
+        getattr(token_data, "is_superuser", False)
+        or _role_to_text(getattr(token_data, "role", None)) == Role.ADMIN.value
+    )
 
 
 def validate_visibility(visibility: Optional[str]) -> None:
@@ -31,14 +36,22 @@ def validate_visibility(visibility: Optional[str]) -> None:
         raise ValueError("Invalid visibility value")
 
 
-def _ensure_dict(payload: Any) -> Dict[str, Any]:
+def _ensure_dict(payload: object) -> JSONDict:
     if not isinstance(payload, dict):
         raise ValueError("Invalid dashboard payload")
     return payload
 
 
-def _coerce_int(value: Any, default: int = 0) -> int:
+def _coerce_int(value: object, default: int = 0) -> int:
     if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if not isinstance(value, str):
         return default
     try:
         return int(value)
@@ -46,7 +59,11 @@ def _coerce_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _coerce_bool(value: Any, default: bool = False) -> bool:
+def _coerce_optional_str(value: object) -> Optional[str]:
+    return value if isinstance(value, str) else None
+
+
+def _coerce_bool(value: object, default: bool = False) -> bool:
     if value is None:
         return default
     if isinstance(value, bool):
@@ -62,28 +79,28 @@ def _coerce_bool(value: Any, default: bool = False) -> bool:
     return default
 
 
-def _dashboard_from_payload(payload: Dict[str, Any]) -> Dashboard:
+def _dashboard_from_payload(payload: JSONDict) -> Dashboard:
     dash_raw = payload.get("dashboard")
     return Dashboard.model_validate(dash_raw if isinstance(dash_raw, dict) else payload)
 
 
-def parse_dashboard_create_payload(payload: Dict) -> DashboardCreate:
+def parse_dashboard_create_payload(payload: JSONDict) -> DashboardCreate:
     p = _ensure_dict(payload)
     dashboard_obj = _dashboard_from_payload(p)
     return DashboardCreate(
         dashboard=dashboard_obj,
         folderId=_coerce_int(p.get("folderId"), 0),
         overwrite=_coerce_bool(p.get("overwrite"), False),
-        message=p.get("message"),
+        message=_coerce_optional_str(p.get("message")),
     )
 
 
-def parse_dashboard_update_payload(payload: Dict) -> DashboardUpdate:
+def parse_dashboard_update_payload(payload: JSONDict) -> DashboardUpdate:
     p = _ensure_dict(payload)
     dashboard_obj = _dashboard_from_payload(p)
     return DashboardUpdate(
         dashboard=dashboard_obj,
-        folderId=p.get("folderId"),
+        folderId=_coerce_int(p.get("folderId"), 0),
         overwrite=_coerce_bool(p.get("overwrite"), True),
-        message=p.get("message"),
+        message=_coerce_optional_str(p.get("message")),
     )

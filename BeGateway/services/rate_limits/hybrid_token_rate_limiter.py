@@ -36,4 +36,3 @@ class HybridTokenRateLimiter:
                 logger.warning("Redis rate limiter unavailable, falling back: %s", type(exc).__name__)
                 self._last_warn = now
             self._fallback.enforce(key)
-            

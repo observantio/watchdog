@@ -13,12 +13,7 @@ from __future__ import annotations
 import hashlib
 from typing import Optional
 
-try:
-    import redis
-    _redis_available = True
-except Exception:
-    redis = None  
-    _redis_available = False
+from ._redis_compat import redis
 
 
 class RedisTokenCache:
@@ -30,10 +25,11 @@ class RedisTokenCache:
         socket_timeout: float = 1.0,
         max_connections: int = 50,
     ) -> None:
-        if not _redis_available:
+        if redis is None:
             raise RuntimeError("redis library not available")
         self._ttl = int(ttl)
-        self._client = redis.from_url(
+        redis_module = redis
+        self._client = redis_module.from_url(
             url,
             socket_timeout=socket_timeout,
             socket_connect_timeout=socket_timeout,
@@ -43,7 +39,7 @@ class RedisTokenCache:
         try:
             if not self._client.ping():
                 raise RuntimeError("redis ping returned falsy response")
-        except Exception as exc:
+        except redis_module.RedisError as exc:
             raise RuntimeError(f"unable to connect to Redis at {url}: {type(exc).__name__}") from exc
 
     @staticmethod

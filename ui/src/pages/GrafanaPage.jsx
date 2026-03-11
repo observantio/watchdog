@@ -51,7 +51,7 @@ export default function GrafanaPage() {
 
   const [filters, setFilters] = useLocalStorage("grafana-filters", {
     teamId: "",
-    folderKey: "",
+    folderKey: "__general__",
     showHidden: false,
   });
 
@@ -234,7 +234,7 @@ export default function GrafanaPage() {
   }
 
   function clearFilters() {
-    setFilters({ teamId: "", folderKey: "", showHidden: false });
+    setFilters({ teamId: "", folderKey: "__general__", showHidden: false });
     setQuery("");
   }
 

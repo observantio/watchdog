@@ -11,7 +11,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 import logging
 import os
 import psutil
-from typing import Dict, Any
+from custom_types.json import JSONDict
 
 from services.system.helpers import (
     cpu_metrics,
@@ -23,38 +23,54 @@ from services.system.helpers import (
 
 logger = logging.getLogger(__name__)
 
+
+def _float_value(value: object) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return 0
+
 class SystemService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.process = psutil.Process(os.getpid())
         try:
             self.process.cpu_percent(interval=None)
-        except Exception as e:
+        except psutil.Error as e:
             logger.warning(f"Unable to prime CPU percent: {e}")
 
-    def get_cpu_metrics(self) -> Dict[str, Any]:
+    def get_cpu_metrics(self) -> JSONDict:
         return cpu_metrics(self.process)
 
-    def get_memory_metrics(self) -> Dict[str, Any]:
+    def get_memory_metrics(self) -> JSONDict:
         return memory_metrics(self.process)
 
-    def get_disk_metrics(self) -> Dict[str, Any]:
+    def get_disk_metrics(self) -> JSONDict:
         return disk_metrics(self.process)
 
-    def get_network_metrics(self) -> Dict[str, Any]:
+    def get_network_metrics(self) -> JSONDict:
         return network_metrics(self.process)
 
-    def determine_stress_status(self, cpu_percent: float, memory_percent: float, connections: int) -> Dict[str, Any]:
+    def determine_stress_status(self, cpu_percent: float, memory_percent: float, connections: int) -> JSONDict:
         return determine_stress_status(cpu_percent, memory_percent, connections)
 
-    def get_all_metrics(self) -> Dict[str, Any]:
+    def get_all_metrics(self) -> JSONDict:
         cpu = self.get_cpu_metrics()
         memory = self.get_memory_metrics()
         io = self.get_disk_metrics()
         network = self.get_network_metrics()
         stress = self.determine_stress_status(
-            cpu["utilization"],
-            memory["utilization"],
-            network["total_connections"],
+            _float_value(cpu.get("utilization")),
+            _float_value(memory.get("utilization")),
+            _int_value(network.get("total_connections")),
         )
 
         return {

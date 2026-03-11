@@ -30,11 +30,15 @@ from services.auth.helper import (
     role_permission_strings,
 )
 
-from .shared import USER_NOT_FOUND, logger, notification_service, router, rtp
+from .shared import USER_NOT_FOUND, notification_service, router, rtp
+
+
+def _string_value(value: object) -> str:
+    return value if isinstance(value, str) else ""
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: TokenData = Depends(require_authenticated_with_scope("auth"))):
+async def get_current_user_info(current_user: TokenData = Depends(require_authenticated_with_scope("auth"))) -> UserResponse:
     user = await rtp(auth_service.get_user_by_id, current_user.user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND)
@@ -47,7 +51,7 @@ async def get_current_user_info(current_user: TokenData = Depends(require_authen
 async def update_current_user_info(
     user_update: UserUpdate,
     current_user: TokenData = Depends(require_authenticated_with_scope("auth")),
-):
+) -> UserResponse:
     data = user_update.model_dump(exclude_unset=True)
     for field in ("role", "group_ids", "is_active"):
         data.pop(field, None)
@@ -75,7 +79,7 @@ async def list_users(
             "auth",
         )
     ),
-):
+) -> List[UserResponse]:
     users = await rtp(auth_service.list_users, current_user.tenant_id, limit=limit, offset=offset)
     return [await rtp(auth_service.build_user_response, user, role_permission_strings(user.role)) for user in users]
 
@@ -87,7 +91,7 @@ async def create_user(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.CREATE_USERS, Permission.MANAGE_USERS], "auth")
     ),
-):
+) -> UserResponse:
     user = await rtp(
         auth_service.create_user,
         user_create,
@@ -97,15 +101,12 @@ async def create_user(
         list(perms_check(current_user)),
         bool(getattr(current_user, "is_superuser", False)),
     )
-    try:
-        await notification_service.send_user_welcome_email(
-            recipient_email=user.email,
-            username=user.username,
-            full_name=user.full_name,
-            login_url=None,
-        )
-    except Exception as exc:
-        logger.warning("User welcome email skipped: %s", exc)
+    await notification_service.send_user_welcome_email(
+        recipient_email=user.email,
+        username=user.username,
+        full_name=user.full_name,
+        login_url=None,
+    )
     invalidate_grafana_proxy_auth_cache()
     return await rtp(auth_service.build_user_response, user, role_permission_strings(user.role))
 
@@ -117,7 +118,7 @@ async def update_user(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_USERS, Permission.MANAGE_USERS, Permission.MANAGE_TENANTS], "auth")
     ),
-):
+) -> UserResponse:
     perms = perms_check(current_user)
     is_admin = is_admin_check(current_user)
     can_manage = Permission.MANAGE_USERS.value in perms or Permission.UPDATE_USERS.value in perms
@@ -147,7 +148,7 @@ async def update_user_password(
     user_id: str,
     password_update: UserPasswordUpdate,
     current_user: TokenData = Depends(require_authenticated_with_scope("auth")),
-):
+) -> dict[str, str]:
     if current_user.user_id != user_id:
         perms = perms_check(current_user)
         if not (
@@ -165,7 +166,7 @@ async def update_user_password(
 async def reset_user_password_temp(
     user_id: str,
     current_user: TokenData = Depends(require_authenticated_with_scope("auth")),
-):
+) -> TempPasswordResetResponse:
     if not (is_admin_check(current_user) or Permission.MANAGE_USERS.value in perms_check(current_user)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not permitted to reset passwords")
 
@@ -176,18 +177,17 @@ async def reset_user_password_temp(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin account passwords cannot be reset")
 
     result = await rtp(auth_service.reset_user_password_temp, current_user.user_id, user_id, current_user.tenant_id)
-    temp_pw = result.get("temporary_password", "")
+    temp_pw = _string_value(result.get("temporary_password", ""))
     email_sent = False
-    if result.get("target_email"):
-        try:
-            email_sent = await notification_service.send_temporary_password_email(
-                recipient_email=result["target_email"],
-                username=result.get("target_username") or target.username,
-                temporary_password=temp_pw,
-                login_url=None,
-            )
-        except Exception as exc:
-            logger.warning("Temporary password email skipped: %s", exc)
+    target_email = _string_value(result.get("target_email"))
+    target_username = _string_value(result.get("target_username"))
+    if target_email:
+        email_sent = await notification_service.send_temporary_password_email(
+            recipient_email=target_email,
+            username=target_username or target.username,
+            temporary_password=temp_pw,
+            login_url=None,
+        )
     return TempPasswordResetResponse(
         temporary_password=temp_pw,
         email_sent=bool(email_sent),
@@ -199,7 +199,7 @@ async def reset_user_password_temp(
 async def delete_user(
     user_id: str,
     current_user: TokenData = Depends(require_authenticated_with_scope("auth")),
-):
+) -> dict[str, str]:
     if not is_admin_check(current_user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete users")
     if current_user.user_id == user_id:
@@ -220,7 +220,7 @@ async def update_user_permissions(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_USER_PERMISSIONS, Permission.MANAGE_USERS], "auth")
     ),
-):
+) -> dict[str, object]:
     if not await rtp(
         auth_service.update_user_permissions,
         user_id,
@@ -244,7 +244,7 @@ async def list_all_permissions(
             "auth",
         )
     ),
-):
+) -> List[dict[str, object]]:
     all_permissions = await rtp(auth_service.list_all_permissions)
     if getattr(current_user, "is_superuser", False):
         return all_permissions
@@ -261,7 +261,7 @@ async def list_role_defaults(
             "auth",
         )
     ),
-):
+) -> dict[str, List[str]]:
     defaults = {role.value: [permission.value for permission in perms] for role, perms in ROLE_PERMISSIONS.items()}
     if getattr(current_user, "is_superuser", False):
         return defaults

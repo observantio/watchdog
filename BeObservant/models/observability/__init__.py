@@ -96,4 +96,3 @@ __all__ = [
     'TraceQuery',
     'TraceResponse',
 ]
-

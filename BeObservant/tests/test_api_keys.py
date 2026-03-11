@@ -35,9 +35,9 @@ def test_list_api_keys_hides_otlp_token_for_shared_user():
     other = svc.create_user(UserCreate(username='other', email='other@example.com', password='pw', full_name='Other'), tenant_id)
 
     created = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='owner-key', key='org-owner'))
-    assert created.otlp_token  
+    assert created.otlp_token
 
-    
+
     svc.replace_api_key_shares(owner.id, tenant_id, created.id, [other.id], group_ids=[])
 
     keys_for_other = svc.list_api_keys(other.id)
@@ -120,7 +120,7 @@ def test_enabling_owned_key_updates_user_org_and_keeps_single_active_view():
     mine = svc.create_api_key(other.id, tenant_id, ApiKeyCreate(name='mine', key='org-mine-1'))
     svc.replace_api_key_shares(owner.id, tenant_id, shared_key.id, [other.id], group_ids=[])
 
-    
+
     svc.update_api_key(other.id, shared_key.id, ApiKeyUpdate(is_enabled=True))
     keys_after_shared = svc.list_api_keys(other.id)
     mine_after_shared = next(k for k in keys_after_shared if k.id == mine.id)
@@ -128,7 +128,7 @@ def test_enabling_owned_key_updates_user_org_and_keeps_single_active_view():
     assert mine_after_shared.is_enabled is False
     assert shared_after_shared.is_enabled is True
 
-    
+
     svc.update_api_key(other.id, mine.id, ApiKeyUpdate(is_enabled=True))
     keys_after_mine = svc.list_api_keys(other.id)
     mine_after_mine = next(k for k in keys_after_mine if k.id == mine.id)
@@ -229,6 +229,27 @@ def test_api_key_value_cannot_collide_across_tenants():
 
 
 @pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_api_key_name_must_be_unique_case_insensitive_per_owner():
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    owner = svc.create_user(
+        UserCreate(username='owner-name-check', email='owner-name-check@example.com', password='pw', full_name='Owner'),
+        tenant_id,
+    )
+
+    created = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='ProdKey', key='org-prod-name-check'))
+    assert created.name == 'ProdKey'
+
+    with pytest.raises(ValueError, match="name already exists"):
+        svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='prodkey', key='org-prod-name-check-2'))
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
 def test_regenerate_otlp_token_returns_one_time_reveal():
     svc = DatabaseAuthService()
     svc._lazy_init()
@@ -304,3 +325,35 @@ def test_switching_between_owned_enabled_keys_preserves_unique_enabled_constrain
     key_b_after_b = next(k for k in after_b if k.id == key_b.id)
     assert key_a_after_b.is_enabled is False
     assert key_b_after_b.is_enabled is True
+
+
+@pytest.mark.skipif(not database.connection_test(), reason="DB not available")
+def test_disabling_owned_non_default_key_falls_back_to_default_key():
+    svc = DatabaseAuthService()
+    svc._lazy_init()
+
+    with get_db_session() as db:
+        tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = tenant.id
+
+    owner = svc.create_user(
+        UserCreate(username='owner-disable', email='owner-disable@example.com', password='pw', full_name='Owner'),
+        tenant_id,
+    )
+
+    default_key = next(key for key in svc.list_api_keys(owner.id) if key.is_default)
+    extra_key = svc.create_api_key(owner.id, tenant_id, ApiKeyCreate(name='extra-key', key='org-disable-extra'))
+
+    updated = svc.update_api_key(owner.id, extra_key.id, ApiKeyUpdate(is_enabled=False))
+    assert updated.is_enabled is False
+
+    listed = svc.list_api_keys(owner.id)
+    default_after = next(key for key in listed if key.id == default_key.id)
+    extra_after = next(key for key in listed if key.id == extra_key.id)
+    assert default_after.is_enabled is True
+    assert extra_after.is_enabled is False
+
+    with get_db_session() as db:
+        db_user = db.query(User).filter_by(id=owner.id).first()
+        assert db_user is not None
+        assert db_user.org_id == default_key.key

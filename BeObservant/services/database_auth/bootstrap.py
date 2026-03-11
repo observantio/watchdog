@@ -11,7 +11,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable, Optional, Set
+from typing import Iterable, Optional, Set, TYPE_CHECKING
+
+from sqlalchemy.orm import Session
 
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import SQLAlchemyError, NoSuchTableError
@@ -20,6 +22,9 @@ from config import config
 from database import get_db_session
 from db_models import Permission, Tenant, User, UserApiKey
 from models.access.auth_models import Role
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 BOOTSTRAP_PG_LOCK_KEY = 947201
 
@@ -31,31 +36,37 @@ def _norm_lower(value: Optional[str]) -> str:
     return (value or "").strip().lower()
 
 
-def _dialect(db) -> str:
-    return str(getattr(db.bind.dialect, "name", "")).lower()
+def _dialect(db: Session) -> str:
+    bind = db.bind
+    if bind is None:
+        return ""
+    return str(getattr(bind.dialect, "name", "")).lower()
 
 
-def _pg_advisory_lock(db, key: int) -> None:
+def _pg_advisory_lock(db: Session, key: int) -> None:
     if _dialect(db) != "postgresql":
         return
     db.execute(text("SELECT pg_advisory_lock(:k)"), {"k": key})
 
 
-def _pg_advisory_unlock(db, key: int) -> None:
+def _pg_advisory_unlock(db: Session, key: int) -> None:
     if _dialect(db) != "postgresql":
         return
     db.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
 
 
-def _table_columns(db, table_name: str) -> Set[str]:
-    insp = inspect(db.bind)
+def _table_columns(db: Session, table_name: str) -> Set[str]:
+    bind = db.bind
+    if bind is None:
+        return set()
+    insp = inspect(bind)
     try:
         return {c.get("name") for c in insp.get_columns(table_name)}
     except NoSuchTableError:
         return set()
 
 
-def _ensure_column(db, table: str, col: str, ddl: str) -> bool:
+def _ensure_column(db: Session, table: str, col: str, ddl: str) -> bool:
     cols = _table_columns(db, table)
     if not cols or col in cols:
         return False
@@ -63,7 +74,7 @@ def _ensure_column(db, table: str, col: str, ddl: str) -> bool:
     return True
 
 
-def _ensure_indexes(db, statements: Iterable[str]) -> None:
+def _ensure_indexes(db: Session, statements: Iterable[str]) -> None:
     for stmt in statements:
         try:
             db.execute(text(stmt))
@@ -71,7 +82,7 @@ def _ensure_indexes(db, statements: Iterable[str]) -> None:
             raise ValueError(f"Failed to enforce API key constraint ({stmt}): {exc}") from exc
 
 
-def ensure_permissions(db) -> None:
+def ensure_permissions(db: Session) -> None:
     from services.auth.permission_defs import PERMISSION_DEFS
 
     wanted = [p[0] for p in PERMISSION_DEFS]
@@ -97,7 +108,7 @@ def ensure_permissions(db) -> None:
     db.flush()
 
 
-def _disable_other_enabled_keys(db, user_id, keep_id) -> None:
+def _disable_other_enabled_keys(db: Session, user_id: object, keep_id: object) -> None:
     now = _now_utc()
     db.execute(
         text(
@@ -113,7 +124,7 @@ def _disable_other_enabled_keys(db, user_id, keep_id) -> None:
     )
 
 
-def ensure_default_api_key(service, db, user: User) -> None:
+def ensure_default_api_key(service: DatabaseAuthService, db: Session, user: User) -> None:
     if not user:
         return
 
@@ -174,7 +185,7 @@ def ensure_default_api_key(service, db, user: User) -> None:
     _disable_other_enabled_keys(db, user.id, new_key.id)
 
 
-def ensure_default_setup(service) -> None:
+def ensure_default_setup(service: DatabaseAuthService) -> None:
     try:
         with get_db_session() as db:
             _pg_advisory_lock(db, BOOTSTRAP_PG_LOCK_KEY)
@@ -256,7 +267,7 @@ def ensure_default_setup(service) -> None:
         raise
 
 
-def _ensure_user_security_columns(db) -> None:
+def _ensure_user_security_columns(db: Session) -> None:
     changed = False
     changed |= _ensure_column(
         db,
@@ -274,7 +285,7 @@ def _ensure_user_security_columns(db) -> None:
         db.flush()
 
 
-def _ensure_grafana_folder_columns(db) -> None:
+def _ensure_grafana_folder_columns(db: Session) -> None:
     changed = False
     changed |= _ensure_column(
         db,
@@ -292,7 +303,7 @@ def _ensure_grafana_folder_columns(db) -> None:
         db.flush()
 
 
-def _backfill_password_changed_at(db) -> None:
+def _backfill_password_changed_at(db: Session) -> None:
     db.execute(
         text(
             """
@@ -306,7 +317,7 @@ def _backfill_password_changed_at(db) -> None:
     db.flush()
 
 
-def _ensure_api_key_constraints(db) -> None:
+def _ensure_api_key_constraints(db: Session) -> None:
     cols = _table_columns(db, "user_api_keys")
     if not cols:
         return

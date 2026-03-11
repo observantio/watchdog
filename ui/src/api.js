@@ -455,9 +455,19 @@ export async function getActiveAgents() {
 
 export const updatePassword = updateUserPassword;
 
-export async function getAlerts({ showHidden = false } = {}) {
+export async function getAlerts({
+  showHidden = false,
+  severity,
+  correlationId,
+  label,
+} = {}) {
   const params = new URLSearchParams();
   if (showHidden) params.set("show_hidden", "true");
+  if (severity && severity !== "all") params.set("severity", severity);
+  if (correlationId && correlationId !== "all") {
+    params.set("correlation_id", correlationId);
+  }
+  if (String(label || "").trim()) params.set("label", String(label).trim());
   const qs = params.toString() ? `?${params.toString()}` : "";
   return request(`/api/alertmanager/alerts${qs}`);
 }
@@ -503,9 +513,23 @@ export async function deleteAlerts(filter) {
     },
   );
 }
-export async function getAlertRules({ showHidden = false } = {}) {
+export async function getAlertRules({
+  showHidden = false,
+  owner,
+  status,
+  severity,
+  orgId,
+  correlationId,
+} = {}) {
   const params = new URLSearchParams();
   if (showHidden) params.set("show_hidden", "true");
+  if (owner && owner !== "all") params.set("owner", owner);
+  if (status && status !== "all") params.set("status", status);
+  if (severity && severity !== "all") params.set("severity", severity);
+  if (orgId && orgId !== "all") params.set("org_id", orgId);
+  if (String(correlationId || "").trim()) {
+    params.set("correlation_id", String(correlationId).trim());
+  }
   const qs = params.toString() ? `?${params.toString()}` : "";
   return request(`/api/alertmanager/rules${qs}`);
 }

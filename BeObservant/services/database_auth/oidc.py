@@ -8,9 +8,11 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
+from __future__ import annotations
+
 import secrets
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -20,15 +22,24 @@ from config import config
 from database import get_db_session
 from db_models import Tenant, User
 from models.access.auth_models import Role
+from custom_types.json import JSONDict
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 
-def extract_permissions_from_oidc_claims(claims: Dict[str, Any]) -> List[str]:
+def _claim_str(claims: JSONDict, key: str) -> str:
+    value = claims.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def extract_permissions_from_oidc_claims(claims: JSONDict) -> List[str]:
     extracted = _normalize_claim_list(claims.get("permissions"))
     extracted |= _normalize_claim_list(claims.get("scp"))
     return sorted(p for p in extracted if ":" in p)
 
 
-def _normalize_claim_list(value: Any) -> set[str]:
+def _normalize_claim_list(value: object) -> set[str]:
     if not isinstance(value, list):
         return set()
     out: set[str] = set()
@@ -39,7 +50,7 @@ def _normalize_claim_list(value: Any) -> set[str]:
     return out
 
 
-def _claim_truthy(value: Any) -> bool:
+def _claim_truthy(value: object) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -49,7 +60,7 @@ def _claim_truthy(value: Any) -> bool:
     return False
 
 
-def _can_auto_link_by_email(claims: Dict[str, Any]) -> bool:
+def _can_auto_link_by_email(claims: JSONDict) -> bool:
     enabled = _claim_truthy(getattr(config, "OIDC_AUTO_LINK_BY_EMAIL", False))
     if not enabled:
         return False
@@ -57,23 +68,23 @@ def _can_auto_link_by_email(claims: Dict[str, Any]) -> bool:
     return _claim_truthy(claims.get("email_verified")) if require_verified else True
 
 
-def _normalize_email(claims: Dict[str, Any]) -> str:
-    return (claims.get("email") or "").strip().lower()
+def _normalize_email(claims: JSONDict) -> str:
+    return _claim_str(claims, "email").lower()
 
 
-def _normalize_subject(claims: Dict[str, Any]) -> str:
-    return (claims.get("sub") or "").strip()
+def _normalize_subject(claims: JSONDict) -> str:
+    return _claim_str(claims, "sub")
 
 
-def _preferred_username(claims: Dict[str, Any], email: str) -> str:
-    raw = (claims.get("preferred_username") or "").strip().lower()
+def _preferred_username(claims: JSONDict, email: str) -> str:
+    raw = _claim_str(claims, "preferred_username").lower()
     if raw:
         return raw
     return email.split("@", 1)[0].strip().lower()
 
 
-def _full_name(claims: Dict[str, Any]) -> Optional[str]:
-    name = (claims.get("name") or "").strip()
+def _full_name(claims: JSONDict) -> Optional[str]:
+    name = _claim_str(claims, "name")
     return name or None
 
 
@@ -89,7 +100,7 @@ def _get_user_by_email(db: Session, email: str) -> Optional[User]:
     return db.query(User).filter(func.lower(User.email) == email).first()
 
 
-def _subject_is_owned_by_other(db: Session, subject: str, user_id: int) -> bool:
+def _subject_is_owned_by_other(db: Session, subject: str, user_id: str) -> bool:
     if not subject:
         return False
     return (
@@ -101,12 +112,12 @@ def _subject_is_owned_by_other(db: Session, subject: str, user_id: int) -> bool:
 
 
 def _resolve_existing_user(
-    service,
+    service: DatabaseAuthService,
     db: Session,
     *,
     email: str,
     subject: str,
-    claims: Dict[str, Any],
+    claims: JSONDict,
 ) -> Optional[User]:
     by_subject = _get_user_by_subject(db, subject)
     if by_subject:
@@ -138,7 +149,7 @@ def _resolve_existing_user(
     return candidate
 
 
-def sync_user_from_oidc_claims(service, claims: Dict[str, Any]) -> Optional[User]:
+def sync_user_from_oidc_claims(service: DatabaseAuthService, claims: JSONDict) -> Optional[User]:
     service._lazy_init()
 
     email = _normalize_email(claims)
@@ -210,8 +221,8 @@ def _pick_unique_username(db: Session, base: str) -> str:
 
 
 def provision_oidc_user(
-    service,
-    db,
+    service: DatabaseAuthService,
+    db: Session,
     email: str,
     preferred_username: str,
     full_name: Optional[str],
@@ -250,11 +261,11 @@ def provision_oidc_user(
             db.rollback()
             continue
 
-    raise IntegrityError("Failed to provision user due to repeated uniqueness conflicts", params=None, orig=None)
+    raise ValueError("Failed to provision user due to repeated uniqueness conflicts")
 
 
 def update_oidc_user(
-    db,
+    db: Session,
     user: User,
     email: str,
     full_name: Optional[str],

@@ -10,7 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from datetime import datetime, timezone
 import secrets
-from typing import Optional, List, Set, Iterable
+from typing import List, Optional, Set, TYPE_CHECKING
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
@@ -21,7 +21,23 @@ from database import get_db_session
 from db_models import User, Group, Permission
 from models.access.user_models import UserCreate, UserUpdate, User as UserSchema
 from models.access.auth_models import Role, ROLE_PERMISSIONS
-from services.auth.group_ops import _prune_removed_member_grafana_group_shares
+from services.auth.delegation import (
+    is_admin_actor as _is_admin_actor,
+    is_admin_user as _is_admin_user,
+    normalize_permissions as _normalize_permissions,
+    permission_is_admin_only as _permission_is_admin_only,
+    resolve_actor_permissions as _resolve_actor_permissions,
+    role_rank as _shared_role_rank,
+    role_to_text as _role_to_text,
+)
+from services.auth.group_ops import (
+    _load_usernames_for_ids,
+    _propagate_removed_member_group_shares,
+    _prune_removed_member_grafana_group_shares,
+)
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
 
 
 MUTABLE_USER_FIELDS = {
@@ -43,54 +59,17 @@ ROLE_RANK = {
     Role.ADMIN.value: 3,
 }
 
-ADMIN_PERMISSION_PATTERNS = ("manage:",)
-ADMIN_ONLY_PERMISSION_EXACT = {"update:user_permissions", "update:group_permissions"}
-
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _role_to_text(value) -> str:
-    if isinstance(value, Role):
-        return value.value
-    normalized = str(value or "").strip().lower()
-    if normalized.startswith("role."):
-        normalized = normalized.split(".", 1)[1]
-    return normalized
-
-
-def _role_rank(value) -> int:
-    return ROLE_RANK.get(_role_to_text(value), 0)
-
-
-def _is_admin_actor(*, actor_role: Optional[str], actor_is_superuser: bool) -> bool:
-    return bool(actor_is_superuser or _role_to_text(actor_role) == Role.ADMIN.value)
-
-
-def _is_admin_user(user: Optional[User]) -> bool:
-    if not user:
-        return False
-    return _role_to_text(getattr(user, "role", None)) == Role.ADMIN.value
-
-
-def _permission_is_admin_only(name: str) -> bool:
-    perm = str(name or "").strip()
-    if not perm:
-        return False
-    if perm in ADMIN_ONLY_PERMISSION_EXACT:
-        return True
-    if any(perm.startswith(prefix) for prefix in ADMIN_PERMISSION_PATTERNS):
-        return True
-    return perm.startswith("update:") and perm.endswith("permissions")
-
-
-def _normalize_permissions(values: Optional[Iterable[str]]) -> Set[str]:
-    return {str(v).strip() for v in (values or []) if str(v).strip()}
+def _role_rank(value: object) -> int:
+    return _shared_role_rank(value, ROLE_RANK)
 
 
 def _get_user(
-    db,
+    db: Session,
     *,
     user_id: str,
     tenant_id: str,
@@ -109,34 +88,6 @@ def _get_user(
     if opts:
         q = q.options(*opts)
     return q.first()
-
-
-def _resolve_actor_permissions(
-    service,
-    *,
-    db,
-    actor_user_id: Optional[str],
-    tenant_id: str,
-    actor_permissions: Optional[List[str]],
-) -> Set[str]:
-    provided = _normalize_permissions(actor_permissions)
-    if provided:
-        return provided
-    if not actor_user_id:
-        return set()
-
-    actor = (
-        db.query(User)
-        .options(
-            joinedload(User.groups).joinedload(Group.permissions),
-            joinedload(User.permissions),
-        )
-        .filter_by(id=actor_user_id, tenant_id=tenant_id)
-        .first()
-    )
-    if not actor:
-        return set()
-    return set(service._collect_permissions(actor))
 
 
 def _enforce_permission_delegation(
@@ -181,12 +132,11 @@ def _role_default_permissions(role_value: str) -> Set[str]:
         if str(getattr(perm, "value", perm)).strip()
     }
 
-def get_user_by_id(service, user_id: str,tenant_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[UserSchema]:
+def get_user_by_id(service: "DatabaseAuthService", user_id: str,tenant_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[UserSchema]:
     if not user_id:
         return None
 
-    if db is None:
-        service._lazy_init()
+    service._lazy_init()
 
     def _query(session: Session) -> Optional[UserSchema]:
         q = (
@@ -206,12 +156,12 @@ def get_user_by_id(service, user_id: str,tenant_id: Optional[str] = None, db: Op
 
     if db is not None:
         return _query(db)
-    
+
     with get_db_session() as s:
         return _query(s)
 
 
-def get_user_by_username(service, username: str) -> Optional[UserSchema]:
+def get_user_by_username(service: "DatabaseAuthService", username: str) -> Optional[UserSchema]:
     service._lazy_init()
     username = (username or "").strip().lower()
     with get_db_session() as db:
@@ -223,11 +173,11 @@ def get_user_by_username(service, username: str) -> Optional[UserSchema]:
         )
         if not user:
             return None
-        return service._to_user_schema(user)
+        return UserSchema.model_validate(service._to_user_schema(user))
 
 
 def create_user(
-    service,
+    service: "DatabaseAuthService",
     user_create: UserCreate,
     tenant_id: str,
     creator_id: Optional[str] = None,
@@ -318,7 +268,7 @@ def create_user(
 
         raw_password = user_create.password
         if is_external and not raw_password:
-           raw_password = secrets.token_urlsafe(24)
+            raw_password = secrets.token_urlsafe(24)
         if not raw_password:
             raise ValueError("Password is required when local authentication is enabled")
 
@@ -328,10 +278,7 @@ def create_user(
             if requested_org:
                 org_value = requested_org
 
-        # New users should rotate away from the bootstrap password on first use,
-        # including externally provisioned accounts that may later move to local auth.
         enforce_change = True
-
         user = User(
             tenant_id=tenant_id,
             username=normalized_username,
@@ -372,18 +319,18 @@ def create_user(
             )
 
         db.commit()
-        return service._to_user_schema(user)
+        return UserSchema.model_validate(service._to_user_schema(user))
 
 
-def list_users(service, tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
+def list_users(service: "DatabaseAuthService", tenant_id: str, *, limit: Optional[int] = None, offset: int = 0) -> List[UserSchema]:
     service._lazy_init()
     try:
         requested_limit = int(limit) if limit is not None else int(getattr(config, "DEFAULT_QUERY_LIMIT", 100))
         max_limit = int(getattr(config, "MAX_QUERY_LIMIT", 5000))
         limit = max(1, min(requested_limit, max_limit))
         offset = max(0, int(offset))
-    except (TypeError, ValueError):
-        raise ValueError("limit and offset must be integers")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit and offset must be integers") from exc
 
     with get_db_session() as db:
         users = (
@@ -398,7 +345,7 @@ def list_users(service, tenant_id: str, *, limit: Optional[int] = None, offset: 
 
 
 def update_user(
-    service,
+    service: "DatabaseAuthService",
     user_id: str,
     user_update: UserUpdate,
     tenant_id: str,
@@ -416,11 +363,17 @@ def update_user(
             if k in MUTABLE_USER_FIELDS or k == "group_ids"
         }
 
-        if updater_id and user_id == updater_id and update_data.get("is_active") is False:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot disable your own account",
-            )
+        if updater_id and user_id == updater_id:
+            if update_data.get("is_active") is False:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You cannot disable your own account",
+                )
+            if set(update_data.keys()) & {"role", "group_ids", "org_id"}:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Users cannot change their own role, tenant scope, or group memberships",
+                )
 
         updater_user = _get_user(db, user_id=updater_id, tenant_id=tenant_id) if updater_id else None
         updater_is_superuser = bool(getattr(updater_user, "is_superuser", False))
@@ -444,6 +397,15 @@ def update_user(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Cannot assign a role higher than your own",
+                )
+            if (
+                _is_admin_user(user)
+                and str(user_id) != str(updater_id)
+                and (set(update_data.keys()) - {"is_active"})
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin accounts can only be activated or deactivated by another admin",
                 )
 
         if getattr(user, "auth_provider", "local") != "local" and "email" in update_data:
@@ -474,17 +436,21 @@ def update_user(
                 )
             update_data["username"] = normalized_username
 
-        for field, value in update_data.items():
-            if field == "group_ids" and value is not None:
-                existing_group_ids = {str(g.id) for g in (user.groups or [])}
-                groups = (
-                    db.query(Group)
-                    .filter(and_(Group.id.in_(value), Group.tenant_id == tenant_id))
-                    .all()
-                )
-                user.groups = groups
-                updated_group_ids = {str(g.id) for g in groups}
-                removed_group_ids = sorted(existing_group_ids - updated_group_ids)
+        removed_group_ids: list[str] = []
+        removed_usernames: list[str] = []
+        requested_group_ids = update_data.pop("group_ids", None) if "group_ids" in update_data else None
+        if requested_group_ids is not None:
+            existing_group_ids = {str(g.id) for g in (user.groups or [])}
+            groups = (
+                db.query(Group)
+                .filter(and_(Group.id.in_(requested_group_ids), Group.tenant_id == tenant_id))
+                .all()
+            )
+            user.groups = groups
+            updated_group_ids = {str(g.id) for g in groups}
+            removed_group_ids = sorted(existing_group_ids - updated_group_ids)
+            if removed_group_ids:
+                removed_usernames = _load_usernames_for_ids(db, tenant_id=tenant_id, user_ids=[user_id])
                 for removed_group_id in removed_group_ids:
                     _prune_removed_member_grafana_group_shares(
                         db,
@@ -492,19 +458,31 @@ def update_user(
                         group_id=removed_group_id,
                         removed_user_ids=[user_id],
                     )
-            else:
-                setattr(user, field, value)
+
+        for field, value in update_data.items():
+            setattr(user, field, value)
 
         user.updated_at = _now_utc()
 
         if "org_id" in update_data:
             service._ensure_default_api_key(db, user)
 
+        audit_data = dict(update_data)
+        if requested_group_ids is not None:
+            audit_data["group_ids"] = [str(group.id) for group in (user.groups or [])]
+
         if updater_id:
-            service._log_audit(db, tenant_id, updater_id, "update_user", "users", user_id, update_data)
+            service._log_audit(db, tenant_id, updater_id, "update_user", "users", user_id, audit_data)
 
         db.commit()
-        return service._to_user_schema(user)
+        for removed_group_id in removed_group_ids:
+            _propagate_removed_member_group_shares(
+                tenant_id=tenant_id,
+                group_id=removed_group_id,
+                removed_user_ids=[user_id],
+                removed_usernames=removed_usernames,
+            )
+        return UserSchema.model_validate(service._to_user_schema(user))
 
 
 def set_grafana_user_id(user_id: str, grafana_user_id: int, tenant_id: str) -> bool:
@@ -517,7 +495,7 @@ def set_grafana_user_id(user_id: str, grafana_user_id: int, tenant_id: str) -> b
         return True
 
 
-def delete_user(service, user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
+def delete_user(service: "DatabaseAuthService", user_id: str, tenant_id: str, deleter_id: Optional[str] = None) -> bool:
     service._lazy_init()
     if deleter_id and user_id == deleter_id:
         raise ValueError("Users cannot delete their own account")
@@ -559,7 +537,7 @@ def delete_user(service, user_id: str, tenant_id: str, deleter_id: Optional[str]
 
 
 def update_user_permissions(
-    service,
+    service: "DatabaseAuthService",
     user_id: str,
     permission_names: List[str],
     tenant_id: str,
@@ -583,6 +561,11 @@ def update_user_permissions(
         actor = _get_user(db, user_id=actor_user_id, tenant_id=tenant_id)
         if not actor:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Actor not found")
+        if str(user_id) == str(actor_user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Users cannot change their own permissions",
+            )
 
         actor_role_text = _role_to_text(actor_role or getattr(actor, "role", None))
         actor_is_superuser = bool(actor_is_superuser or getattr(actor, "is_superuser", False))

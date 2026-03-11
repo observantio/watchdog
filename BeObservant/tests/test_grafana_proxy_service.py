@@ -78,7 +78,7 @@ def test_validate_group_visibility_no_groups_raises():
 
 def test_validate_group_visibility_missing_ids_raises():
     db = make_session()
-    
+
     g1 = Group(id="g1", tenant_id="t1", name="one")
     db.add(g1)
     db.commit()

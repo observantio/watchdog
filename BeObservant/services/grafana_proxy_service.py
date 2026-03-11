@@ -8,20 +8,24 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-import logging
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
 
-from fastapi import HTTPException
+import logging
+from typing import Dict, List, Optional, TYPE_CHECKING
+
+from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
-from db_models import Group, User, user_groups
+from db_models import GrafanaDashboard, GrafanaDatasource, GrafanaFolder, Group, User, user_groups
 from models.access.auth_models import TokenData
 from models.grafana.grafana_dashboard_models import DashboardCreate, DashboardSearchResult, DashboardUpdate
 from models.grafana.grafana_datasource_models import Datasource, DatasourceCreate, DatasourceUpdate
 from models.grafana.grafana_folder_models import Folder
+from custom_types.json import JSONDict
 from services.grafana import proxy_auth_ops as _proxy_auth_ops
 from services.grafana.grafana_service import GrafanaService
 from services.grafana.dashboard_ops import (
+    DashboardSearchContext,
     build_dashboard_search_context,
     create_dashboard,
     delete_dashboard,
@@ -32,6 +36,7 @@ from services.grafana.dashboard_ops import (
     update_dashboard,
 )
 from services.grafana.datasource_ops import (
+    DatasourceListContext,
     build_datasource_list_context,
     create_datasource,
     delete_datasource,
@@ -57,6 +62,9 @@ from services.grafana.folder_ops import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+
 is_admin_user = _proxy_auth_ops.is_admin_user
 is_resource_accessible = _proxy_auth_ops.is_resource_accessible
 extract_dashboard_uid = _proxy_auth_ops.extract_dashboard_uid
@@ -68,7 +76,7 @@ clear_proxy_auth_cache = getattr(_proxy_auth_ops, "clear_proxy_auth_cache", lamb
 
 
 class GrafanaProxyService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = logger
         self.grafana_service = GrafanaService()
 
@@ -153,8 +161,8 @@ class GrafanaProxyService:
                 if user_id
                 else self._normalize_group_ids(group_ids)
             )
-            user_groups = set(effective_groups)
-            not_member = [gid for gid in shared_group_ids if gid not in user_groups]
+            user_group_set = set(effective_groups)
+            not_member = [gid for gid in shared_group_ids if gid not in user_group_set]
             if not_member:
                 raise HTTPException(status_code=403, detail="User is not a member of one or more specified groups")
         return groups
@@ -162,8 +170,10 @@ class GrafanaProxyService:
     def _is_admin_user(self, token_data: TokenData) -> bool:
         return is_admin_user(token_data)
 
-    def _is_resource_accessible(self, resource, token_data: TokenData) -> bool:
-        return is_resource_accessible(resource, token_data)
+    def _is_resource_accessible(self, resource: object, token_data: TokenData) -> bool:
+        if isinstance(resource, (GrafanaDashboard, GrafanaDatasource, GrafanaFolder)):
+            return is_resource_accessible(resource, token_data)
+        return False
 
     def _extract_dashboard_uid(self, path: str) -> Optional[str]:
         return extract_dashboard_uid(path)
@@ -174,13 +184,13 @@ class GrafanaProxyService:
     def _extract_datasource_id(self, path: str) -> Optional[int]:
         return extract_datasource_id(path)
 
-    def _extract_proxy_token(self, request, token: Optional[str] = None) -> Optional[str]:
+    def _extract_proxy_token(self, request: Request, token: Optional[str] = None) -> Optional[str]:
         return extract_proxy_token(request, token)
 
     async def authorize_proxy_request(
         self,
-        request,
-        auth_service,
+        request: Request,
+        auth_service: DatabaseAuthService,
         token: Optional[str] = None,
         orig: Optional[str] = None,
     ) -> Dict[str, str]:
@@ -191,12 +201,12 @@ class GrafanaProxyService:
 
     def build_dashboard_search_context(
         self, db: Session, *, tenant_id: str, uid: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> DashboardSearchContext:
         return build_dashboard_search_context(db, tenant_id=tenant_id, uid=uid)
 
     def build_datasource_list_context(
         self, db: Session, *, tenant_id: str, uid: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> DatasourceListContext:
         return build_datasource_list_context(self, db, tenant_id=tenant_id, uid=uid)
 
     async def search_dashboards(
@@ -216,7 +226,7 @@ class GrafanaProxyService:
         show_hidden: bool = False,
         limit: Optional[int] = None,
         offset: int = 0,
-        search_context: Optional[Dict[str, Any]] = None,
+        search_context: Optional[DashboardSearchContext] = None,
         is_admin: bool = False,
         exclude_foldered_dashboards: bool = False,
     ) -> List[DashboardSearchResult]:
@@ -242,7 +252,7 @@ class GrafanaProxyService:
         tenant_id: str,
         group_ids: List[str],
         is_admin: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[JSONDict]:
         effective_group_ids = self._effective_group_ids(
             db, user_id=user_id, tenant_id=tenant_id, group_ids=group_ids,
         )
@@ -259,7 +269,7 @@ class GrafanaProxyService:
         shared_group_ids: Optional[List[str]] = None,
         is_admin: bool = False,
         actor_permissions: Optional[List[str]] = None,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[JSONDict]:
         effective_group_ids = self._effective_group_ids(
             db, user_id=user_id, tenant_id=tenant_id, group_ids=group_ids,
         )
@@ -280,7 +290,7 @@ class GrafanaProxyService:
         shared_group_ids: Optional[List[str]] = None,
         is_admin: bool = False,
         actor_permissions: Optional[List[str]] = None,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[JSONDict]:
         effective_group_ids = self._effective_group_ids(
             db, user_id=user_id, tenant_id=tenant_id, group_ids=group_ids,
         )
@@ -302,8 +312,9 @@ class GrafanaProxyService:
     ) -> bool:
         return toggle_dashboard_hidden(db, uid, user_id, tenant_id, hidden)
 
-    def get_dashboard_metadata(self, db: Session, tenant_id: str) -> Dict[str, Any]:
-        return get_dashboard_metadata(db, tenant_id)
+    def get_dashboard_metadata(self, db: Session, tenant_id: str) -> JSONDict:
+        metadata = get_dashboard_metadata(db, tenant_id)
+        return {str(key): value for key, value in metadata.items()}
 
     async def get_datasources(
         self,
@@ -316,7 +327,7 @@ class GrafanaProxyService:
         show_hidden: bool = False,
         limit: Optional[int] = None,
         offset: int = 0,
-        datasource_context: Optional[Dict[str, Any]] = None,
+        datasource_context: Optional[DatasourceListContext] = None,
     ) -> List[Datasource]:
         effective_group_ids = self._effective_group_ids(
             db, user_id=user_id, tenant_id=tenant_id, group_ids=group_ids,
@@ -394,16 +405,17 @@ class GrafanaProxyService:
     ) -> bool:
         return toggle_datasource_hidden(db, uid, user_id, tenant_id, hidden)
 
-    def get_datasource_metadata(self, db: Session, tenant_id: str) -> Dict[str, Any]:
-        return get_datasource_metadata(db, tenant_id)
+    def get_datasource_metadata(self, db: Session, tenant_id: str) -> JSONDict:
+        metadata = get_datasource_metadata(db, tenant_id)
+        return {str(key): value for key, value in metadata.items()}
 
-    async def query_datasource(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def query_datasource(self, payload: JSONDict) -> JSONDict:
         return await query_datasource(self, payload)
 
     async def enforce_datasource_query_access(
         self,
         db: Session,
-        payload: Dict[str, Any],
+        payload: JSONDict,
         user_id: str,
         tenant_id: str,
         group_ids: List[str],
@@ -525,7 +537,7 @@ class GrafanaProxyService:
         *,
         require_write: bool = False,
         is_admin: bool = False,
-    ):
+    ) -> Optional[GrafanaFolder]:
         effective_group_ids = self._effective_group_ids(
             db, user_id=user_id, tenant_id=tenant_id, group_ids=group_ids,
         )

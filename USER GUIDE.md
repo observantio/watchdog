@@ -10,21 +10,21 @@ When you run this project, you are not starting one server. You are starting a p
 
 ### Core application services
 
-| Service | Default Port | Why It Exists |
-| --- | --- | --- |
-| `BeObservant` | `4319` | Main API and control plane. Owns users, groups, API keys, auth, most UI-facing APIs, and secure proxying to the rest of the platform. |
-| `BeGateway` | `4321` | Validates OTLP tokens for telemetry ingestion and returns tenant scope. |
-| `BeNotified` | `4323` | Stores and serves alert rules, channels, silences, incidents, and Jira integrations. |
-| `BeCertain` | `4322` | Runs RCA and anomaly analysis over logs, metrics, and traces. |
+| Service | Port| Why It Exists |
+|:---|:---|:---|
+| `beobservant` | `4319` | Main API and control plane. Owns users, groups, API keys, auth, most UI-facing APIs, and secure proxying to the rest of the platform. |
+| `begateway` | `4321` | Validates OTLP tokens for telemetry ingestion and returns tenant scope. |
+| `benotified` | `4323` | Stores and serves alert rules, channels, silences, incidents, and Jira integrations. |
+| `becertain` | `4322` | Runs RCA and anomaly analysis over logs, metrics, and traces. |
 | `ui` | `5173` | React frontend for operators. |
 
 ### Supporting infrastructure
 
 | Service | Why It Exists |
-| --- | --- |
-| `postgres` | Persistent storage for BeObservant, BeNotified, and BeCertain. |
+|:---|:---|
+| `postgres` | Persistent storage for beobservant, benotified, and beertain. |
 | `redis` | Rate limits, token caches, and shared fast state. |
-| `otlp-gateway` | Envoy edge for OTLP traffic. Calls BeGateway before forwarding telemetry. |
+| `otlp-gateway` | Envoy edge for OTLP traffic. Calls begateway before forwarding telemetry. |
 | `gateway-auth` | Decoupled server that acts as redis cache between the main server and envoy to validate and translate otlp keys to tenant keys |
 | `loki` | Log storage and query engine. |
 | `tempo` | Trace storage and query engine. |
@@ -238,6 +238,8 @@ docker compose ps
 ```
 
 Initial startup can take a while because multiple images are being built and the application services wait on databases and observability backends.
+
+For local development outside Docker, use the service-level `pyproject.toml` files in `BeCertain` and `BeNotified` as the canonical entry points for pytest, coverage, and mypy-aware editor tooling.
 
 ## 7. Verify The Stack Cleanly
 
@@ -521,7 +523,7 @@ For anything beyond local evaluation, review this list:
 ## 15. Common Problems And What They Usually Mean
 
 | Symptom | Likely Cause | What To Check |
-| --- | --- | --- |
+|:---|:---|:---|
 | UI loads but login fails | Bootstrap credentials or auth mode mismatch | `.env`, auth provider, admin bootstrap values |
 | No logs or traces appear | Bad OTLP token, wrong endpoint, or collector misrouting | `x-otlp-token`, `http://localhost:4320`, collector exporter endpoints |
 | `ready` stays not ready | One or more downstream services are still unhealthy | `docker compose ps`, BeObservant ready payload |
@@ -595,6 +597,7 @@ git clone https://github.com/observantio/becertain BeCertain
 git clone https://github.com/observantio/benotified BeNotified
 cp .env.example .env
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
 # Put value into DATA_ENCRYPTION_KEY in .env
 
 docker compose up -d --build
@@ -679,7 +682,7 @@ From `.env.example`:
 ## 8. Common Troubleshooting
 
 | Symptom | Likely Cause | Action |
-| --- | --- | --- |
+|:---|:---|:---|
 | `403` on API actions | Missing permission or wrong active scope | Verify user permissions, group membership, and selected API key |
 | No telemetry data | Token mismatch or collector misconfiguration | Validate `x-otlp-token`, endpoint, and collector exporter config |
 | Grafana proxy unauthorized | Missing UI session/auth mismatch | Sign in via UI first; verify auth and proxy configuration |

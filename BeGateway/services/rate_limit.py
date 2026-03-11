@@ -13,20 +13,14 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
+
+import config as gw_config
+
 from .rate_limits.token_rate_limiter import TokenRateLimiter
 from .rate_limits.redis_token_rate_limiter import RedisTokenRateLimiter
 from .rate_limits.hybrid_token_rate_limiter import HybridTokenRateLimiter
 
-import config as gw_config
-
-try:
-    redis: object
-except ImportError:
-    redis = None
-
 logger = logging.getLogger(__name__)
-
-_MAX_IN_MEMORY_KEYS = 50_000
 
 
 def _sanitize_redis_url(url: str) -> str:
@@ -34,7 +28,7 @@ def _sanitize_redis_url(url: str) -> str:
         p = urlparse(url)
         host = f"{p.hostname}:{p.port}" if p.port else (p.hostname or "")
         return urlunparse(p._replace(netloc=host))
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return "<redis-url>"
 
 
@@ -45,7 +39,7 @@ def make_default_rate_limiter(
     *,
     socket_timeout: float = 1.0,
     max_connections: int = 50,
-) -> TokenRateLimiter | HybridTokenRateLimiter:
+) -> TokenRateLimiter | RedisTokenRateLimiter | HybridTokenRateLimiter:
     backend = (backend or "auto").strip().lower()
     strict = gw_config.GATEWAY_RATE_LIMIT_STRICT
 
@@ -57,9 +51,9 @@ def make_default_rate_limiter(
     if strict:
         try:
             r = _make_redis()
-            logger.info("Gateway rate limiting backend: redis (strict) %s", _sanitize_redis_url(redis_url))
+            logger.info("Gateway rate limiting backend: redis (strict) %s", _sanitize_redis_url(redis_url or ""))
             return r
-        except Exception as exc:
+        except RuntimeError as exc:
             logger.error("Redis init failed in strict mode: %s", exc)
             raise
 
@@ -71,8 +65,8 @@ def make_default_rate_limiter(
 
     try:
         primary = _make_redis()
-        logger.info("Gateway rate limiting backend: redis (%s)", _sanitize_redis_url(redis_url))
+        logger.info("Gateway rate limiting backend: redis (%s)", _sanitize_redis_url(redis_url or ""))
         return HybridTokenRateLimiter(primary, TokenRateLimiter(limit))
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.warning("Redis rate limiter init failed (%s), using in-memory fallback", type(exc).__name__)
         return TokenRateLimiter(limit)

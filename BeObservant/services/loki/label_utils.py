@@ -9,7 +9,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from custom_types.json import JSONDict
 
 KEY_RE = re.compile(r"[A-Za-z0-9_.:-]+")
 
@@ -86,7 +88,7 @@ def parse_labelset_value(label_key: str, raw_value: str) -> Optional[Dict[str, s
     return pairs or None
 
 
-def normalize_label_value(label_key: str, value: Any) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
+def normalize_label_value(label_key: str, value: object) -> Tuple[Optional[str], Optional[dict[str, str]]]:
     if not isinstance(value, str) or '="' not in value or '",' not in value:
         return None, None
 
@@ -98,11 +100,11 @@ def normalize_label_value(label_key: str, value: Any) -> Tuple[Optional[str], Op
     return (value[:cut_index], None) if cut_index > 0 else (None, None)
 
 
-def normalize_label_dict(labels: Dict[str, Any]) -> Dict[str, str]:
+def normalize_label_dict(labels: JSONDict) -> Dict[str, str]:
     extra: Dict[str, str] = {}
     for key, value in list(labels.items()):
         _, parsed = normalize_label_value(key, value)
-        if parsed:
+        if isinstance(parsed, dict):
             for k, v in parsed.items():
                 if k not in labels:
                     extra[k] = v
@@ -112,13 +114,12 @@ def normalize_label_dict(labels: Dict[str, Any]) -> Dict[str, str]:
 def normalize_label_values(label: str, values: List[str]) -> List[str]:
     cleaned: List[str] = []
     for value in values:
-        if not isinstance(value, str):
-            cleaned.append(value)
-            continue
         parsed = parse_labelset_value(label, value)
-        if parsed and label in parsed:
-            cleaned.append(parsed[label])
-            continue
+        if isinstance(parsed, dict):
+            parsed_value = parsed.get(label)
+            if parsed_value is not None:
+                cleaned.append(parsed_value)
+                continue
         cut_index = value.find('",')
         cleaned.append(value[:cut_index] if cut_index > 0 else value)
     return cleaned

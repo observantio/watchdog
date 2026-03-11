@@ -10,12 +10,18 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
-from typing import Optional, Set
+from typing import Optional, Set, TYPE_CHECKING
 
 from models.access.auth_models import Role, TokenData
 from services.auth.auth_ops import decode_token as decode_token_op
+from services.database_auth.shared import sync_active_user_from_claims
 
-def build_token_data_for_user(service, user) -> TokenData:
+from db_models import User
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+
+def build_token_data_for_user(service: DatabaseAuthService, user: User) -> TokenData:
     role = _safe_role(getattr(user, "role", None))
 
     return TokenData(
@@ -29,7 +35,7 @@ def build_token_data_for_user(service, user) -> TokenData:
         group_ids=[g.id for g in (getattr(user, "groups", None) or [])],
     )
 
-def decode_token(service, token: str) -> Optional[TokenData]:
+def decode_token(service: DatabaseAuthService, token: str) -> Optional[TokenData]:
     local_token = decode_token_op(service, token)
     if local_token:
         return local_token
@@ -38,15 +44,16 @@ def decode_token(service, token: str) -> Optional[TokenData]:
         return None
 
     claims = service.oidc_service.verify_access_token(token)
-    if not claims:
-        return None
-
-    user = service._sync_user_from_oidc_claims(claims)
-    if not user or not getattr(user, "is_active", False):
+    user = sync_active_user_from_claims(service, claims)
+    if user is None:
         return None
 
     token_data = build_token_data_for_user(service, user)
-    token_data.iat = claims.get("iat")
+    if not isinstance(claims, dict):
+        return token_data
+
+    issued_at = claims.get("iat")
+    token_data.iat = issued_at if isinstance(issued_at, int) else None
 
     known_permissions = _known_permission_names(service)
     oidc_permissions = set(service._extract_permissions_from_oidc_claims(claims) or [])
@@ -57,20 +64,15 @@ def decode_token(service, token: str) -> Optional[TokenData]:
 
 def _safe_role(raw_role: Optional[str]) -> Role:
     try:
-        return Role(raw_role) 
-    except Exception:
+        return Role(raw_role)
+    except ValueError:
         return Role.USER
 
-def _known_permission_names(service) -> Set[str]:
+def _known_permission_names(service: DatabaseAuthService) -> Set[str]:
     perms = service.list_all_permissions() or []
     names: Set[str] = set()
     for p in perms:
-        if isinstance(p, dict):
-            name = p.get("name")
-            if name:
-                names.add(name)
-        else:
-            name = getattr(p, "name", None)
-            if name:
-                names.add(name)
+        name = p.get("name") if isinstance(p, dict) else None
+        if isinstance(name, str) and name:
+            names.add(name)
     return names

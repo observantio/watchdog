@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from typing import Optional
 
 from starlette.responses import PlainTextResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ def _inc_concurrency_busy() -> int:
 class ConcurrencyLimitMiddleware:
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         max_concurrent: int = 200,
         acquire_timeout: float = 1.0,
     ) -> None:
@@ -43,14 +45,18 @@ class ConcurrencyLimitMiddleware:
             self._sem = asyncio.Semaphore(self._max_concurrent)
         return self._sem
 
-    async def __call__(self, scope, receive, send) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
 
+        acquire_task = asyncio.create_task(self._get_semaphore().acquire())
         try:
-            await asyncio.wait_for(self._get_semaphore().acquire(), timeout=self._timeout)
+            await asyncio.wait_for(acquire_task, timeout=self._timeout)
         except asyncio.TimeoutError:
+            acquire_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await acquire_task
             total = _inc_concurrency_busy()
             logger.warning("concurrency_limit_busy total=%s timeout=%s", total, self._timeout)
             resp = PlainTextResponse("Server busy, please retry", status_code=503)

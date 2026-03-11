@@ -9,20 +9,22 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
-from typing import Any, Dict
+from typing import TypeAlias
 
 from models.observability.tempo_models import TraceQuery
 
+QueryParamValue: TypeAlias = str | int | float | bool
 
-def _format_tag(key: str, value: Any) -> str:
+
+def _format_tag(key: str, value: object) -> str:
     s = str(value).replace("\\", "\\\\").replace('"', '\\"')
     return f'{key}="{s}"' if " " in s else f"{key}={s}"
 
 
-def build_search_params(query: TraceQuery) -> Dict[str, Any]:
-    params: Dict[str, Any] = {"limit": query.limit}
+def build_search_params(query: TraceQuery) -> dict[str, QueryParamValue]:
+    params: dict[str, QueryParamValue] = {"limit": query.limit}
 
-    tags: Dict[str, Any] = {}
+    tags: dict[str, object] = {}
     if query.service:
         tags["service.name"] = query.service
     if query.operation:

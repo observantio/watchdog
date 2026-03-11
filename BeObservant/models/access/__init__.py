@@ -87,5 +87,3 @@ __all__ = [
     'RecoveryCodesResponse',
     'TempPasswordResetResponse',
 ]
-
-

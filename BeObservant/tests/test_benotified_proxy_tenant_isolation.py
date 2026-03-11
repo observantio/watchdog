@@ -11,7 +11,9 @@ from tests._env import ensure_test_env
 ensure_test_env()
 
 import pytest
+import httpx
 from fastapi import Response
+from fastapi import HTTPException
 from starlette.requests import Request
 
 from models.access.auth_models import TokenData, Role
@@ -59,6 +61,14 @@ class _DummyResponse:
     status_code = 200
     content = b'{"ok":true}'
     headers = {"content-type": "application/json"}
+
+
+class _DummyTimeout(httpx.TimeoutException):
+    pass
+
+
+class _DummyHttpError(httpx.HTTPError):
+    pass
 
 
 @pytest.mark.asyncio
@@ -112,3 +122,209 @@ async def test_forward_preserves_scope_header_for_anonymous(monkeypatch):
     assert isinstance(resp, Response)
     assert "x-scope-orgid" in {k.lower(): v for k, v in captured["headers"].items()}
 
+
+def test_resolve_actor_api_key_id_prefers_default_enabled(monkeypatch):
+    svc = BeNotifiedProxyService()
+    user = _user()
+    keys = [
+        type("Key", (), {"id": "disabled", "is_enabled": False, "is_default": True})(),
+        type("Key", (), {"id": "fallback", "is_enabled": True, "is_default": False})(),
+        type("Key", (), {"id": "default", "is_enabled": True, "is_default": True})(),
+    ]
+    monkeypatch.setattr("services.benotified_proxy_service.auth_service.list_api_keys", lambda *_: keys)
+
+    assert svc._resolve_actor_api_key_id(user) == "default"
+
+
+def test_resolve_actor_api_key_id_handles_errors(monkeypatch):
+    svc = BeNotifiedProxyService()
+    user = _user()
+
+    def boom(*_args):
+        raise Exception("unused")
+
+    def db_boom(*_args):
+        from sqlalchemy.exc import SQLAlchemyError
+
+        raise SQLAlchemyError("db down")
+
+    monkeypatch.setattr("services.benotified_proxy_service.auth_service.list_api_keys", db_boom)
+    assert svc._resolve_actor_api_key_id(user) is None
+
+    monkeypatch.setattr("services.benotified_proxy_service.auth_service.list_api_keys", lambda *_: [])
+    assert svc._resolve_actor_api_key_id(user) is None
+
+
+def test_sign_context_token_uses_live_group_ids_and_falls_back(monkeypatch):
+    svc = BeNotifiedProxyService()
+    user = _user()
+    encoded = {}
+
+    def fake_encode(claims, key, algorithm):
+        encoded["claims"] = claims
+        return "jwt"
+
+    monkeypatch.setattr(config, "get_secret", lambda key: "signing-key")
+    monkeypatch.setattr(
+        "services.benotified_proxy_service.auth_service.get_user_by_id_in_tenant",
+        lambda *_: type("LiveUser", (), {"group_ids": ["g2", " ", "g3"]})(),
+    )
+    monkeypatch.setattr(svc, "_encode_jwt", fake_encode)
+
+    token = svc._sign_context_token(current_user=user, api_key_id="key-1")
+    assert token == "jwt"
+    assert encoded["claims"]["group_ids"] == ["g2", "g3"]
+    assert encoded["claims"]["api_key_id"] == "key-1"
+
+
+def test_sign_context_token_handles_missing_key_and_sql_errors(monkeypatch):
+    svc = BeNotifiedProxyService()
+    user = _user()
+
+    def fake_encode(claims, key, algorithm):
+        captured["claims"] = claims
+        return "jwt"
+
+    monkeypatch.setattr(config, "get_secret", lambda key: None)
+    with pytest.raises(HTTPException, match="Missing BeNotified signing key"):
+        svc._sign_context_token(current_user=user, api_key_id=None)
+
+    monkeypatch.setattr(config, "get_secret", lambda key: "signing-key")
+
+    def db_boom(*_args):
+        from sqlalchemy.exc import SQLAlchemyError
+
+        raise SQLAlchemyError("db down")
+
+    captured = {}
+    monkeypatch.setattr("services.benotified_proxy_service.auth_service.get_user_by_id_in_tenant", db_boom)
+    monkeypatch.setattr(svc, "_encode_jwt", fake_encode)
+
+    assert svc._sign_context_token(current_user=user, api_key_id=None) == "jwt"
+    assert captured["claims"]["group_ids"] == ["g1"]
+
+
+def test_forwardable_response_headers_filters_values():
+    headers = httpx.Headers(
+        {
+            "content-type": "application/json",
+            "cache-control": "no-cache",
+            "etag": "abc",
+            "x-request-id": "req-1",
+            "server": "ignored",
+        }
+    )
+
+    assert BeNotifiedProxyService._forwardable_response_headers(headers) == {
+        "content-type": "application/json",
+        "cache-control": "no-cache",
+        "etag": "abc",
+        "x-request-id": "req-1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_forward_requires_api_key_and_records_timeout(monkeypatch):
+    svc = BeNotifiedProxyService()
+    audits = []
+    monkeypatch.setattr(svc, "write_audit", lambda **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(config, "get_secret", lambda key: "service-token")
+    monkeypatch.setattr(svc, "_resolve_actor_api_key_id", lambda user: None)
+
+    req = _request()
+    with pytest.raises(HTTPException, match="No active API key"):
+        await svc.forward(
+            request=req,
+            upstream_path="/foo",
+            current_user=_user(),
+            require_api_key=True,
+            audit_action="jira",
+        )
+
+    monkeypatch.setattr(svc, "_resolve_actor_api_key_id", lambda user: "key-1")
+    monkeypatch.setattr(svc, "_sign_context_token", lambda **_: "ctx")
+
+    async def raise_timeout(**_kwargs):
+        raise _DummyTimeout("slow")
+
+    svc._client.request = raise_timeout
+    with pytest.raises(HTTPException, match="timed out"):
+        await svc.forward(
+            request=req,
+            upstream_path="/foo",
+            current_user=_user(),
+            require_api_key=True,
+            audit_action="jira",
+        )
+    assert audits[-1]["action"] == "jira.timeout"
+
+
+@pytest.mark.asyncio
+async def test_forward_records_http_errors_and_passes_webhook_header(monkeypatch):
+    svc = BeNotifiedProxyService()
+    audits = []
+    captured = {}
+    monkeypatch.setattr(svc, "write_audit", lambda **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(config, "get_secret", lambda key: "service-token")
+    monkeypatch.setattr(svc, "_resolve_actor_api_key_id", lambda user: "key-1")
+    monkeypatch.setattr(svc, "_sign_context_token", lambda **_: "ctx")
+
+    async def raise_http_error(*, method, url, params, content, headers):
+        captured["headers"] = dict(headers)
+        raise _DummyHttpError("bad gateway")
+
+    svc._client.request = raise_http_error
+    req = _request(headers=[(b"x-beobservant-webhook-token", b"hook-1")])
+
+    with pytest.raises(HTTPException, match="Failed to contact BeNotified"):
+        await svc.forward(
+            request=req,
+            upstream_path="/foo",
+            current_user=_user(),
+            require_api_key=False,
+            audit_action="jira",
+            correlation_id="corr-1",
+        )
+
+    assert captured["headers"]["x-beobservant-webhook-token"] == "hook-1"
+    assert captured["headers"]["Authorization"] == "Bearer ctx"
+    assert audits[-1]["action"] == "jira.error"
+
+
+@pytest.mark.asyncio
+async def test_forward_requires_service_token_and_preserves_scope_header(monkeypatch):
+    svc = BeNotifiedProxyService()
+    monkeypatch.setattr(config, "get_secret", lambda key: None)
+
+    with pytest.raises(HTTPException, match="service token not configured"):
+        await svc.forward(
+            request=_request(),
+            upstream_path="/foo",
+            current_user=None,
+            require_api_key=False,
+            audit_action="jira",
+        )
+
+    captured = {}
+    monkeypatch.setattr(config, "get_secret", lambda key: "service-token")
+    monkeypatch.setattr(svc, "write_audit", lambda **_: None)
+
+    async def fake_request(*, method, url, params, content, headers):
+        captured["headers"] = dict(headers)
+        return _DummyResponse()
+
+    svc._client.request = fake_request
+    req = _request(headers=[(b"x-scope-orgid", b"tenant-uppercase")])
+    req.scope["client"] = None
+    response = await svc.forward(
+        request=req,
+        upstream_path="/foo",
+        current_user=None,
+        require_api_key=False,
+        audit_action="jira",
+    )
+
+    assert response.status_code == 200
+    normalized_headers = {key.lower(): value for key, value in captured["headers"].items()}
+    assert normalized_headers["x-scope-orgid"] == "tenant-uppercase"
+    assert captured["headers"]["X-Forwarded-For"] == "unknown"

@@ -17,6 +17,7 @@ from typing import Optional
 
 import httpx
 from fastapi import HTTPException, Request, Response, status
+from sqlalchemy.exc import SQLAlchemyError
 
 from config import config
 from middleware.dependencies import auth_service
@@ -41,7 +42,7 @@ class BeNotifiedProxyService(BaseProxyService):
     def _resolve_actor_api_key_id(self, current_user: TokenData) -> Optional[str]:
         try:
             keys = auth_service.list_api_keys(current_user.user_id)
-        except Exception:
+        except SQLAlchemyError:
             return None
         enabled = [k for k in (keys or []) if getattr(k, "is_enabled", True)]
         if not enabled:
@@ -69,7 +70,7 @@ class BeNotifiedProxyService(BaseProxyService):
             )
             if live_user and isinstance(getattr(live_user, "group_ids", None), list):
                 live_group_ids = [str(gid) for gid in live_user.group_ids if str(gid).strip()]
-        except Exception:
+        except SQLAlchemyError:
             # Fall back to current token context if live lookup fails.
             pass
 
@@ -199,5 +200,5 @@ class BeNotifiedProxyService(BaseProxyService):
             status_code=upstream.status_code,
             headers=self._forwardable_response_headers(upstream.headers),
         )
-    
+
 benotified_proxy_service = BeNotifiedProxyService()

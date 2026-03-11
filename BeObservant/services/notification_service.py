@@ -11,23 +11,37 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 import logging
+from types import ModuleType
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from typing import Optional
+from typing import Optional, TypedDict
 
 from config import config
 from services.common.http_client import create_async_client
 
 try:
-    import aiosmtplib
-except Exception:
-    aiosmtplib = None
+    import aiosmtplib as _loaded_aiosmtplib
+except ImportError:
+    _aiosmtplib: ModuleType | None = None
+else:
+    _aiosmtplib = _loaded_aiosmtplib
 
 logger = logging.getLogger(__name__)
 
 BOOL_TRUE = {"1", "true", "yes", "on"}
 
-def _as_bool(value) -> bool:
+
+class SMTPConfig(TypedDict):
+    hostname: str
+    port: int
+    username: str | None
+    password: str | None
+    from_addr: str
+    start_tls: bool
+    use_tls: bool
+
+
+def _as_bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -50,7 +64,7 @@ def _is_enabled(*keys: str) -> bool:
     return str(v or "false").strip().lower() in BOOL_TRUE
 
 
-def _smtp_config(*prefixes: str) -> dict:
+def _smtp_config(*prefixes: str) -> SMTPConfig:
     def get(*suffixes: str) -> Optional[str]:
         return _first_secret(*(f"{p}_{s}" for p in prefixes for s in suffixes))
 
@@ -75,10 +89,10 @@ class NotificationService:
         self.timeout = float(config.DEFAULT_TIMEOUT)
         self._client = create_async_client(self.timeout)
 
-    async def _send_smtp(self, *, message: EmailMessage, cfg: dict) -> None:
-        if aiosmtplib is None:
+    async def _send_smtp(self, *, message: EmailMessage, cfg: SMTPConfig) -> None:
+        if _aiosmtplib is None:
             raise RuntimeError("aiosmtplib is unavailable")
-        await aiosmtplib.send(
+        await _aiosmtplib.send(
             message,
             hostname=cfg["hostname"],
             port=cfg["port"],
@@ -89,15 +103,15 @@ class NotificationService:
             timeout=self.timeout,
         )
 
-    async def _dispatch(self, cfg: dict, msg: EmailMessage, recipient: str) -> bool:
+    async def _dispatch(self, cfg: SMTPConfig, msg: EmailMessage, recipient: str) -> bool:
         try:
             await self._send_smtp(message=msg, cfg=cfg)
             return True
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Failed to send email to %s: %s", recipient, exc)
             return False
 
-    def _build_message(self, *, subject: str, cfg: dict, recipient: str, body: str) -> EmailMessage:
+    def _build_message(self, *, subject: str, cfg: SMTPConfig, recipient: str, body: str) -> EmailMessage:
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = cfg["from_addr"]

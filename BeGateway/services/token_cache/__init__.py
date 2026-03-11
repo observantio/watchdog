@@ -12,17 +12,11 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-try:
-    import redis 
-    _redis_available = True
-except Exception:
-    redis = None  
-    _redis_available = False
+from ._redis_compat import redis
+from .memory import TokenCache
+from .redis import RedisTokenCache
 
 logger = logging.getLogger(__name__)
-
-from .memory import TokenCache 
-from .redis import RedisTokenCache  
 
 __all__ = ["TokenCache", "RedisTokenCache", "make_token_cache", "redis"]
 
@@ -33,7 +27,7 @@ def make_token_cache(ttl: int, redis_url: Optional[str] = None) -> TokenCache | 
             cache = RedisTokenCache(ttl, redis_url)
             logger.info("Gateway token cache backend: redis (%s)", redis_url)
             return cache
-        except Exception as exc:
+        except RuntimeError as exc:
             logger.warning(
                 "Redis token cache init failed (%s), using in-memory fallback", type(exc).__name__
             )

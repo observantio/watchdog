@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Optional, TYPE_CHECKING
 
 import jwt
 import secrets
@@ -26,22 +26,36 @@ from config import config
 from database import get_db_session
 from db_models import Group, Tenant, User, UserApiKey
 from models.access.auth_models import Role, Token, TokenData
+from models.access.user_models import UserPasswordUpdate
+
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+
+SigningKey = rsa.RSAPrivateKey | ec.EllipticCurvePrivateKey
+VerificationKey = rsa.RSAPublicKey | ec.EllipticCurvePublicKey
+MAX_MFA_SETUP_TOKEN_MINUTES = 15
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _load_private_key(pem: str):
-    return serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+def _load_private_key(pem: str) -> SigningKey:
+    key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+    if isinstance(key, (rsa.RSAPrivateKey, ec.EllipticCurvePrivateKey)):
+        return key
+    raise ValueError("Unsupported private key type")
 
 
-def _load_public_key(pem: str):
-    return serialization.load_pem_public_key(pem.encode("utf-8"))
+def _load_public_key(pem: str) -> VerificationKey:
+    key = serialization.load_pem_public_key(pem.encode("utf-8"))
+    if isinstance(key, (rsa.RSAPublicKey, ec.EllipticCurvePublicKey)):
+        return key
+    raise ValueError("Unsupported public key type")
 
 
 @lru_cache(maxsize=1)
-def _jwt_key_objects() -> tuple[Any, Any]:
+def _jwt_key_objects() -> tuple[SigningKey, VerificationKey]:
     algorithm = config.JWT_ALGORITHM
     if algorithm not in {"RS256", "ES256"}:
         raise ValueError(f"Unsupported JWT algorithm: {algorithm}")
@@ -66,19 +80,19 @@ def _jwt_key_objects() -> tuple[Any, Any]:
     return private_key, public_key
 
 
-def _jwt_signing_key():
+def _jwt_signing_key() -> SigningKey:
     return _jwt_key_objects()[0]
 
 
-def _jwt_verification_key():
+def _jwt_verification_key() -> VerificationKey:
     return _jwt_key_objects()[1]
 
 
-def _normalize_username(username: str) -> str:
+def _normalize_username(username: str | None) -> str:
     return (username or "").strip().lower()
 
 
-def create_access_token(service, user: User) -> Token:
+def create_access_token(service: DatabaseAuthService, user: User) -> Token:
     expires_seconds = int(config.JWT_EXPIRATION_MINUTES) * 60
     now = _utcnow()
     exp_ts = int((now + timedelta(seconds=expires_seconds)).timestamp())
@@ -122,7 +136,8 @@ def create_access_token(service, user: User) -> Token:
 
 def create_mfa_setup_token(user: User, minutes: int = 10) -> Token:
     now = _utcnow()
-    expires_seconds = int(minutes) * 60
+    bounded_minutes = max(1, min(int(minutes), MAX_MFA_SETUP_TOKEN_MINUTES))
+    expires_seconds = bounded_minutes * 60
     exp_ts = int((now + timedelta(seconds=expires_seconds)).timestamp())
 
     to_encode = {
@@ -137,7 +152,7 @@ def create_mfa_setup_token(user: User, minutes: int = 10) -> Token:
     return Token(access_token=encoded_jwt, token_type="bearer", expires_in=expires_seconds)
 
 
-def decode_token(service, token: str) -> Optional[TokenData]:
+def decode_token(service: DatabaseAuthService, token: str) -> Optional[TokenData]:
     try:
         payload = jwt.decode(token, _jwt_verification_key(), algorithms=[config.JWT_ALGORITHM])
     except jwt.PyJWTError:
@@ -163,22 +178,25 @@ def decode_token(service, token: str) -> Optional[TokenData]:
     if not isinstance(group_ids, list):
         group_ids = []
 
+    permission_values = [str(permission) for permission in permissions]
+    group_id_values = [str(group_id) for group_id in group_ids]
+
     td = TokenData(
         user_id=str(user_id),
         username=str(username),
-        tenant_id=payload.get("tenant_id"),
-        org_id=payload.get("org_id", config.DEFAULT_ORG_ID),
+        tenant_id=str(payload.get("tenant_id") or ""),
+        org_id=str(payload.get("org_id", config.DEFAULT_ORG_ID) or config.DEFAULT_ORG_ID),
         role=role,
         is_superuser=bool(payload.get("is_superuser", False)),
-        permissions=permissions,
-        group_ids=group_ids,
+        permissions=permission_values,
+        group_ids=group_id_values,
         iat=payload.get("iat"),
+        is_mfa_setup=bool(payload.get("mfa_setup", False)),
     )
-    setattr(td, "is_mfa_setup", bool(payload.get("mfa_setup", False)))
     return td
 
 
-def authenticate_user(service, username: str, password: str) -> Optional[User]:
+def authenticate_user(service: DatabaseAuthService, username: str, password: str) -> Optional[User]:
     service._lazy_init()
     username_norm = _normalize_username(username)
     now = _utcnow()
@@ -199,7 +217,7 @@ def authenticate_user(service, username: str, password: str) -> Optional[User]:
             user.password_changed_at = now
             changed_at = now
 
-        if interval_days > 0 and changed_at is not None:
+        if interval_days > 0:
             if getattr(changed_at, "tzinfo", None) is None:
                 changed_at = changed_at.replace(tzinfo=timezone.utc)
             expiry_cutoff = now - timedelta(days=interval_days)
@@ -226,7 +244,7 @@ def authenticate_user(service, username: str, password: str) -> Optional[User]:
         return hydrated
 
 
-def update_password(service, user_id: str, password_update, tenant_id: str) -> bool:
+def update_password(service: DatabaseAuthService, user_id: str, password_update: UserPasswordUpdate, tenant_id: str) -> bool:
     new_password = getattr(password_update, "new_password", "") or ""
     current_password = getattr(password_update, "current_password", "") or ""
 
@@ -265,7 +283,7 @@ def update_password(service, user_id: str, password_update, tenant_id: str) -> b
         return True
 
 
-def validate_otlp_token(service, token: str, *, suppress_errors: bool = True) -> Optional[str]:
+def validate_otlp_token(service: DatabaseAuthService, token: str, *, suppress_errors: bool = True) -> Optional[str]:
     if not token:
         return None
 
@@ -303,7 +321,7 @@ def validate_otlp_token(service, token: str, *, suppress_errors: bool = True) ->
         service.logger.warning("OTLP token validation failed due to database error")
         service.logger.debug("OTLP validation error detail: %s", exc)
         return None
-    except Exception as exc:
+    except RuntimeError as exc:
         if not suppress_errors:
             raise
         service.logger.warning("OTLP token validation failed due to internal error")

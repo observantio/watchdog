@@ -10,9 +10,15 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from .shared import router
 
-from . import dashboards 
-from . import datasources  
-from . import folders 
-from . import proxy 
+from . import dashboards
+from . import datasources
+from . import folders
+from . import proxy
 
-__all__ = ["router"]
+__all__ = [
+    "router",
+    "dashboards",
+    "datasources",
+    "folders",
+    "proxy",
+]

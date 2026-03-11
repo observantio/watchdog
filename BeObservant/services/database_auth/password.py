@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import secrets
 import string
-from typing import Callable, TypeVar
+from typing import Callable, Dict, TYPE_CHECKING, TypeVar
 
 import bcrypt
 from fastapi import HTTPException, status
@@ -23,10 +23,13 @@ from config import config
 from database import get_db_session
 from db_models import User
 
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+
 T = TypeVar("T")
 
 
-def _with_password_semaphore(service, fn: Callable[[], T]) -> T:
+def _with_password_semaphore(service: DatabaseAuthService, fn: Callable[[], T]) -> T:
     sem = getattr(service, "_password_op_semaphore", None)
     if sem:
         with sem:
@@ -43,7 +46,7 @@ def _bcrypt_rounds() -> int:
     return max(10, min(rounds, 15))
 
 
-def hash_password(service, password: str) -> str:
+def hash_password(service: DatabaseAuthService, password: str) -> str:
     if not isinstance(password, str) or not password:
         raise ValueError("password must be a non-empty string")
 
@@ -56,7 +59,7 @@ def hash_password(service, password: str) -> str:
     return _with_password_semaphore(service, _hash)
 
 
-def verify_password(service, plain_password: str, hashed_password: str) -> bool:
+def verify_password(service: DatabaseAuthService, plain_password: str, hashed_password: str) -> bool:
     if not isinstance(plain_password, str) or not plain_password:
         return False
     if not isinstance(hashed_password, str) or not hashed_password:
@@ -108,7 +111,7 @@ def _require_user_in_tenant(db: Session, user_id: str, tenant_id: str) -> User:
     return user
 
 
-def reset_user_password_temp(service, actor_user_id: str, target_user_id: str, tenant_id: str) -> dict:
+def reset_user_password_temp(service: DatabaseAuthService, actor_user_id: str, target_user_id: str, tenant_id: str) -> Dict[str, str]:
     with get_db_session() as db:
         actor = db.query(User).filter_by(id=actor_user_id, tenant_id=tenant_id).first()
         if not actor:

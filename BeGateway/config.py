@@ -9,21 +9,27 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 from __future__ import annotations
+
 import os
 from urllib.parse import urlparse
 
-from services.secrets.provider import  SecretProvider, EnvSecretProvider
+from services.secrets.provider import EnvSecretProvider, SecretProvider
+from services.secrets.vault_client import VaultClientError, VaultSecretProvider
+
 
 def _env_name() -> str:
     return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").strip().lower()
 
+
 def _is_production_env() -> bool:
     return _env_name() in {"prod", "production"}
+
 
 def _to_bool(value: str | None, *, default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
 
 def _is_weak_secret(value: str | None) -> bool:
     normalized = str(value or "").strip().lower()
@@ -33,12 +39,15 @@ def _is_weak_secret(value: str | None) -> bool:
     return any(marker in normalized for marker in weak_markers)
 
 
+def _read_secret_id_file(secret_id_file: str) -> str:
+    with open(secret_id_file, encoding="utf-8") as handle:
+        return handle.read().strip()
+
+
 def build_secret_provider() -> SecretProvider:
     vault_addr = os.getenv("VAULT_ADDR", "").strip()
     if not vault_addr:
         return EnvSecretProvider()
-
-    from vault import VaultClientError, VaultSecretProvider
 
     token = os.getenv("VAULT_TOKEN", "").strip() or None
     role_id = os.getenv("VAULT_ROLE_ID", "").strip() or None
@@ -48,11 +57,15 @@ def build_secret_provider() -> SecretProvider:
     secret_id_fn = None
     if role_id:
         if secret_id_file:
-            def secret_id_fn() -> str:
-                with open(secret_id_file) as f:
-                    return f.read().strip()
+            def load_secret_id_from_file() -> str:
+                return _read_secret_id_file(secret_id_file)
+
+            secret_id_fn = load_secret_id_from_file
         elif secret_id:
-            secret_id_fn = lambda: secret_id
+            def load_secret_id_from_env() -> str:
+                return secret_id
+
+            secret_id_fn = load_secret_id_from_env
         else:
             raise VaultClientError(
                 "VAULT_ROLE_ID set but neither VAULT_SECRET_ID nor VAULT_SECRET_ID_FILE provided"
@@ -69,6 +82,7 @@ def build_secret_provider() -> SecretProvider:
         cacert=os.getenv("VAULT_CACERT", "").strip() or None,
         cache_ttl=float(os.getenv("VAULT_CACHE_TTL", "30.0")),
     )
+
 
 secrets = build_secret_provider()
 APP_ENV: str = _env_name()
@@ -96,7 +110,7 @@ AUTH_API_URL: str = os.getenv(
     "https://beobservant:4319/api/internal/otlp/validate",
 ).strip()
 
-INTERNAL_SERVICE_TOKEN: str =   secrets.get("GATEWAY_INTERNAL_SERVICE_TOKEN") or ""
+INTERNAL_SERVICE_TOKEN: str = secrets.get("GATEWAY_INTERNAL_SERVICE_TOKEN") or ""
 
 SSL_VERIFY: bool = os.getenv("GATEWAY_SSL_VERIFY", "true").lower() not in ("0", "false", "no")
 SSL_CA_CERTS: str = os.getenv("GATEWAY_SSL_CA_CERTS", "").strip()
@@ -133,4 +147,3 @@ if IS_PRODUCTION:
         raise ValueError("GATEWAY_INTERNAL_SERVICE_TOKEN must be a strong non-placeholder secret in production")
     if GATEWAY_STARTUP_CHECK_MODE == "strict" and not GATEWAY_STATUS_OTLP_TOKEN:
         raise ValueError("GATEWAY_STATUS_OTLP_TOKEN is required in production when GATEWAY_STARTUP_CHECK_MODE=strict")
-    

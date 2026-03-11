@@ -21,5 +21,5 @@ class LifespanTests(unittest.TestCase):
         self.assertIn("AUTH_API_URL", src)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     unittest.main()

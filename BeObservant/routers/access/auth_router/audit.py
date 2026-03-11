@@ -14,7 +14,7 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, TypeAlias
 
 from fastapi import Depends, Query
 from fastapi.responses import StreamingResponse
@@ -35,6 +35,8 @@ from services.auth.helper import (
 
 from .shared import router, rtp
 
+AuditLogItem: TypeAlias = dict[str, object]
+
 
 @router.get("/audit-logs")
 async def list_audit_logs(
@@ -48,10 +50,10 @@ async def list_audit_logs(
     limit: int = Query(config.DEFAULT_QUERY_LIMIT, ge=1, le=config.MAX_QUERY_LIMIT),
     offset: int = Query(0, ge=0),
     current_user: TokenData = Depends(require_admin_with_audit_permission),
-):
+) -> list[AuditLogItem]:
     actor = aliased(User)
 
-    def _query():
+    def _query() -> list[AuditLogItem]:
         with get_db_session() as db:
             q_obj = apply_audit_filters_func(
                 build_audit_log_query(db, current_user, tenant_id, actor),
@@ -63,7 +65,7 @@ async def list_audit_logs(
                 q,
             )
             rows = q_obj.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
-            items = [
+            items: list[AuditLogItem] = [
                 {
                     "id": log.id,
                     "tenant_id": log.tenant_id,
@@ -121,10 +123,10 @@ async def export_audit_logs_csv(
     resource_type: Optional[str] = Query(None),
     tenant_id: Optional[str] = Query(None),
     current_user: TokenData = Depends(require_admin_with_audit_permission),
-):
+) -> StreamingResponse:
     actor = aliased(User)
 
-    def _export():
+    def _export() -> list[tuple[AuditLog, str, str]]:
         with get_db_session() as db:
             q_obj = apply_audit_filters_func(
                 build_audit_log_query(db, current_user, tenant_id, actor),
@@ -134,7 +136,7 @@ async def export_audit_logs_csv(
                 action,
                 resource_type,
             )
-            rows = q_obj.order_by(AuditLog.created_at.desc()).all()
+            rows = q_obj.order_by(AuditLog.created_at.desc()).tuples().all()
             ip_address, user_agent = get_request_audit_context()
             db.add(
                 AuditLog(

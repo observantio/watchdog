@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, master]
+    branches:
+      - "**"
 
 jobs:
   ui:
@@ -75,3 +76,82 @@ jobs:
 
       - name: Run server tests
         run: pytest -q
+
+  backend-quality:
+    name: ${{ matrix.name }} quality (mypy, pylint)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: BeGateway
+            service: BeGateway
+            requirements: BeGateway/requirements.txt
+            mypy_config: mypy.ini
+            extra_packages: ""
+            run_pylint: "false"
+          - name: BeObservant
+            service: BeObservant
+            requirements: BeObservant/requirements.txt
+            mypy_config: mypy.ini
+            pylint_config: .pylintrc
+            extra_packages: "types-psutil"
+            run_pylint: "true"
+    env:
+      APP_ENV: development
+      ENVIRONMENT: development
+      VAULT_ENABLED: "false"
+      DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/beobservant
+      BENOTIFIED_DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/benotified
+      BECERTAIN_DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/becertain
+      CORS_ORIGINS: http://localhost:3000
+      CORS_ALLOW_CREDENTIALS: "true"
+      JWT_AUTO_GENERATE_KEYS: "true"
+      GATEWAY_INTERNAL_SERVICE_TOKEN: ci_gateway_internal_service_token_123456789
+      BENOTIFIED_EXPECTED_SERVICE_TOKEN: ci_benotified_expected_service_token_123456789
+      BENOTIFIED_SERVICE_TOKEN: ci_benotified_service_token_123456789
+      BENOTIFIED_CONTEXT_VERIFY_KEY: ci_benotified_context_verify_key_12345678901234567890
+      BENOTIFIED_CONTEXT_SIGNING_KEY: ci_benotified_context_signing_key_12345678901234567890
+      BECERTAIN_EXPECTED_SERVICE_TOKEN: ci_becertain_expected_service_token_123456789
+      BECERTAIN_SERVICE_TOKEN: ci_becertain_service_token_123456789
+      BECERTAIN_CONTEXT_VERIFY_KEY: ci_becertain_context_verify_key_12345678901234567890
+      BECERTAIN_CONTEXT_SIGNING_KEY: ci_becertain_context_signing_key_12345678901234567890
+      INBOUND_WEBHOOK_TOKEN: ci_inbound_webhook_token_123456789
+      PYTHONPATH: ${{ github.workspace }}/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ${{ matrix.requirements }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r "${{ matrix.requirements }}"
+          python -m pip install mypy pylint
+          if [ -n "${{ matrix.extra_packages }}" ]; then
+            python -m pip install ${{ matrix.extra_packages }}
+          fi
+
+      - name: Run mypy
+        working-directory: ${{ matrix.service }}
+        run: mypy --config-file "${{ matrix.mypy_config }}" .
+
+      - name: Run pylint
+        if: matrix.run_pylint == 'true'
+        working-directory: ${{ matrix.service }}
+        run: |
+          TARGETS="$(find . -maxdepth 1 -mindepth 1 \
+            \( -type d -o -name \"*.py\" \) \
+            ! -name '.*' \
+            ! -name tests \
+            ! -name __pycache__ \
+            ! -name __init__.py \
+            ! -name build \
+            ! -name dist \
+            ! -name tmp \
+            ! -name vendor | sort)"
+          pylint --rcfile "${{ github.workspace }}/${{ matrix.service }}/${{ matrix.pylint_config }}" $TARGETS

@@ -32,14 +32,15 @@ from services.grafana.route_payloads import (
     validate_visibility,
 )
 
-from .shared import dashboard_payload, dashboard_uid, proxy, router, rtp, scope_context
+from .shared import dashboard_payload, dashboard_uid, hidden_toggle_context, proxy, router, rtp, scope_context
+from custom_types.json import JSONDict
 
 
 @router.get("/dashboards/meta/filters")
 async def get_dashboard_filter_metadata(
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     return await rtp(proxy.get_dashboard_metadata, db=db, tenant_id=current_user.tenant_id)
 
 
@@ -91,7 +92,7 @@ async def get_dashboard(
     uid: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     user_id, tenant_id, group_ids, is_admin = scope_context(current_user)
     dashboard = await proxy.get_dashboard(
         db=db,
@@ -114,7 +115,7 @@ async def create_dashboard(
     shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(require_authenticated_with_scope("grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     validate_visibility(visibility)
     user_id, tenant_id, group_ids, is_admin = scope_context(current_user)
     raw = dashboard_payload(payload)
@@ -141,7 +142,7 @@ async def save_dashboard_from_grafana_ui(
     payload: GrafanaDashboardPayloadRequest,
     current_user: TokenData = Depends(require_authenticated_with_scope("grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     user_id, tenant_id, group_ids, is_admin = scope_context(current_user)
     raw = dashboard_payload(payload)
     uid = dashboard_uid(raw)
@@ -189,7 +190,7 @@ async def update_dashboard(
     shared_group_ids: Optional[List[str]] = Query(None),
     current_user: TokenData = Depends(require_authenticated_with_scope("grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     validate_visibility(visibility)
     user_id, tenant_id, group_ids, is_admin = scope_context(current_user)
     raw = dashboard_payload(payload)
@@ -216,7 +217,7 @@ async def delete_dashboard(
     uid: str,
     current_user: TokenData = Depends(require_permission_with_scope(Permission.DELETE_DASHBOARDS, "grafana")),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
     user_id, tenant_id, group_ids, _ = scope_context(current_user)
     ok = await proxy.delete_dashboard(
         db=db,
@@ -239,13 +240,14 @@ async def hide_dashboard(
         require_any_permission_with_scope([Permission.UPDATE_DASHBOARDS, Permission.WRITE_DASHBOARDS], "grafana")
     ),
     db: Session = Depends(get_db),
-):
+) -> JSONDict:
+    user_id, tenant_id = hidden_toggle_context(current_user)
     ok = await rtp(
         proxy.toggle_dashboard_hidden,
         db=db,
         uid=uid,
-        user_id=current_user.user_id,
-        tenant_id=current_user.tenant_id,
+        user_id=user_id,
+        tenant_id=tenant_id,
         hidden=payload.hidden,
     )
     if not ok:

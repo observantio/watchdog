@@ -6,9 +6,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 
 PROJECT_ROOTS = {
-    "server": REPO_ROOT / "server",
+    "beobservant": REPO_ROOT / "BeObservant",
     "benotified": REPO_ROOT / "BeNotified",
-    "gateway": REPO_ROOT / "gateway-auth-service",
+    "gateway": REPO_ROOT / "BeGateway",
     "becertain": REPO_ROOT / "BeCertain",
 }
 
@@ -28,11 +28,11 @@ _ACTIVE_ROOT: Path | None = None
 
 def _detect_project(path: Path) -> Path | None:
     p = str(path)
-    if f"{os.sep}server{os.sep}tests{os.sep}" in p:
-        return PROJECT_ROOTS["server"]
+    if f"{os.sep}BeObservant{os.sep}tests{os.sep}" in p:
+        return PROJECT_ROOTS["beobservant"]
     if f"{os.sep}BeNotified{os.sep}tests{os.sep}" in p:
         return PROJECT_ROOTS["benotified"]
-    if f"{os.sep}gateway-auth-service{os.sep}tests{os.sep}" in p:
+    if f"{os.sep}BeGateway{os.sep}tests{os.sep}" in p:
         return PROJECT_ROOTS["gateway"]
     if f"{os.sep}BeCertain{os.sep}tests{os.sep}" in p:
         return PROJECT_ROOTS["becertain"]

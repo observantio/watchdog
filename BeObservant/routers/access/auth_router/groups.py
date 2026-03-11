@@ -24,7 +24,7 @@ from .shared import GROUP_NOT_FOUND, router, rtp
 
 
 @router.get("/groups", response_model=List[Group])
-async def list_groups(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_GROUPS, "auth"))):
+async def list_groups(current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_GROUPS, "auth"))) -> List[Group]:
     return await rtp(
         auth_service.list_groups,
         current_user.tenant_id,
@@ -41,7 +41,7 @@ async def create_group(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.CREATE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     ),
-):
+) -> Group:
     group = await rtp(auth_service.create_group, group_create, current_user.tenant_id, current_user.user_id)
     invalidate_grafana_proxy_auth_cache()
     return group
@@ -53,7 +53,7 @@ async def get_group(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.READ_GROUPS, Permission.MANAGE_GROUPS], "auth")
     ),
-):
+) -> Group:
     group = await rtp(
         auth_service.get_group,
         group_id,
@@ -75,7 +75,7 @@ async def update_group(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     ),
-):
+) -> Group:
     group = await rtp(
         auth_service.update_group,
         group_id,
@@ -97,7 +97,7 @@ async def delete_group(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.DELETE_GROUPS, Permission.MANAGE_GROUPS], "auth")
     ),
-):
+) -> dict[str, str]:
     if not await rtp(
         auth_service.delete_group,
         group_id,
@@ -118,7 +118,7 @@ async def update_group_permissions(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_GROUP_PERMISSIONS, Permission.MANAGE_GROUPS], "auth")
     ),
-):
+) -> dict[str, object]:
     if not await rtp(
         auth_service.update_group_permissions,
         group_id,
@@ -141,7 +141,7 @@ async def update_group_members(
     current_user: TokenData = Depends(
         require_any_permission_with_scope([Permission.UPDATE_GROUP_MEMBERS, Permission.MANAGE_GROUPS], "auth")
     ),
-):
+) -> dict[str, object]:
     if not await rtp(
         auth_service.update_group_members,
         group_id,

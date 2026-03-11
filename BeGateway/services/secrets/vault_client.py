@@ -9,18 +9,41 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 from __future__ import annotations
+
 import threading
 import time
-from typing import Callable, Dict, Optional
+from importlib import import_module
+from types import ModuleType
+from typing import Callable, Optional
+
+
+class _VaultForbiddenFallback(Exception):
+    pass
+
+
+class _VaultInvalidPathFallback(Exception):
+    pass
+
+
+class _VaultErrorFallback(Exception):
+    pass
+
+hvac: ModuleType | None
 
 try:
-    import hvac 
-    from hvac.exceptions import Forbidden, InvalidPath, VaultError 
-except ImportError: 
+    hvac = import_module("hvac")
+    hvac_exceptions = import_module("hvac.exceptions")
+    forbidden_exc = getattr(hvac_exceptions, "Forbidden", _VaultForbiddenFallback)
+    invalid_path_exc = getattr(hvac_exceptions, "InvalidPath", _VaultInvalidPathFallback)
+    vault_error_exc = getattr(hvac_exceptions, "VaultError", _VaultErrorFallback)
+    Forbidden = forbidden_exc if isinstance(forbidden_exc, type) and issubclass(forbidden_exc, Exception) else _VaultForbiddenFallback
+    InvalidPath = invalid_path_exc if isinstance(invalid_path_exc, type) and issubclass(invalid_path_exc, Exception) else _VaultInvalidPathFallback
+    VaultError = vault_error_exc if isinstance(vault_error_exc, type) and issubclass(vault_error_exc, Exception) else _VaultErrorFallback
+except ImportError:
     hvac = None
-    Forbidden = Exception
-    InvalidPath = Exception  
-    VaultError = Exception
+    Forbidden = _VaultForbiddenFallback
+    InvalidPath = _VaultInvalidPathFallback
+    VaultError = _VaultErrorFallback
 
 
 class VaultClientError(RuntimeError):
@@ -46,27 +69,18 @@ class VaultSecretProvider:
         if hvac is None:
             raise VaultClientError("hvac library is required for VaultSecretProvider")
 
-        self._hvac = hvac
-        self._exc_not_found = InvalidPath
-        self._exc_forbidden = Forbidden
-        self._exc_vault = VaultError
-
         if not address:
             raise VaultClientError("VAULT_ADDR is required")
 
         if kv_version not in (1, 2):
             raise VaultClientError(f"Unsupported kv_version: {kv_version!r}, must be 1 or 2")
 
-        self._address = address
-        self._timeout = timeout
-        self._cacert = cacert
         self._prefix = prefix.strip("/")
         self._kv_version = kv_version
-        self._cache: Dict[str, tuple[float, object]] = {}
+        self._cache: dict[str, tuple[float, object]] = {}
         self._cache_ttl = float(cache_ttl)
         self._lock = threading.Lock()
-        self._role_id = role_id
-        self._secret_id_fn = secret_id_fn
+        self._approle_credentials = (role_id, secret_id_fn)
 
         self._client = hvac.Client(url=address, timeout=timeout, verify=cacert or True)
 
@@ -83,15 +97,17 @@ class VaultSecretProvider:
             raise VaultClientError("Vault authentication failed")
 
     def _approle_login(self) -> None:
-        if self._secret_id_fn is None:
+        role_id, secret_id_fn = self._approle_credentials
+        if secret_id_fn is None or role_id is None:
             raise VaultClientError("Vault AppRole secret id callback is not configured")
-        secret_id = self._secret_id_fn()
-        auth = self._client.auth.approle.login(role_id=self._role_id, secret_id=secret_id)
+        secret_id = secret_id_fn()
+        auth = self._client.auth.approle.login(role_id=role_id, secret_id=secret_id)
         self._client.token = auth["auth"]["client_token"]
 
     def _ensure_authenticated(self) -> None:
         if not self._client.is_authenticated():
-            if self._role_id and self._secret_id_fn:
+            role_id, secret_id_fn = self._approle_credentials
+            if role_id and secret_id_fn:
                 self._approle_login()
             else:
                 raise VaultClientError("Vault token expired and no AppRole credentials to refresh")
@@ -104,7 +120,7 @@ class VaultSecretProvider:
             if not isinstance(entry, tuple) or len(entry) != 2:
                 self._cache.pop(key, None)
                 return SENTINEL
-            ts, value = entry 
+            ts, value = entry
             if time.monotonic() - ts > self._cache_ttl:
                 del self._cache[key]
                 return SENTINEL
@@ -117,7 +133,7 @@ class VaultSecretProvider:
     def get(self, key: str) -> Optional[str]:
         cached = self._from_cache(key)
         if cached is not SENTINEL:
-            return cached 
+            return cached if isinstance(cached, str) or cached is None else None
 
         self._ensure_authenticated()
 
@@ -133,10 +149,10 @@ class VaultSecretProvider:
                 full_path = f"{self._prefix}/{key}" if self._prefix else key
                 resp = self._client.secrets.kv.read_secret(path=full_path)
                 payload = resp.get("data", {}) or {}
-        except self._exc_not_found:
+        except InvalidPath:
             self._to_cache(key, None)
             return None
-        except (self._exc_forbidden, self._exc_vault) as exc:
+        except (Forbidden, VaultError) as exc:
             raise VaultClientError(f"Vault error fetching '{key}'") from exc
 
         if not payload:
@@ -156,5 +172,5 @@ class VaultSecretProvider:
         self._to_cache(key, val)
         return val
 
-    def get_many(self, keys: list[str]) -> Dict[str, Optional[str]]:
+    def get_many(self, keys: list[str]) -> dict[str, Optional[str]]:
         return {k: self.get(k) for k in keys}

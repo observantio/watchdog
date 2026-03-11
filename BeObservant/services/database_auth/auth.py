@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Dict, Mapping, Optional, TYPE_CHECKING, Union
 
 import httpx
 
+from db_models import User
 from models.access.auth_models import Token
+from custom_types.json import JSONDict
+from services.database_auth.shared import sync_active_user_from_claims
 
-MFARequired = Dict[str, bool]
-AuthResult = Optional[Union[Token, MFARequired]]
+if TYPE_CHECKING:
+    from services.database_auth_service import DatabaseAuthService
+
+AuthResult = Optional[Union[Token, JSONDict]]
 
 @dataclass(frozen=True)
 class _OidcTokens:
@@ -16,7 +21,7 @@ class _OidcTokens:
     id_token: str
 
     @classmethod
-    def from_mapping(cls, payload: Mapping[str, Any]) -> "_OidcTokens":
+    def from_mapping(cls, payload: Mapping[str, object]) -> "_OidcTokens":
         return cls(
             access_token=str(payload.get("access_token") or ""),
             id_token=str(payload.get("id_token") or ""),
@@ -26,7 +31,7 @@ class _OidcTokens:
         return not self.access_token and not self.id_token
 
 
-def _mfa_gate(service, user, mfa_code: Optional[str]) -> Optional[Union[bool, MFARequired, Token]]:
+def _mfa_gate(service: DatabaseAuthService, user: User, mfa_code: Optional[str]) -> Optional[Union[bool, JSONDict, Token]]:
     if service._needs_mfa_setup(user):
         return service._mfa_setup_challenge(user)
 
@@ -39,8 +44,8 @@ def _mfa_gate(service, user, mfa_code: Optional[str]) -> Optional[Union[bool, MF
     return True
 
 
-def _resolve_oidc_claims(service, *, tokens: _OidcTokens, expected_nonce: str, enforce_nonce: bool) -> Optional[Dict[str, Any]]:
-    claims: Optional[Dict[str, Any]] = None
+def _resolve_oidc_claims(service: DatabaseAuthService, *, tokens: _OidcTokens, expected_nonce: str, enforce_nonce: bool) -> Optional[JSONDict]:
+    claims: Optional[JSONDict] = None
 
     if tokens.id_token:
         claims = service.oidc_service.verify_id_token(tokens.id_token, nonce=(expected_nonce or None))
@@ -64,7 +69,7 @@ def _resolve_oidc_claims(service, *, tokens: _OidcTokens, expected_nonce: str, e
     return claims
 
 
-def login(service, username: str, password: str, mfa_code: Optional[str] = None) -> AuthResult:
+def login(service: DatabaseAuthService, username: str, password: str, mfa_code: Optional[str] = None) -> AuthResult:
     external_flow = service.is_external_auth_enabled()
 
     if external_flow:
@@ -87,14 +92,12 @@ def login(service, username: str, password: str, mfa_code: Optional[str] = None)
             expected_nonce="",
             enforce_nonce=False,
         )
-        if not claims:
+        user = sync_active_user_from_claims(service, claims)
+        if user is None:
             return None
 
-        user = service._sync_user_from_oidc_claims(claims)
-        if not user or not getattr(user, "is_active", False):
-            return None
-
-        return service.create_access_token(user)
+        token = service.create_access_token(user)
+        return token if isinstance(token, Token) else None
 
     user = service.authenticate_user(username, password)
     if not user:
@@ -102,13 +105,14 @@ def login(service, username: str, password: str, mfa_code: Optional[str] = None)
 
     mfa_result = _mfa_gate(service, user, mfa_code)
     if mfa_result is None or isinstance(mfa_result, dict) or isinstance(mfa_result, Token):
-        return mfa_result if mfa_result is not True else service.create_access_token(user)
+        return mfa_result
 
-    return service.create_access_token(user)
+    token = service.create_access_token(user)
+    return token if isinstance(token, Token) else None
 
 
 def exchange_oidc_authorization_code(
-    service,
+    service: DatabaseAuthService,
     code: str,
     redirect_uri: str,
     transaction_id: Optional[str] = None,
@@ -119,14 +123,15 @@ def exchange_oidc_authorization_code(
         return None
 
     try:
-        txn: Dict[str, str] = {}
+        txn: JSONDict = {}
         if transaction_id or state:
-            txn = service.oidc_service.consume_authorization_transaction(
+            txn_raw = service.oidc_service.consume_authorization_transaction(
                 transaction_id=transaction_id,
                 state=state,
                 redirect_uri=redirect_uri,
                 code_verifier=code_verifier,
-            ) or {}
+            )
+            txn = txn_raw if isinstance(txn_raw, dict) else {}
 
         tokens_payload = service.oidc_service.exchange_authorization_code(
             code,
@@ -139,7 +144,8 @@ def exchange_oidc_authorization_code(
             service.logger.warning("OIDC exchange returned no tokens")
             return None
 
-        expected_nonce = str(txn.get("nonce") or "").strip()
+        nonce_value = txn.get("nonce")
+        expected_nonce = nonce_value.strip() if isinstance(nonce_value, str) else ""
 
         claims = _resolve_oidc_claims(
             service,
@@ -158,7 +164,8 @@ def exchange_oidc_authorization_code(
         if not user or not getattr(user, "is_active", False):
             return None
 
-        return service.create_access_token(user)
+        token = service.create_access_token(user)
+        return token if isinstance(token, Token) else None
 
     except (httpx.HTTPError, ValueError) as exc:
         service.logger.error("OIDC code exchange failed: %s", type(exc).__name__)
@@ -166,27 +173,29 @@ def exchange_oidc_authorization_code(
 
 
 def get_oidc_authorization_url(
-    service,
+    service: DatabaseAuthService,
     redirect_uri: str,
     state: Optional[str] = None,
     nonce: Optional[str] = None,
     code_challenge: Optional[str] = None,
     code_challenge_method: Optional[str] = None,
 ) -> Dict[str, str]:
-    return service.oidc_service.start_authorization_transaction(
+    result = service.oidc_service.start_authorization_transaction(
         redirect_uri=redirect_uri,
         state=state,
         nonce=nonce,
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
     )
+    return {str(key): str(value) for key, value in result.items()} if isinstance(result, dict) else {}
 
 
-def provision_external_user(service, *, email: str, username: str, full_name: Optional[str]) -> Optional[str]:
+def provision_external_user(service: DatabaseAuthService, *, email: str, username: str, full_name: Optional[str]) -> Optional[str]:
     if not service.is_external_auth_enabled():
         return None
     try:
-        return service.oidc_service.create_keycloak_user(email=email, username=username, full_name=full_name)
+        result = service.oidc_service.create_keycloak_user(email=email, username=username, full_name=full_name)
+        return result if isinstance(result, str) or result is None else str(result)
     except (httpx.HTTPError, ValueError) as exc:
         service.logger.error("External user provisioning failed for %s: %s", username, type(exc).__name__)
         return None

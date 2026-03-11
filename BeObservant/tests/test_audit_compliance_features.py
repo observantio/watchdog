@@ -61,55 +61,54 @@ class AuditComplianceFeatureTests(unittest.TestCase):
         mock_db.assert_not_called()
 
     def test_internal_otlp_validate_endpoint(self):
-        # make sure importing the app doesn't attempt to reach real postgres
         import os
         import sys
         os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-        # stub out database helpers before importing main
         import database
-        database.init_database = lambda *args, **kwargs: None
-        database.init_db = lambda *args, **kwargs: None
-        # prevent auth service from doing bootstrap during import
         from services import database_auth_service as das_mod
-        das_mod.DatabaseAuthService._lazy_init = lambda self: None
-        das_mod.DatabaseAuthService._ensure_default_setup = lambda self: None
-        das_mod.DatabaseAuthService.backfill_otlp_tokens = lambda self: None
-        # reload main in case it has been imported earlier by other tests
-        sys.modules.pop("main", None)
-        from main import app
-        client = TestClient(app)
-        original_internal_token = config.GATEWAY_INTERNAL_SERVICE_TOKEN
-        config.GATEWAY_INTERNAL_SERVICE_TOKEN = "internal-test-token"
-        headers = {"x-internal-token": "internal-test-token"}
+        with patch.object(database, "init_database", lambda *args, **kwargs: None), patch.object(
+            database, "init_db", lambda *args, **kwargs: None
+        ), patch.object(das_mod.DatabaseAuthService, "_lazy_init", lambda self: None), patch.object(
+            das_mod.DatabaseAuthService, "_ensure_default_setup", lambda self: None
+        ), patch.object(das_mod.DatabaseAuthService, "backfill_otlp_tokens", lambda self: None):
+            # reload main in case it has been imported earlier by other tests
+            sys.modules.pop("main", None)
+            from main import app
 
-        try:
-            legacy = client.get("/api/internal/otlp/validate", params={"token": "tok"}, headers=headers)
-            self.assertEqual(legacy.status_code, 410)
+            client = TestClient(app)
+            original_internal_token = config.GATEWAY_INTERNAL_SERVICE_TOKEN
+            config.GATEWAY_INTERNAL_SERVICE_TOKEN = "internal-test-token"
+            headers = {"x-internal-token": "internal-test-token"}
 
-            with patch(
-                "services.database_auth_service.DatabaseAuthService.validate_otlp_token",
-                return_value="org1",
-            ):
-                resp = client.post("/api/internal/otlp/validate", json={"token": "tok"}, headers=headers)
-                self.assertEqual(resp.status_code, 200)
-                self.assertEqual(resp.json(), {"org_id": "org1"})
+            try:
+                legacy = client.get("/api/internal/otlp/validate", params={"token": "tok"}, headers=headers)
+                self.assertEqual(legacy.status_code, 410)
 
-            with patch(
-                "services.database_auth_service.DatabaseAuthService.validate_otlp_token",
-                return_value=None,
-            ):
-                resp = client.post("/api/internal/otlp/validate", json={"token": "tok"}, headers=headers)
-                self.assertEqual(resp.status_code, 404)
+                with patch(
+                    "services.database_auth_service.DatabaseAuthService.validate_otlp_token",
+                    return_value="org1",
+                ):
+                    resp = client.post("/api/internal/otlp/validate", json={"token": "tok"}, headers=headers)
+                    self.assertEqual(resp.status_code, 200)
+                    self.assertEqual(resp.json(), {"org_id": "org1"})
 
-            from sqlalchemy.exc import SQLAlchemyError
-            with patch(
-                "services.database_auth_service.DatabaseAuthService.validate_otlp_token",
-                side_effect=SQLAlchemyError("boom"),
-            ):
-                resp = client.post("/api/internal/otlp/validate", json={"token": "tok"}, headers=headers)
-                self.assertEqual(resp.status_code, 503)
-        finally:
-            config.GATEWAY_INTERNAL_SERVICE_TOKEN = original_internal_token
+                with patch(
+                    "services.database_auth_service.DatabaseAuthService.validate_otlp_token",
+                    return_value=None,
+                ):
+                    resp = client.post("/api/internal/otlp/validate", json={"token": "tok"}, headers=headers)
+                    self.assertEqual(resp.status_code, 404)
+
+                from sqlalchemy.exc import SQLAlchemyError
+
+                with patch(
+                    "services.database_auth_service.DatabaseAuthService.validate_otlp_token",
+                    side_effect=SQLAlchemyError("boom"),
+                ):
+                    resp = client.post("/api/internal/otlp/validate", json={"token": "tok"}, headers=headers)
+                    self.assertEqual(resp.status_code, 503)
+            finally:
+                config.GATEWAY_INTERNAL_SERVICE_TOKEN = original_internal_token
 
 
 if __name__ == "__main__":

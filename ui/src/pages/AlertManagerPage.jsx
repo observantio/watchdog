@@ -50,11 +50,23 @@ export default function AlertManagerPage() {
   const [filterSeverity, setFilterSeverity] = useState("all");
   const [filterCorrelationId, setFilterCorrelationId] = useState("all");
   const [filterLabel, setFilterLabel] = useState("");
+  const [appliedAlertFilters, setAppliedAlertFilters] = useState({
+    severity: "all",
+    correlationId: "all",
+    label: "",
+  });
   const [rulesOwnerFilter, setRulesOwnerFilter] = useState("all");
   const [rulesCorrelationSearch, setRulesCorrelationSearch] = useState("");
   const [rulesStatusFilter, setRulesStatusFilter] = useState("all");
   const [rulesSeverityFilter, setRulesSeverityFilter] = useState("all");
   const [rulesApiKeyFilter, setRulesApiKeyFilter] = useState("all");
+  const [appliedRulesFilters, setAppliedRulesFilters] = useState({
+    owner: "all",
+    status: "all",
+    severity: "all",
+    orgId: "all",
+    correlationId: "",
+  });
   const [alertsFiltersExpanded, setAlertsFiltersExpanded] = useState(false);
   const [rulesFiltersExpanded, setRulesFiltersExpanded] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_CONFIRM_DIALOG);
@@ -96,6 +108,8 @@ export default function AlertManagerPage() {
   } = useAlertManagerData({
     showHiddenRules,
     showHiddenSilences,
+    alertFilters: appliedAlertFilters,
+    ruleFilters: appliedRulesFilters,
   });
 
   useEffect(() => {
@@ -766,6 +780,11 @@ export default function AlertManagerPage() {
                                 setFilterLabel("");
                                 setFilterSeverity("all");
                                 setFilterCorrelationId("all");
+                                setAppliedAlertFilters({
+                                  severity: "all",
+                                  correlationId: "all",
+                                  label: "",
+                                });
                               }}
                             >
                               Clear
@@ -773,7 +792,14 @@ export default function AlertManagerPage() {
                           )}
                           <Button
                             variant="primary"
-                            onClick={() => setAlertsFiltersExpanded(false)}
+                            onClick={() => {
+                              setAppliedAlertFilters({
+                                severity: filterSeverity,
+                                correlationId: filterCorrelationId,
+                                label: filterLabel,
+                              });
+                              setAlertsFiltersExpanded(false);
+                            }}
                           >
                             Apply
                           </Button>
@@ -1073,6 +1099,13 @@ export default function AlertManagerPage() {
                                   setRulesSeverityFilter("all");
                                   setRulesApiKeyFilter("all");
                                   setRulesCorrelationSearch("");
+                                  setAppliedRulesFilters({
+                                    owner: "all",
+                                    status: "all",
+                                    severity: "all",
+                                    orgId: "all",
+                                    correlationId: "",
+                                  });
                                 }}
                               >
                                 Clear
@@ -1080,7 +1113,16 @@ export default function AlertManagerPage() {
                             )}
                             <Button
                               variant="primary"
-                              onClick={() => setRulesFiltersExpanded(false)}
+                              onClick={() => {
+                                setAppliedRulesFilters({
+                                  owner: rulesOwnerFilter,
+                                  status: rulesStatusFilter,
+                                  severity: rulesSeverityFilter,
+                                  orgId: rulesApiKeyFilter,
+                                  correlationId: rulesCorrelationSearch,
+                                });
+                                setRulesFiltersExpanded(false);
+                              }}
                             >
                               Apply
                             </Button>

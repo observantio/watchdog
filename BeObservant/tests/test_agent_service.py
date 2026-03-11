@@ -1,4 +1,3 @@
-
 """
 Copyright (c) 2026 Stefan Kumarasinghe
 
@@ -36,6 +35,10 @@ def test_update_registry_new_and_existing():
     info2 = registry["t:a"]
     assert info2.last_seen == later
     assert "s2" in info2.signals
+
+    hb3 = AgentHeartbeat(name="a", tenant_id="t", timestamp=later, attributes={"host.name": "updated-host"}, signal=None)
+    helpers.update_agent_registry(registry, hb3)
+    assert registry["t:a"].host_name == "updated-host"
 
 
 def test_extract_metrics_count():

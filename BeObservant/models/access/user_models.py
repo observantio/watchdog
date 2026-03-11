@@ -1,22 +1,15 @@
-"""
-This module defines Pydantic models for user-related data structures used in the API layer.
-
-Copyright (c) 2026 Stefan Kumarasinghe
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-"""
-from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 import re
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from config import config
-from .auth_models import Role, Permission
 from .api_key_models import ApiKey
+from .auth_models import Permission, Role
 
 _USERNAME_RE = re.compile(r'^[a-z0-9._-]{3,50}$')
+
 
 def _normalize_username(v: str, *, full_check: bool = True) -> str:
     if v is None:
@@ -33,6 +26,12 @@ def _normalize_username(v: str, *, full_check: bool = True) -> str:
         )
     return uname
 
+
+def _normalize_username_input(value: object, *, full_check: bool) -> str:
+    if not isinstance(value, str):
+        raise ValueError("username must be a string")
+    return _normalize_username(value, full_check=full_check)
+
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
@@ -43,8 +42,9 @@ class UserBase(BaseModel):
     is_active: bool = True
 
     @field_validator('username', mode='before')
-    def normalize_username(cls, v):
-        return _normalize_username(v, full_check=True)
+    @classmethod
+    def normalize_username(cls, v: object) -> str:
+        return _normalize_username_input(v, full_check=True)
 
 class UserCreate(UserBase):
     password: Optional[str] = Field(None, min_length=8)
@@ -61,10 +61,11 @@ class UserUpdate(BaseModel):
     must_setup_mfa: Optional[bool] = None
 
     @field_validator("username", mode="before")
-    def normalize_update_username(cls, v):
+    @classmethod
+    def normalize_update_username(cls, v: object) -> Optional[str]:
         if v is None:
             return None
-        return _normalize_username(v, full_check=True)
+        return _normalize_username_input(v, full_check=True)
 
 class UserPasswordUpdate(BaseModel):
     current_password: Optional[str] = None
@@ -115,17 +116,20 @@ class LoginRequest(BaseModel):
     mfa_code: Optional[str] = None
 
     @field_validator('username', mode='before')
-    def normalize_login_username(cls, v):
-        return _normalize_username(v, full_check=False)
+    @classmethod
+    def normalize_login_username(cls, v: object) -> str:
+        return _normalize_username_input(v, full_check=False)
 
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=8)
     full_name: Optional[str] = None
+
     @field_validator('username', mode='before')
-    def normalize_register_username(cls, v):
-        return _normalize_username(v, full_check=True)
+    @classmethod
+    def normalize_register_username(cls, v: object) -> str:
+        return _normalize_username_input(v, full_check=True)
 
 class TotpEnrollResponse(BaseModel):
     otpauth_url: str

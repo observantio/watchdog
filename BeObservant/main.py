@@ -10,7 +10,9 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 import logging
 import asyncio
-from fastapi import FastAPI, Request, status
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -58,7 +60,8 @@ if not config.SKIP_STARTUP_DB_INIT:
     logger.info("✓ Auth service initialized")
 
 
-async def lifespan(app: FastAPI):
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
@@ -134,7 +137,7 @@ app.include_router(becertain_router.router)
 
 
 @app.get("/", tags=["info"])
-async def root() -> dict:
+async def root() -> dict[str, object]:
     return {
         "service": constants.APP_NAME,
         "version": constants.APP_VERSION,
@@ -150,7 +153,7 @@ async def root() -> dict:
     }
 
 @app.get("/health", tags=["health"])
-async def health() -> dict:
+async def health() -> dict[str, str]:
     return {
         "status": constants.STATUS_HEALTHY,
         "service": constants.APP_NAME,
@@ -164,12 +167,12 @@ async def _upstream_reachable(base_url: str) -> bool:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             response = await client.get(base_url)
             return 200 <= response.status_code < 500
-    except Exception:
+    except (httpx.HTTPError, asyncio.TimeoutError):
         return False
 
 
-@app.get("/ready", tags=["health"])
-async def ready(request: Request):
+@app.get("/ready", tags=["health"], response_model=None)
+async def ready() -> JSONResponse:
     checks = {
         "database": connection_test(),
     }
@@ -194,7 +197,7 @@ async def ready(request: Request):
     }
     if not is_ready:
         return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
-    return payload
+    return JSONResponse(status_code=status.HTTP_200_OK, content=payload)
 
 if __name__ == "__main__":
     import uvicorn

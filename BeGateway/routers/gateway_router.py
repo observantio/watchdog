@@ -12,7 +12,8 @@ import logging
 
 from fastapi import APIRouter, Request, Response, HTTPException, status
 
-from services.gateway_service import GatewayAuthService, DatabaseUnavailable
+from models.exceptions import DatabaseUnavailable
+from services.gateway_service import GatewayAuthService
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,10 @@ router = APIRouter(prefix="/api/gateway", tags=["gateway"])
 
 service = GatewayAuthService()
 
+
 @router.api_route("/validate", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 @router.api_route("/validate/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def validate_otlp_token(request: Request, path: str = ""):
+async def validate_otlp_token(request: Request, _path: str = "") -> Response:
     service.enforce_ip_allowlist(request)
     service.enforce_rate_limit(request)
 
@@ -34,9 +36,12 @@ async def validate_otlp_token(request: Request, path: str = ""):
 
     try:
         org_id = service.validate_otlp_token(token)
-    except DatabaseUnavailable:
+    except DatabaseUnavailable as exc:
         logger.warning("Auth backend unavailable")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth backend unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Auth backend unavailable",
+        ) from exc
 
     if not org_id:
         logger.warning("OTLP token validation failed – token_prefix=%s", token_prefix)
@@ -47,5 +52,5 @@ async def validate_otlp_token(request: Request, path: str = ""):
     return response
 
 @router.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return service.health()

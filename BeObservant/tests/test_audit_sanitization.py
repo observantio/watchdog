@@ -71,4 +71,3 @@ def test_require_admin_permission():
     assert require_admin_with_audit_permission(admin) is admin
     superu = make_user(superuser=True)
     assert require_admin_with_audit_permission(superu) is superu
-

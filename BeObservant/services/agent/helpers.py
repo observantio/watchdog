@@ -8,14 +8,22 @@ include ID generation, registry updates, and Mimir query logic.
 Copyright (c) 2026 Stefan Kumarasinghe
 
 Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
+from typing import TypedDict
 
 import httpx
 from config import config
 from models.observability.agent_models import AgentHeartbeat, AgentInfo
+from custom_types.json import JSONDict
+
+
+class KeyActivity(TypedDict):
+    metrics_active: bool
+    metrics_count: int
 
 ATTR_HOST_NAME = "host.name"
 ATTR_HOST_HOSTNAME = "host.hostname"
@@ -24,7 +32,7 @@ ATTR_HOST_HOSTNAME = "host.hostname"
 def make_agent_id(name: str, tenant_id: str) -> str:
     return f"{tenant_id}:{name}" if tenant_id else name
 
-def update_agent_registry(registry: Dict[str, AgentInfo], heartbeat: AgentHeartbeat) -> None:
+def update_agent_registry(registry: dict[str, AgentInfo], heartbeat: AgentHeartbeat) -> None:
     ts = heartbeat.timestamp or datetime.now(timezone.utc)
     agent_id = make_agent_id(heartbeat.name, heartbeat.tenant_id)
     attributes = heartbeat.attributes or {}
@@ -49,15 +57,27 @@ def update_agent_registry(registry: Dict[str, AgentInfo], heartbeat: AgentHeartb
     registry[agent_id] = info
 
 
-def extract_metrics_count(payload: Dict[str, Any]) -> int:
-    result = payload.get("data", {}).get("result", [])
-    if not result:
+def extract_metrics_count(payload: JSONDict) -> int:
+    data = payload.get("data")
+    if not isinstance(data, dict):
         return 0
-    value = result[0].get("value", [0, 0])[1]
-    return int(float(value))
+    result = data.get("result")
+    if not isinstance(result, list) or not result:
+        return 0
+    first = result[0]
+    if not isinstance(first, dict):
+        return 0
+    value = first.get("value")
+    if not isinstance(value, list) or len(value) < 2:
+        return 0
+    count = value[1]
+    try:
+        return int(float(str(count)))
+    except (TypeError, ValueError):
+        return 0
 
 
-async def query_key_activity(key_value: str, mimir_client: httpx.AsyncClient) -> Dict[str, Any]:
+async def query_key_activity(key_value: str, mimir_client: httpx.AsyncClient) -> KeyActivity:
     now = datetime.now(timezone.utc)
     start_ns = int((now - timedelta(hours=1)).timestamp() * 1_000_000_000)
     end_ns = int(now.timestamp() * 1_000_000_000)
@@ -72,7 +92,10 @@ async def query_key_activity(key_value: str, mimir_client: httpx.AsyncClient) ->
             headers={"X-Scope-OrgID": key_value},
         )
         response.raise_for_status()
-        payload = response.json()
+        payload_raw = response.json()
+        if not isinstance(payload_raw, dict):
+            raise ValueError("Unexpected Mimir payload")
+        payload: JSONDict = payload_raw
         metrics_count = extract_metrics_count(payload)
         metrics_active = metrics_count > 0
     except (httpx.HTTPError, ValueError, KeyError, TypeError):

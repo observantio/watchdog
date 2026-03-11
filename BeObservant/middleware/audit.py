@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import logging
 from urllib.parse import parse_qsl, urlencode
+from typing import Awaitable, Callable
 
 from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
+from starlette.responses import Response
 
 from database import get_db_session
 from db_models import AuditLog
@@ -45,6 +48,7 @@ SENSITIVE_AUDIT_KEYS_EXACT = {
     "setup_token",
 }
 SENSITIVE_AUDIT_KEY_SUFFIXES = ("_token", "_secret", "_password", "_passcode", "_jwt")
+DOCS_UI_PATHS = {"/docs", "/redoc"}
 
 
 def _skip_resource_view_audit(path: str) -> bool:
@@ -77,7 +81,7 @@ def _is_https_request(request: Request) -> bool:
     return scheme == "https"
 
 
-def _set_header_if_missing(headers, key: str, value: str) -> None:
+def _set_header_if_missing(headers: MutableHeaders, key: str, value: str) -> None:
     if key not in headers:
         headers[key] = value
 
@@ -87,6 +91,20 @@ def _extract_request_token(request: Request) -> str | None:
     cookie_token = request.cookies.get("beobservant_token")
     bearer = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
     return bearer or cookie_token
+
+
+def _content_security_policy_for_path(path: str) -> str:
+    directives = [
+        "default-src 'self'",
+        "connect-src 'self' https:",
+        "img-src 'self' data: https:",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+    ]
+    if path in DOCS_UI_PATHS:
+        directives[3] += " https://cdn.jsdelivr.net"
+        directives.append("script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net")
+    return "; ".join(directives) + ";"
 
 
 def _write_resource_view_audit(
@@ -119,7 +137,8 @@ def _write_resource_view_audit(
         )
 
 
-async def security_headers_middleware(request: Request, call_next):
+async def security_headers_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    path = request.url.path
     request_ip = client_ip(request)
     user_agent = request.headers.get("user-agent")
     context_tokens = set_request_audit_context(request_ip, user_agent)
@@ -129,7 +148,6 @@ async def security_headers_middleware(request: Request, call_next):
         reset_request_audit_context(context_tokens)
 
     try:
-        path = request.url.path
         if request.method == "GET" and path.startswith("/api/") and not _skip_resource_view_audit(path):
             token = _extract_request_token(request)
             if token:
@@ -146,7 +164,7 @@ async def security_headers_middleware(request: Request, call_next):
                         ip_address=request_ip,
                         user_agent=user_agent,
                     )
-    except Exception:
+    except (ValueError, RuntimeError):
         logger.debug("Skipping middleware audit write for request %s", request.url.path, exc_info=True)
 
     _set_header_if_missing(response.headers, "X-Content-Type-Options", "nosniff")
@@ -155,11 +173,7 @@ async def security_headers_middleware(request: Request, call_next):
     _set_header_if_missing(
         response.headers,
         "Content-Security-Policy",
-        "default-src 'self'; "
-        "connect-src 'self' https:; "
-        "img-src 'self' data: https:; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com;",
+        _content_security_policy_for_path(path),
     )
 
     if _is_https_request(request):
