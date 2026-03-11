@@ -46,6 +46,7 @@ from services.agent import helpers as agent_helpers
 from services.common import cookies as cookie_helpers
 from services.common import encryption as encryption_module
 from services.secrets.provider import EnvSecretProvider
+from services import audit_context as audit_context_service
 from services import system_service as system_service_module
 from services.system import helpers as system_helpers
 from services.tempo import metrics as tempo_metrics
@@ -493,8 +494,10 @@ async def test_system_helpers_cookie_security_secret_provider_and_agent_edges(mo
     assert registry["tenant-a:agent-a"].signals == ["metrics"]
     assert agent_helpers.make_agent_id("agent-b", "") == "agent-b"
     assert agent_helpers.extract_metrics_count({"data": {"result": [{}]}}) == 0
+    assert agent_helpers.extract_metrics_count({"data": {"result": ["bad"]}}) == 0
     assert agent_helpers.extract_metrics_count({"data": {"result": [{"value": [0]}]}}) == 0
     assert agent_helpers.extract_metrics_count({"data": {"result": [{"value": [0, object()]}]}}) == 0
+    assert agent_helpers.extract_metrics_count({"data": []}) == 0
 
     class BadResponse:
         def raise_for_status(self):
@@ -506,6 +509,25 @@ async def test_system_helpers_cookie_security_secret_provider_and_agent_edges(mo
 
     result = await agent_helpers.query_key_activity("tenant-a", BadClient())
     assert result == {"metrics_active": False, "metrics_count": 0}
+
+    class BadPayloadResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return ["not-a-dict"]
+
+    class BadPayloadClient:
+        async def get(self, url, params=None, headers=None):
+            return BadPayloadResponse()
+
+    bad_payload_result = await agent_helpers.query_key_activity("tenant-a", BadPayloadClient())
+    assert bad_payload_result == {"metrics_active": False, "metrics_count": 0}
+
+    tokens = audit_context_service.set_request_audit_context("203.0.113.10", "pytest")
+    assert audit_context_service.get_request_audit_context() == ("203.0.113.10", "pytest")
+    audit_context_service.reset_request_audit_context(tokens)
+    assert audit_context_service.get_request_audit_context() == (None, None)
 
 
 @pytest.mark.asyncio

@@ -40,10 +40,10 @@ Be Observant adds the pieces those components do not provide as a single opinion
 
 | Component | Role |
 | --- | --- |
-| `BeObservant` | Main FastAPI control plane. Handles auth, users, groups, API keys, Grafana proxy bootstrap, Loki/Tempo/Mimir-facing APIs, system metrics, and secure proxying to BeNotified and BeCertain. |
-| `BeGateway` | OTLP token validation service for Envoy `ext_authz`. Validates `x-otlp-token`, applies allowlists and rate limits, and returns `X-Scope-OrgID` for downstream tenancy. |
-| `BeNotified` | Alerting workflow service. Stores and serves alert rules, channels, silences, incidents, and Jira integrations. Consumes Alertmanager webhooks and protects most endpoints with an internal service token. |
-| `BeCertain` | RCA and analysis engine. Reads logs, metrics, and traces from Loki, Mimir, and Tempo; runs anomaly detection and job-based RCA; stores RCA jobs and reports. |
+| `beobservant` | Main FastAPI control plane. Handles auth, users, groups, API keys, Grafana proxy bootstrap, Loki/Tempo/Mimir-facing APIs, system metrics, and secure proxying to BeNotified and BeCertain. |
+| `begateway` | OTLP token validation service for Envoy `ext_authz`. Validates `x-otlp-token`, applies allowlists and rate limits, and returns `X-Scope-OrgID` for downstream tenancy. |
+| `benotified` | Alerting workflow service. Stores and serves alert rules, channels, silences, incidents, and Jira integrations. Consumes Alertmanager webhooks and protects most endpoints with an internal service token. |
+| `becertain` | RCA and analysis engine. Reads logs, metrics, and traces from Loki, Mimir, and Tempo; runs anomaly detection and job-based RCA; stores RCA jobs and reports. |
 | `ui` | React/Vite frontend. Exposes dashboards, logs, traces, alerts, incidents, integrations, API keys, users/groups, audit views, and RCA pages. |
 | `docker-compose.yml` | Local reference deployment for the entire stack. |
 | `.env.example` | Environment contract for all services. |
@@ -51,23 +51,22 @@ Be Observant adds the pieces those components do not provide as a single opinion
 
 ## High-Level Architecture
 
-```text
-Applications / OTel Collector
-  -> otlp-gateway (Envoy)
-  -> gateway-auth (BeGateway ext_authz)
-  -> Loki / Tempo / Mimir
+```mermaid
+flowchart LR
+  A[Applications / OTel Collector] --> B[otlp-gateway<br/>Envoy]
+  B --> C[gateway-auth<br/>BeGateway ext_authz]
+  C --> D[Loki / Tempo / Mimir]
 
-Users
-  -> UI
-  -> BeObservant API
-     -> Loki / Tempo / Mimir / Alertmanager / Grafana
-     -> BeNotified
-     -> BeCertain
+  U[Users] --> UI[UI]
+  U --> API[Be Observant API]
+  API --> G[Loki / Tempo / Mimir<br/>Alertmanager / Grafana]
+  API --> N[BeNotified]
+  API --> R[BeCertain]
 ```
 
 ### Service Responsibilities
 
-#### `BeObservant`
+#### `Be Observant`
 
 This is the main application server.
 
@@ -81,7 +80,7 @@ From the code, it does all of the following:
 - Provides `/health` and `/ready` checks and a `/api/system/metrics` endpoint for internal UI metrics.
 - Sets security headers, request-size limits, concurrency limits, and CORS.
 
-#### `BeGateway`
+#### `Be Gateway`
 
 This service is the telemetry gatekeeper.
 
@@ -96,8 +95,8 @@ It is designed to sit behind Envoy's external authorization hook and does the fo
 
 Without this service, the system would still have storage backends, but not a protected multi-tenant OTLP ingestion path.
 
-#### `BeNotified`
-
+#### `Be Notified`
+ 
 This service owns alerting workflows beyond raw Alertmanager delivery.
 
 From the routers and services, it is responsible for:
@@ -113,7 +112,7 @@ From the routers and services, it is responsible for:
 - Jira integration management and Jira ticket/comment synchronization.
 - Accepting inbound Alertmanager webhooks.
 
-#### `BeCertain`
+#### `Be Certain`
 
 This service is the RCA engine.
 
@@ -306,7 +305,7 @@ If you are new to the rule editor, start from a known-good template, then tune e
 
 ## What the UI Gives an Operator
 
-### Dashboard
+#### Dashboard
 
 The Dashboard provides a high-level view of platform health, including active alerts, log volume, dashboard count, silence count, datasource count, and overall service status.
 
@@ -314,19 +313,19 @@ If OIDC is enabled, operators are asked to set a backup local password during se
 
 Dashboard widgets are draggable, so users can reorder components to suit their workflow. The UI also supports easy switching between dark and light themes.
 
-### Logs
+#### Logs
 
 The Logs view provides label discovery, builder-mode filtering, raw LogQL support, log volume visualisation, result browsing, and quick filters.
 
 For most investigations, the quick filters are the fastest way to search text and review log volume over time, making it easier to identify bursts or unusual spikes in activity.
 
-### Traces
+#### Traces
 
 The Traces view provides Tempo-backed trace exploration, direct trace lookup, and a graph view for comparing traces and understanding service relationships.
 
 Operators can filter traces, inspect trace data, and use the dependency map to identify pain points, bottlenecks, and issues in service-to-service data flow.
 
-### Alert Manager
+#### Alert Manager
 
 Alert Manager provides:
 
@@ -339,19 +338,19 @@ Alert Manager provides:
 
 Alerts and silences are fully scoped by tenant and channel configuration. Integrations such as Jira are also scoped appropriately. All related configuration is stored securely and encrypted in PostgreSQL.
 
-### Incidents
+#### Incidents
 
 The Incidents view provides a board-based operational workflow for managing incidents, including assignment, notes, status updates, and Jira integration.
 
 Operators can create notes, assign incidents to users, and link incidents to Jira so that comments and lifecycle changes remain synchronised across both systems.
 
-### API Keys
+#### API Keys
 
 The API Keys area provides tenant and product scoping, OTLP token management, key sharing with users and groups, token regeneration, and a downloadable starter OpenTelemetry Collector configuration.
 
 Operators can create a new API key, download a YAML configuration for that key, or use their own collector configuration with the provided token. Once the collector runs with `otelcol-contrib --config otel.yaml`, the platform accepts metrics, logs, and traces, and maps them to the correct organisation or tenant context for retrieval through Mimir, Tempo, Loki, and Be Certain.
 
-### Users and Groups
+#### Users and Groups
 
 The Users and Groups section provides user creation, role and permission management, group-based permission inheritance, temporary password reset flows, and membership administration.
 
@@ -359,19 +358,19 @@ Operators can rename users, manage passwords, update permissions and roles, crea
 
 Admins can update the roles of existing members. Only an admin can deactivate another admin, and admins cannot delete other admins.
 
-### Audit and Compliance
+#### Audit and Compliance
 
 The Audit and Compliance section provides searchable audit history with filters, detailed inspection, and CSV export for administrative review.
 
 Audit records are not currently designed as immutable at the database level. However, there are no routes or services that allow audit logs to be edited or deleted.
 
-### Grafana
+#### Grafana
 
 The Grafana section provides controlled management of dashboards, folders, and datasources, along with secure access into the Grafana UI through the auth proxy.
 
 All access is scoped according to the user’s permissions and visibility rights. Folder visibility acts as a container-level boundary for dashboards. If a folder is public, dashboard visibility still depends on the visibility settings of each individual dashboard.
 
-### RCA
+#### RCA
 
 The RCA section provides job creation, queue monitoring, historical report lookup, ranked root causes, anomaly detection, topology views, causal analysis, and forecast/SLO views.
 
@@ -401,8 +400,8 @@ There are three different security boundaries in this stack:
 
 ## Documentation
 
-- Detailed walkthrough: [USER_GUIDE.md](USER_GUIDE.md)
-- Environment reference: [.env.example](.env.example)
+- Detailed walkthrough: [User Guide](USER_GUIDE.md)
+- Environment reference: [Example Environment File](.env.example)
 
 ## License And Notices
 

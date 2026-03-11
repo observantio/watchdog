@@ -118,6 +118,20 @@ async def test_upstream_reachable_and_lifespan_cleanup(monkeypatch):
     assert extra.closed == 1
 
 
+@pytest.mark.asyncio
+async def test_lifespan_without_clients_is_a_noop(monkeypatch):
+    main_module = _load_main(monkeypatch)
+    monkeypatch.setattr(main_module.tempo_router, "tempo_service", types.SimpleNamespace(_client=None), raising=False)
+    monkeypatch.setattr(main_module.loki_router, "loki_service", None, raising=False)
+    monkeypatch.setattr(main_module.alertmanager_router, "alertmanager_service", None, raising=False)
+    monkeypatch.setattr(main_module.alertmanager_router, "notification_service", None, raising=False)
+    monkeypatch.setattr(main_module.grafana_router, "grafana_service", types.SimpleNamespace(_client=None, _mimir_client=None), raising=False)
+    monkeypatch.setattr(main_module.agents_router, "_mimir_client", None, raising=False)
+
+    async with main_module.lifespan(main_module.app):
+        pass
+
+
 def test_dunder_main_runs_uvicorn(monkeypatch):
     _load_main(monkeypatch)
     captured = {}

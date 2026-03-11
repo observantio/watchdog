@@ -6,6 +6,7 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
+import asyncio
 import httpx
 import pytest
 from fastapi import HTTPException
@@ -301,3 +302,108 @@ async def test_becertain_proxy_cache_hit_and_invalid_json(monkeypatch):
             current_user=_user(),
             tenant_id="tenant-a",
         )
+
+
+@pytest.mark.asyncio
+async def test_becertain_proxy_collapses_inflight_reads(monkeypatch):
+    service = BeCertainProxyService()
+    monkeypatch.setattr(service, "write_audit", lambda **_kwargs: None)
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_ALGORITHM", "HS256")
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_ISSUER", "beobservant-main")
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_AUDIENCE", "becertain")
+    monkeypatch.setattr(config, "BECERTAIN_CONTEXT_TTL_SECONDS", 120)
+    monkeypatch.setattr(
+        config,
+        "get_secret",
+        lambda key: {
+            "BECERTAIN_SERVICE_TOKEN": "service-token",
+            "BECERTAIN_CONTEXT_SIGNING_KEY": "signing-key",
+        }.get(key),
+    )
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+
+    class DummyResponse:
+        status_code = 200
+
+        def json(self):
+            return {"shared": True}
+
+    class DummyClient:
+        async def request(self, **_kwargs):
+            calls.append(_kwargs["url"])
+            started.set()
+            await release.wait()
+            return DummyResponse()
+
+    service._client = DummyClient()
+
+    first = asyncio.create_task(
+        service.request_json(
+            method="GET",
+            upstream_path="/api/v1/ml/weights/shared",
+            current_user=_user(),
+            tenant_id="tenant-a",
+        )
+    )
+    await started.wait()
+    second = asyncio.create_task(
+        service.request_json(
+            method="GET",
+            upstream_path="/api/v1/ml/weights/shared",
+            current_user=_user(),
+            tenant_id="tenant-a",
+        )
+    )
+    release.set()
+
+    assert await first == {"shared": True}
+    assert await second == {"shared": True}
+    assert len(calls) == 1
+    assert service._read_inflight == {}
+
+
+@pytest.mark.asyncio
+async def test_becertain_proxy_uses_existing_inflight_future_and_locked_cache(monkeypatch):
+    service = BeCertainProxyService()
+    monkeypatch.setattr(config, "get_secret", lambda key: "service-token" if key == "BECERTAIN_SERVICE_TOKEN" else "signing-key")
+    monkeypatch.setattr(service, "_sign_context_token", lambda **_: "ctx")
+    monkeypatch.setattr(service, "write_audit", lambda **_kwargs: None)
+
+    cache_key = service._cache_key(
+        method="GET",
+        upstream_path="/api/v1/ml/weights/shared",
+        tenant_id="tenant-a",
+        params=None,
+        payload=None,
+    )
+
+    inflight = asyncio.get_running_loop().create_future()
+    inflight.set_result({"from": "future"})
+    service._read_inflight[cache_key] = inflight
+
+    assert await service.request_json(
+        method="GET",
+        upstream_path="/api/v1/ml/weights/shared",
+        current_user=_user(),
+        tenant_id="tenant-a",
+    ) == {"from": "future"}
+
+    service = BeCertainProxyService()
+    monkeypatch.setattr(service, "_sign_context_token", lambda **_: "ctx")
+    monkeypatch.setattr(service, "write_audit", lambda **_kwargs: None)
+
+    cache_reads = iter([None, {"from": "late-cache"}])
+
+    async def fake_get(_key):
+        return next(cache_reads)
+
+    monkeypatch.setattr(service._read_cache, "get", fake_get)
+    assert await service.request_json(
+        method="GET",
+        upstream_path="/api/v1/ml/weights/shared",
+        current_user=_user(),
+        tenant_id="tenant-a",
+    ) == {"from": "late-cache"}

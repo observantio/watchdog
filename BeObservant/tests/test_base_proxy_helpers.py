@@ -103,3 +103,44 @@ def test_write_audit_uses_session_context(monkeypatch):
     assert added[0].tenant_id == "tenant-a"
     assert added[0].user_id == "u1"
     assert added[0].resource_type == "proxy"
+
+
+def test_write_audit_allows_anonymous_context_and_json_detail_fallback(monkeypatch):
+    service = _Proxy(base_url="https://example", timeout=1.0, tls_enabled=False)
+    added = []
+
+    class FakeSession:
+        def add(self, obj):
+            added.append(obj)
+
+    class Ctx:
+        def __enter__(self):
+            return FakeSession()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("services.proxy.base_proxy.get_db_session", lambda: Ctx())
+    service.write_audit(
+        current_user=None,
+        action="proxy.complete",
+        resource_id="/anonymous",
+        details={"ok": True},
+    )
+
+    assert added[0].tenant_id is None
+    assert added[0].user_id is None
+    response = httpx.Response(400, json={"other": "value"})
+    assert service._extract_error_detail(response) == '{"other": "value"}'
+
+
+def test_base_proxy_uses_ca_cert_path_when_tls_enabled(monkeypatch):
+    captured = {}
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("services.proxy.base_proxy.httpx.AsyncClient", DummyClient)
+    _Proxy(base_url="https://example", timeout=1.0, tls_enabled=True, ca_cert_path="/tmp/ca.pem")
+    assert captured["verify"] == "/tmp/ca.pem"

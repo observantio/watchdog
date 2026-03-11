@@ -289,3 +289,42 @@ async def test_forward_records_http_errors_and_passes_webhook_header(monkeypatch
     assert captured["headers"]["x-beobservant-webhook-token"] == "hook-1"
     assert captured["headers"]["Authorization"] == "Bearer ctx"
     assert audits[-1]["action"] == "jira.error"
+
+
+@pytest.mark.asyncio
+async def test_forward_requires_service_token_and_preserves_scope_header(monkeypatch):
+    svc = BeNotifiedProxyService()
+    monkeypatch.setattr(config, "get_secret", lambda key: None)
+
+    with pytest.raises(HTTPException, match="service token not configured"):
+        await svc.forward(
+            request=_request(),
+            upstream_path="/foo",
+            current_user=None,
+            require_api_key=False,
+            audit_action="jira",
+        )
+
+    captured = {}
+    monkeypatch.setattr(config, "get_secret", lambda key: "service-token")
+    monkeypatch.setattr(svc, "write_audit", lambda **_: None)
+
+    async def fake_request(*, method, url, params, content, headers):
+        captured["headers"] = dict(headers)
+        return _DummyResponse()
+
+    svc._client.request = fake_request
+    req = _request(headers=[(b"x-scope-orgid", b"tenant-uppercase")])
+    req.scope["client"] = None
+    response = await svc.forward(
+        request=req,
+        upstream_path="/foo",
+        current_user=None,
+        require_api_key=False,
+        audit_action="jira",
+    )
+
+    assert response.status_code == 200
+    normalized_headers = {key.lower(): value for key, value in captured["headers"].items()}
+    assert normalized_headers["x-scope-orgid"] == "tenant-uppercase"
+    assert captured["headers"]["X-Forwarded-For"] == "unknown"

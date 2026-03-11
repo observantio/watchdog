@@ -200,6 +200,19 @@ async def test_agents_router_list_active_and_heartbeat(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agents_router_close_mimir_client(monkeypatch):
+    closed = []
+
+    class Closable:
+        async def aclose(self):
+            closed.append(True)
+
+    monkeypatch.setattr(agents_router, "mimir_client", Closable())
+    await agents_router.close_mimir_client()
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
 async def test_audit_router_listing_and_export(monkeypatch):
     now = datetime.now(timezone.utc)
     current_user = _user()

@@ -156,6 +156,22 @@ def test_apply_security_defaults_unsupported_auto_key_algorithm():
         module.Config._apply_security_defaults(cfg)
 
 
+def test_config_accepts_strong_production_secrets_and_legacy_jwt_secret(monkeypatch):
+    env = _valid_prod_env()
+    env.update(
+        {
+            "JWT_SECRET_KEY": "legacy-shared-secret",
+            "ALLOWLIST_FAIL_OPEN": "false",
+        }
+    )
+    with monkeypatch.context() as ctx:
+        for key, value in env.items():
+            ctx.setenv(key, value)
+        module = _reload_config_module()
+        assert module.config.JWT_SECRET_KEY == "legacy-shared-secret"
+        assert module.config.BENOTIFIED_CONTEXT_SIGNING_KEY == "strong_context_signing_key_123"
+
+
 @pytest.mark.parametrize(
     ("env_updates", "expected_message"),
     [

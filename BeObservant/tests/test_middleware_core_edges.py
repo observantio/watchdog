@@ -149,6 +149,62 @@ async def test_docs_security_headers_allow_swagger_assets(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_security_headers_skip_audit_when_request_has_no_token(monkeypatch):
+    request = _request("/api/tempo/query")
+    writes = []
+
+    monkeypatch.setattr(audit_middleware, "client_ip", lambda request: "203.0.113.10")
+    monkeypatch.setattr(audit_middleware, "set_request_audit_context", lambda ip, ua: ("ctx",))
+    monkeypatch.setattr(audit_middleware, "reset_request_audit_context", lambda token: writes.append(("reset", token)))
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(audit_middleware, "run_in_threadpool", fake_run_in_threadpool)
+    monkeypatch.setattr(
+        audit_middleware,
+        "_write_resource_view_audit",
+        lambda **kwargs: writes.append(("write", kwargs)),
+    )
+
+    async def call_next(_request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    response = await audit_middleware.security_headers_middleware(request, call_next)
+    assert response.status_code == 200
+    assert "Strict-Transport-Security" not in response.headers
+    assert all(item[0] != "write" for item in writes)
+
+
+@pytest.mark.asyncio
+async def test_security_headers_skip_audit_when_decoded_token_is_empty(monkeypatch):
+    request = _request("/api/tempo/query", headers=[(b"authorization", b"Bearer jwt-token")])
+    writes = []
+
+    monkeypatch.setattr(audit_middleware, "client_ip", lambda request: "203.0.113.10")
+    monkeypatch.setattr(audit_middleware, "set_request_audit_context", lambda ip, ua: ("ctx",))
+    monkeypatch.setattr(audit_middleware, "reset_request_audit_context", lambda token: writes.append(("reset", token)))
+    monkeypatch.setattr(audit_middleware.auth_service, "decode_token", lambda token: None)
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(audit_middleware, "run_in_threadpool", fake_run_in_threadpool)
+    monkeypatch.setattr(
+        audit_middleware,
+        "_write_resource_view_audit",
+        lambda **kwargs: writes.append(("write", kwargs)),
+    )
+
+    async def call_next(_request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    response = await audit_middleware.security_headers_middleware(request, call_next)
+    assert response.status_code == 200
+    assert all(item[0] != "write" for item in writes)
+
+
+@pytest.mark.asyncio
 async def test_request_size_and_concurrency_middleware_paths(monkeypatch):
     sent_messages = []
 

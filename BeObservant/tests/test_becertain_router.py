@@ -195,6 +195,22 @@ async def test_get_analyze_job_result_maps_conflict_to_job_summary(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_analyze_job_result_reraises_non_conflict(monkeypatch):
+    async def fake_request_json(**kwargs):
+        raise becertain_router.HTTPException(status_code=502, detail="upstream down")
+
+    monkeypatch.setattr("routers.observability.becertain_router.becertain_proxy_service.request_json", fake_request_json)
+
+    with pytest.raises(becertain_router.HTTPException) as exc:
+        await becertain_router.get_analyze_job_result(
+            job_id="job-4",
+            request=_request(),
+            current_user=_user(),
+        )
+    assert exc.value.status_code == 502
+
+
+@pytest.mark.asyncio
 async def test_ml_weights_feedback_proxies(monkeypatch):
     captured = {}
 

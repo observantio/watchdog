@@ -60,13 +60,42 @@ def test_required_permissions_maps_routes():
         Permission.CREATE_ALERTS.value,
         Permission.WRITE_ALERTS.value,
     }
+    assert helpers_mod.required_permissions("alerts", "DELETE") == {Permission.DELETE_ALERTS.value}
+    assert helpers_mod.required_permissions("incidents/123", "PATCH") == {Permission.UPDATE_INCIDENTS.value}
+    assert helpers_mod.required_permissions("silences/1", "GET") == {Permission.READ_SILENCES.value}
+    assert helpers_mod.required_permissions("silences", "POST") == {
+        Permission.CREATE_SILENCES.value,
+        Permission.WRITE_ALERTS.value,
+    }
     assert helpers_mod.required_permissions("silences/1", "PUT") == {
         Permission.UPDATE_SILENCES.value,
         Permission.WRITE_ALERTS.value,
     }
+    assert helpers_mod.required_permissions("silences/1", "DELETE") == {Permission.DELETE_SILENCES.value}
     assert helpers_mod.required_permissions("rules/import", "POST") == {
         Permission.CREATE_RULES.value,
         Permission.WRITE_ALERTS.value,
+    }
+    assert helpers_mod.required_permissions("rules", "GET") == {Permission.READ_RULES.value}
+    assert helpers_mod.required_permissions("rules", "POST") == {
+        Permission.CREATE_RULES.value,
+        Permission.WRITE_ALERTS.value,
+        Permission.TEST_RULES.value,
+    }
+    assert helpers_mod.required_permissions("rules", "PUT") == {
+        Permission.UPDATE_RULES.value,
+        Permission.WRITE_ALERTS.value,
+    }
+    assert helpers_mod.required_permissions("rules", "DELETE") == {Permission.DELETE_RULES.value}
+    assert helpers_mod.required_permissions("channels", "GET") == {Permission.READ_CHANNELS.value}
+    assert helpers_mod.required_permissions("channels", "POST") == {
+        Permission.CREATE_CHANNELS.value,
+        Permission.WRITE_CHANNELS.value,
+        Permission.TEST_CHANNELS.value,
+    }
+    assert helpers_mod.required_permissions("channels", "PUT") == {
+        Permission.UPDATE_CHANNELS.value,
+        Permission.WRITE_CHANNELS.value,
     }
     assert helpers_mod.required_permissions("channels", "DELETE") == {Permission.DELETE_CHANNELS.value}
     assert helpers_mod.required_permissions("jira/config", "GET") == {Permission.MANAGE_TENANTS.value}
@@ -75,6 +104,13 @@ def test_required_permissions_maps_routes():
         Permission.UPDATE_INCIDENTS.value,
         Permission.READ_CHANNELS.value,
     }
+    assert helpers_mod.required_permissions("jira/issues", "POST") == {Permission.UPDATE_INCIDENTS.value}
+    assert helpers_mod.required_permissions("integrations/slack", "GET") == {
+        Permission.READ_INCIDENTS.value,
+        Permission.UPDATE_INCIDENTS.value,
+        Permission.READ_CHANNELS.value,
+    }
+    assert helpers_mod.required_permissions("integrations/slack", "POST") == {Permission.UPDATE_INCIDENTS.value}
     assert helpers_mod.required_permissions("metrics/names", "GET") == {
         Permission.READ_METRICS.value,
         Permission.CREATE_RULES.value,
@@ -143,6 +179,12 @@ def test_validate_and_extract_silence_payload():
         user,
     )
     assert normalized["sharedGroupIds"] == []
+
+    superuser_normalized = helpers_mod.validate_and_normalize_silence_payload(
+        {"visibility": "group", "sharedGroupIds": ["g3"]},
+        _user(group_ids=["g1"], is_superuser=True),
+    )
+    assert superuser_normalized["sharedGroupIds"] == ["g3"]
 
     assert helpers_mod.extract_silence_id("silences/abc", None) == "abc"
     assert helpers_mod.extract_silence_id("other", {"silence_id": " sid "}) == "sid"
