@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from models.access.auth_models import Role
 from custom_types.json import JSONValue
 
 if TYPE_CHECKING:
@@ -29,3 +30,10 @@ def sync_active_user_from_claims(
     if not user or not getattr(user, "is_active", False):
         return None
     return user
+
+
+def safe_role(raw_role: Optional[str]) -> Role:
+    try:
+        return Role(raw_role)
+    except (TypeError, ValueError):
+        return Role.USER

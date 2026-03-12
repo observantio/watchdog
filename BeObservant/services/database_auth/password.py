@@ -107,8 +107,11 @@ def _actor_can_reset_password(actor: User) -> bool:
     return "manage:users" in names
 
 
-def _require_user_in_tenant(db: Session, user_id: str, tenant_id: str) -> User:
-    user = db.query(User).filter_by(id=user_id, tenant_id=tenant_id).first()
+def _require_user_in_tenant(db: Session, user_id: str, tenant_id: str, *, for_update: bool = False) -> User:
+    query = db.query(User).filter_by(id=user_id, tenant_id=tenant_id)
+    if for_update and hasattr(query, "with_for_update"):
+        query = query.with_for_update()
+    user = query.first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
@@ -116,14 +119,17 @@ def _require_user_in_tenant(db: Session, user_id: str, tenant_id: str) -> User:
 
 def reset_user_password_temp(service: DatabaseAuthService, actor_user_id: str, target_user_id: str, tenant_id: str) -> Dict[str, str]:
     with get_db_session() as db:
-        actor = db.query(User).filter_by(id=actor_user_id, tenant_id=tenant_id).first()
+        actor_query = db.query(User).filter_by(id=actor_user_id, tenant_id=tenant_id)
+        if hasattr(actor_query, "with_for_update"):
+            actor_query = actor_query.with_for_update()
+        actor = actor_query.first()
         if not actor:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Actor not permitted")
 
         if not _actor_can_reset_password(actor):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted to reset passwords")
 
-        target = _require_user_in_tenant(db, target_user_id, tenant_id)
+        target = _require_user_in_tenant(db, target_user_id, tenant_id, for_update=True)
 
         if _is_admin_role(getattr(target, "role", "")) or getattr(target, "is_superuser", False):
             raise HTTPException(

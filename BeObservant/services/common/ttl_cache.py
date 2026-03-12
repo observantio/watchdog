@@ -9,7 +9,6 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import asyncio
-from contextlib import suppress
 import json
 import logging
 import time
@@ -234,13 +233,12 @@ class TTLCache:
             pending.set_result(value)
             return value
         except Exception as exc:
-            pending.set_exception(exc)
+            if not pending.done():
+                pending.set_exception(exc)
             raise
         finally:
             async with self._lock:
                 self._pending.pop(key, None)
-            with suppress(Exception):
-                await pending
 
     async def clear(self) -> None:
         if await self._ensure_redis():
@@ -249,11 +247,10 @@ class TTLCache:
                 if client is None:
                     return
                 pattern = f"{self._key_prefix}:*"
-                keys: Sequence[str | bytes]
                 try:
-                    keys = [key async for key in client.scan_iter(match=pattern)]
+                    keys: Sequence[str | bytes] = [key async for key in client.scan_iter(match=pattern)]
                 except AttributeError:
-                    keys = await client.keys(pattern)
+                    keys = []
                 if keys:
                     await client.delete(*keys)
             except (OSError, RuntimeError, ValueError) as exc:

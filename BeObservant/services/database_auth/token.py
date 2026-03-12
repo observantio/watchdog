@@ -14,7 +14,7 @@ from typing import Optional, Set, TYPE_CHECKING
 
 from models.access.auth_models import Role, TokenData
 from services.auth.auth_ops import decode_token as decode_token_op
-from services.database_auth.shared import sync_active_user_from_claims
+from services.database_auth.shared import safe_role, sync_active_user_from_claims
 
 from db_models import User
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from services.database_auth_service import DatabaseAuthService
 
 def build_token_data_for_user(service: DatabaseAuthService, user: User) -> TokenData:
-    role = _safe_role(getattr(user, "role", None))
+    role = safe_role(getattr(user, "role", None))
 
     return TokenData(
         user_id=user.id,
@@ -63,10 +63,7 @@ def decode_token(service: DatabaseAuthService, token: str) -> Optional[TokenData
     return token_data
 
 def _safe_role(raw_role: Optional[str]) -> Role:
-    try:
-        return Role(raw_role)
-    except (TypeError, ValueError):
-        return Role.USER
+    return safe_role(raw_role)
 
 def _known_permission_names(service: DatabaseAuthService) -> Set[str]:
     perms = service.list_all_permissions() or []

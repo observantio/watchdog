@@ -89,16 +89,16 @@ def _full_name(claims: JSONDict) -> Optional[str]:
     return name or None
 
 
-def _get_user_by_subject(db: Session, subject: str) -> Optional[User]:
-    if not subject:
+def _get_user_by_subject(db: Session, subject: str, tenant_id: Optional[str]) -> Optional[User]:
+    if not subject or not tenant_id:
         return None
-    return db.query(User).filter(User.external_subject == subject).first()
+    return db.query(User).filter(User.tenant_id == tenant_id, User.external_subject == subject).first()
 
 
-def _get_user_by_email(db: Session, email: str) -> Optional[User]:
-    if not email:
+def _get_user_by_email(db: Session, email: str, tenant_id: Optional[str]) -> Optional[User]:
+    if not email or not tenant_id:
         return None
-    return db.query(User).filter(func.lower(User.email) == email).first()
+    return db.query(User).filter(User.tenant_id == tenant_id, func.lower(User.email) == email).first()
 
 
 def _subject_is_owned_by_other(db: Session, subject: str, user_id: str) -> bool:
@@ -118,13 +118,14 @@ def _resolve_existing_user(
     *,
     email: str,
     subject: str,
+    tenant_id: Optional[str],
     claims: JSONDict,
 ) -> Optional[User]:
-    by_subject = _get_user_by_subject(db, subject)
+    by_subject = _get_user_by_subject(db, subject, tenant_id)
     if by_subject:
         return by_subject
 
-    candidate = _get_user_by_email(db, email)
+    candidate = _get_user_by_email(db, email, tenant_id)
     if not candidate:
         return None
 
@@ -170,12 +171,40 @@ def sync_user_from_oidc_claims(service: DatabaseAuthService, claims: JSONDict) -
     full_name = _full_name(claims)
 
     with get_db_session() as db:
-        user = _resolve_existing_user(service, db, email=email, subject=subject, claims=claims)
+        default_tenant = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
+        tenant_id = getattr(default_tenant, "id", None)
+
+        user = _resolve_existing_user(
+            service,
+            db,
+            email=email,
+            subject=subject,
+            tenant_id=tenant_id,
+            claims=claims,
+        )
 
         if user is None:
             if not config.OIDC_AUTO_PROVISION_USERS:
                 return None
-            user = provision_oidc_user(service, db, email, preferred_username, full_name, subject)
+            if default_tenant is None:
+                user = provision_oidc_user(
+                    service,
+                    db,
+                    email,
+                    preferred_username,
+                    full_name,
+                    subject,
+                )
+            else:
+                user = provision_oidc_user(
+                    service,
+                    db,
+                    email,
+                    preferred_username,
+                    full_name,
+                    subject,
+                    default_tenant=default_tenant,
+                )
         else:
             if not user.is_active:
                 service.logger.warning("OIDC login attempted for inactive user %s", user.id)
@@ -198,15 +227,13 @@ def _ensure_default_tenant(db: Session) -> Tenant:
         display_name="Default Organization",
         is_active=True,
     )
-    db.add(tenant)
     nested = db.begin_nested() if hasattr(db, "begin_nested") else nullcontext()
     try:
         with nested:
+            db.add(tenant)
             db.flush()
             return tenant
     except IntegrityError:
-        if not hasattr(db, "begin_nested"):
-            db.rollback()
         existing = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
         if existing:
             return existing
@@ -238,8 +265,9 @@ def provision_oidc_user(
     preferred_username: str,
     full_name: Optional[str],
     subject: str,
+    default_tenant: Optional[Tenant] = None,
 ) -> User:
-    default_tenant = _ensure_default_tenant(db)
+    tenant = default_tenant or _ensure_default_tenant(db)
 
     base = _base_username(preferred_username, email)
     must_setup_mfa = _claim_truthy(getattr(config, "REQUIRE_MFA_FOR_NEW_USERS", False))
@@ -247,7 +275,7 @@ def provision_oidc_user(
     for _ in range(3):
         username = _pick_unique_username(db, base)
         user = User(
-            tenant_id=default_tenant.id,
+            tenant_id=tenant.id,
             username=username,
             email=email,
             full_name=full_name,
@@ -263,13 +291,14 @@ def provision_oidc_user(
             auth_provider=config.AUTH_PROVIDER,
             external_subject=subject or None,
         )
-        db.add(user)
+        nested = db.begin_nested() if hasattr(db, "begin_nested") else nullcontext()
         try:
-            db.flush()
-            service._ensure_default_api_key(db, user)
-            return user
+            with nested:
+                db.add(user)
+                db.flush()
+                service._ensure_default_api_key(db, user)
+                return user
         except IntegrityError:
-            db.rollback()
             continue
 
     raise ValueError("Failed to provision user due to repeated uniqueness conflicts")

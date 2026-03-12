@@ -10,7 +10,10 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
+import hashlib
 import secrets
+import time
+import threading
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 import bcrypt
@@ -24,6 +27,40 @@ from custom_types.json import JSONDict
 
 if TYPE_CHECKING:
     from services.database_auth_service import DatabaseAuthService
+
+_RECENT_TOTP_CODES: dict[str, float] = {}
+_RECENT_TOTP_LOCK = threading.Lock()
+_TOTP_REUSE_WINDOW_SECONDS = 90
+
+
+def _totp_reuse_key(user_id: str, code: str) -> str:
+    payload = f"{user_id}:{code}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _remember_totp_use(user_id: str, code: str) -> None:
+    expires_at = time.monotonic() + _TOTP_REUSE_WINDOW_SECONDS
+    key = _totp_reuse_key(user_id, code)
+    with _RECENT_TOTP_LOCK:
+        now = time.monotonic()
+        for existing, expiry in list(_RECENT_TOTP_CODES.items()):
+            if expiry <= now:
+                _RECENT_TOTP_CODES.pop(existing, None)
+        _RECENT_TOTP_CODES[key] = expires_at
+
+
+def _is_recent_totp_reuse(user_id: str, code: str) -> bool:
+    key = _totp_reuse_key(user_id, code)
+    now = time.monotonic()
+    with _RECENT_TOTP_LOCK:
+        expires = _RECENT_TOTP_CODES.get(key)
+        if expires is None:
+            return False
+        if expires <= now:
+            _RECENT_TOTP_CODES.pop(key, None)
+            return False
+        return True
+
 
 def _get_fernet(service: DatabaseAuthService) -> Optional[Fernet]:
     from config import config as cfg
@@ -84,11 +121,17 @@ def _verify_totp_code_in_db_user(service: DatabaseAuthService, db_user: User, co
         return False
     if _consume_recovery_code(service, db_user, code):
         return True
+    user_id = str(getattr(db_user, "id", "") or "")
+    if user_id and _is_recent_totp_reuse(user_id, code):
+        return False
     try:
         secret = _decrypt_mfa_secret(service, db_user.totp_secret)
     except ValueError:
         return False
-    return bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+    ok = bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+    if ok and user_id:
+        _remember_totp_use(user_id, code)
+    return ok
 
 
 def enroll_totp(service: DatabaseAuthService, user_id: str) -> Dict[str, str]:

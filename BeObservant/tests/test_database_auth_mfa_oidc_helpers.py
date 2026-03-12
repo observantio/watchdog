@@ -291,7 +291,7 @@ def test_oidc_sync_and_provision_helpers(monkeypatch):
     db = _DB(flush_errors=[IntegrityError("stmt", {}, Exception("dup"))])
     provisioned = oidc_mod.provision_oidc_user(service, db, "new@example.com", "alice", "Alice", "subject")
     assert provisioned.username == "alice1"
-    assert db.rollbacks == 1
+    assert db.rollbacks == 0
     assert getattr(provisioned, "api_key_created", False) is True
 
     user = SimpleNamespace(id="u9", auth_provider="local", external_subject=None, email="old@example.com", full_name="Old")

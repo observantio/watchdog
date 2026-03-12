@@ -5,7 +5,6 @@ from typing import Dict, Mapping, Optional, TYPE_CHECKING, Union
 
 import httpx
 
-from config import config
 from db_models import User
 from models.access.auth_models import Token
 from custom_types.json import JSONDict
@@ -50,13 +49,14 @@ def _resolve_oidc_claims(service: DatabaseAuthService, *, tokens: _OidcTokens, e
         return None
 
     claims: Optional[JSONDict] = None
-
     if tokens.id_token:
         claims = service.oidc_service.verify_id_token(tokens.id_token, nonce=(expected_nonce or None))
         if not claims:
+            service.logger.warning("OIDC id_token verification failed; refusing weaker fallback verification")
             return None
+        return claims
 
-    if claims is None and tokens.access_token:
+    if tokens.access_token:
         userinfo = service.oidc_service.fetch_userinfo(tokens.access_token)
         if isinstance(userinfo, dict) and userinfo:
             claims = userinfo
@@ -97,10 +97,9 @@ def login(service: DatabaseAuthService, username: str, password: str, mfa_code: 
         if user is None:
             return None
 
-        if not bool(getattr(config, "SKIP_LOCAL_MFA_FOR_EXTERNAL", True)):
-            mfa_result = _mfa_gate(service, user, mfa_code)
-            if mfa_result is None or isinstance(mfa_result, dict) or isinstance(mfa_result, Token):
-                return mfa_result
+        mfa_result = _mfa_gate(service, user, mfa_code)
+        if mfa_result is None or isinstance(mfa_result, dict) or isinstance(mfa_result, Token):
+            return mfa_result
 
         token = service.create_access_token(user)
         return token if isinstance(token, Token) else None

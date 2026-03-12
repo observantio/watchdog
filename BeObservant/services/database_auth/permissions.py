@@ -18,6 +18,7 @@ from database import get_db_session
 from db_models import Group, Permission, User
 from models.access.auth_models import ROLE_PERMISSIONS, Role
 from models.access.user_models import User as UserSchema
+from services.database_auth.shared import safe_role
 
 if TYPE_CHECKING:
     from services.database_auth_service import DatabaseAuthService
@@ -61,7 +62,7 @@ def get_user_direct_permissions(user: User | UserSchema) -> List[str]:
 def collect_permissions(user: User | None) -> List[str]:
     perms: Set[str] = set()
 
-    role = _safe_role(getattr(user, "role", None))
+    role = safe_role(getattr(user, "role", None))
     for p in ROLE_PERMISSIONS.get(role, []):
         v = getattr(p, "value", None)
         if v:
@@ -104,7 +105,4 @@ def list_all_permissions() -> List[dict[str, object]]:
 
 
 def _safe_role(raw_role: Optional[str]) -> Role:
-    try:
-        return Role(raw_role)
-    except (TypeError, ValueError):
-        return Role.USER
+    return safe_role(raw_role)
