@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "../hooks";
+import { getRcaAnalyzeConfigTemplate } from "../api";
 import PageHeader from "../components/ui/PageHeader";
 import { Alert, Button, Card, Spinner } from "../components/ui";
 import ConfirmModal from "../components/ConfirmModal";
@@ -394,7 +395,11 @@ export default function RCAPage() {
         </div>
       )}
       <section className="space-y-3">
-        <RcaJobComposer onCreate={createJob} creating={creatingJob} />
+        <RcaJobComposer
+          onCreate={createJob}
+          onDownloadTemplate={getRcaAnalyzeConfigTemplate}
+          creating={creatingJob}
+        />
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-12 border-t border-sre-border pt-6 mt-6 xl:flex xl:gap-8">

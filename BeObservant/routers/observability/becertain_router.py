@@ -18,6 +18,7 @@ from config import config
 from middleware.dependencies import require_permission_with_scope, resolve_tenant_id
 from models.access.auth_models import Permission, TokenData
 from models.observability.becertain_models import (
+    AnalyzeConfigTemplateResponse,
     AnalyzeJobCreateResponse,
     AnalyzeJobListResponse,
     AnalyzeJobResultResponse,
@@ -50,6 +51,23 @@ def _job_result_response_from_summary(summary: AnalyzeJobSummary) -> AnalyzeJobR
     )
 
 router = APIRouter(prefix="/api/becertain", tags=["becertain"])
+
+
+@router.get("/analyze/config-template", response_model=AnalyzeConfigTemplateResponse)
+async def get_analyze_config_template(
+    request: Request,
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.CREATE_RCA, "becertain")),
+) -> AnalyzeConfigTemplateResponse:
+    tenant_id = await resolve_tenant_id(request, current_user)
+    upstream = await becertain_proxy_service.request_json(
+        method="GET",
+        upstream_path="/api/v1/analyze/config-template",
+        current_user=current_user,
+        tenant_id=tenant_id,
+        audit_action="becertain.analyze_job.template",
+        correlation_id=correlation_id(request),
+    )
+    return AnalyzeConfigTemplateResponse.model_validate(_json_dict(upstream))
 
 @router.post("/analyze/jobs", response_model=AnalyzeJobCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analyze_job(

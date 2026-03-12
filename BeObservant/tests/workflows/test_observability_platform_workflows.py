@@ -194,6 +194,13 @@ def test_becertain_alertmanager_and_agents_workflow(client, monkeypatch: pytest.
     async def fake_request_json(**kwargs: Any) -> dict[str, Any]:
         becertain_calls.append(kwargs)
         path = kwargs["upstream_path"]
+        if path == "/api/v1/analyze/config-template":
+            return {
+                "version": 1,
+                "defaults": {"request": {"step": "15s"}},
+                "template_yaml": "version: 1\nrequest:\n  step: 15s\n",
+                "file_name": "becertain-rca-defaults.yaml",
+            }
         if path == "/api/v1/jobs/analyze":
             return {"job_id": "job-1", "report_id": "report-1", "status": "accepted", "created_at": "2024-01-01T00:00:00Z", "tenant_id": kwargs["payload"]["tenant_id"], "requested_by": kwargs["current_user"].user_id}
         if path == "/api/v1/jobs":
@@ -233,6 +240,10 @@ def test_becertain_alertmanager_and_agents_workflow(client, monkeypatch: pytest.
 
     admin_headers = state.auth_header("token-u-admin")
     viewer_headers = state.auth_header(f"token-{viewer_id}")
+
+    template_response = client.get("/api/becertain/analyze/config-template", headers=admin_headers)
+    assert template_response.status_code == 200
+    assert template_response.json()["file_name"] == "becertain-rca-defaults.yaml"
 
     assert client.post("/api/becertain/analyze/jobs", headers=admin_headers, json={"start": 1, "end": 2, "services": ["api"], "log_query": "{service=\"api\"}"}).status_code == 202
     assert client.get("/api/becertain/analyze/jobs", headers=admin_headers, params={"status": "running", "limit": 5, "cursor": "cursor-0"}).status_code == 200
@@ -287,5 +298,6 @@ def test_becertain_alertmanager_and_agents_workflow(client, monkeypatch: pytest.
     assert heartbeat_response.status_code == 200
     assert heartbeats[0]["tenant_id"] == agent_key.key
 
-    assert becertain_calls[0]["payload"]["tenant_id"] == "org-a"
+    analyze_job_call = next(call for call in becertain_calls if call["upstream_path"] == "/api/v1/jobs/analyze")
+    assert analyze_job_call["payload"]["tenant_id"] == "org-a"
     assert any(call["upstream_path"] == "/internal/v1/api/alertmanager/channels" for call in forward_calls)

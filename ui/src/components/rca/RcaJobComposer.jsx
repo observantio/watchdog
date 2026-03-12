@@ -1,62 +1,52 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Input, Select } from "../ui";
 import { TIME_RANGES } from "../../utils/constants";
 
-export default function RcaJobComposer({ onCreate, creating }) {
+export default function RcaJobComposer({ onCreate, onDownloadTemplate, creating }) {
   const [timeRangeMinutes, setTimeRangeMinutes] = useState(60);
-  const [servicesText, setServicesText] = useState("");
-  const [logQuery, setLogQuery] = useState("");
-  const [metricQueriesText, setMetricQueriesText] = useState("");
-  const [sensitivity, setSensitivity] = useState(3);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [step, setStep] = useState("15s");
-  const [apdexThresholdMs, setApdexThresholdMs] = useState(500);
-  const [sloTarget, setSloTarget] = useState(0.999);
-  const [correlationWindowSeconds, setCorrelationWindowSeconds] = useState(60);
-  const [forecastHorizonSeconds, setForecastHorizonSeconds] = useState(1800);
+  const [configFile, setConfigFile] = useState(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
-  const parsedServices = useMemo(
-    () =>
-      servicesText
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean),
-    [servicesText],
-  );
-  const parsedMetricQueries = useMemo(
-    () =>
-      metricQueriesText
-        .split("\n")
-        .map((v) => v.trim())
-        .filter(Boolean),
-    [metricQueriesText],
-  );
-
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     const end = Math.floor(Date.now() / 1000);
     const start = end - Number(timeRangeMinutes) * 60;
-    onCreate({
+    const payload = {
       start,
       end,
       step,
-      services: parsedServices,
-      log_query: logQuery.trim() || null,
-      metric_queries:
-        parsedMetricQueries.length > 0 ? parsedMetricQueries : null,
-      sensitivity: Number(sensitivity),
-      apdex_threshold_ms: Number(apdexThresholdMs),
-      slo_target: Number(sloTarget),
-      correlation_window_seconds: Number(correlationWindowSeconds),
-      forecast_horizon_seconds: Number(forecastHorizonSeconds),
-    });
+    };
+    if (configFile) {
+      payload.config_yaml = await configFile.text();
+    }
+    await onCreate(payload);
+  }
+
+  async function handleDownloadTemplate() {
+    if (!onDownloadTemplate) return;
+    setDownloadingTemplate(true);
+    try {
+      const response = await onDownloadTemplate();
+      const templateYaml = String(response?.template_yaml || "");
+      if (!templateYaml) return;
+      const blob = new Blob([templateYaml], { type: "application/x-yaml" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = response?.file_name || "becertain-rca-defaults.yaml";
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingTemplate(false);
+    }
   }
 
   return (
     <Card>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Select
             label={<span className="text-sm font-medium">Time Window</span>}
             value={timeRangeMinutes}
@@ -69,111 +59,48 @@ export default function RcaJobComposer({ onCreate, creating }) {
               </option>
             ))}
           </Select>
-          <div>
-            <Input
-              label={<span className="text-sm font-medium">Services</span>}
-              placeholder="api, checkout, payment"
-              value={servicesText}
-              onChange={(e) => setServicesText(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg"
-            />
-            <p className="text-xs text-sre-text-muted mt-1">
-              e.g. api, checkout, payment
-            </p>
+          <Input
+            label={<span className="text-sm font-medium">Resolution</span>}
+            value={step}
+            onChange={(e) => setStep(e.target.value)}
+            className="px-3 py-2 text-sm rounded-lg"
+          />
+        </div>
+
+        <div className="rounded-lg border border-dashed border-sre-border bg-sre-surface/30 p-4 space-y-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-medium text-sre-text">
+                RCA YAML Overrides
+              </div>
+              <p className="text-xs text-sre-text-muted mt-1">
+                Upload a YAML file to override RCA thresholds, weights, built-in queries, and analyzer tuning for this job only.
+                When no file is provided, BeCertain uses the server defaults.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleDownloadTemplate}
+              loading={downloadingTemplate}
+            >
+              Download Default YAML
+            </Button>
           </div>
           <div>
             <Input
-              label={<span className="text-sm font-medium">Sensitivity</span>}
-              type="number"
-              min="1"
-              max="6"
-              step="0.1"
-              value={sensitivity}
-              onChange={(e) => setSensitivity(e.target.value)}
+              label={<span className="text-sm font-medium">YAML File</span>}
+              type="file"
+              accept=".yaml,.yml,text/yaml,application/x-yaml"
+              onChange={(e) => setConfigFile(e.target.files?.[0] || null)}
               className="px-3 py-2 text-sm rounded-lg"
             />
             <p className="text-xs text-sre-text-muted mt-1">
-              1 (low) – 6 (high)
+              {configFile ? `Selected: ${configFile.name}` : "Optional. Upload a file generated from the default template and edit only the values you want to change."}
             </p>
           </div>
         </div>
-
-        <button
-          type="button"
-          className="text-xs text-sre-primary hover:text-sre-primary-light flex items-center gap-1 px-1 py-1 transition-colors"
-          onClick={() => setShowAdvanced((v) => !v)}
-        >
-          {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
-          <span className="material-icons text-xs">
-            {showAdvanced ? "expand_less" : "expand_more"}
-          </span>
-        </button>
-
-        {showAdvanced && (
-          <div className="space-y-4 py-3 rounded-lg bg-sre-surface/40">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Input
-                label="Log Query (optional)"
-                placeholder='{service="api"} |= "error"'
-                value={logQuery}
-                onChange={(e) => setLogQuery(e.target.value)}
-              />
-              <div>
-                <label className="block text-sm text-sre-text mb-2">
-                  Metric Queries (optional, one per line)
-                </label>
-                <textarea
-                  value={metricQueriesText}
-                  onChange={(e) => setMetricQueriesText(e.target.value)}
-                  className="w-full min-h-24 px-3 py-2 bg-sre-surface border border-sre-border rounded-lg text-sre-text focus:outline-none focus:ring-2 focus:ring-sre-primary"
-                  placeholder="sum(rate(http_requests_total[5m])) by (service)"
-                />
-                <p className="text-xs text-sre-text-muted mt-1">
-                  Separate queries with newlines
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Input
-                label="Step"
-                value={step}
-                onChange={(e) => setStep(e.target.value)}
-              />
-              <Input
-                label="Apdex Threshold (ms)"
-                type="number"
-                value={apdexThresholdMs}
-                onChange={(e) => setApdexThresholdMs(e.target.value)}
-              />
-              <Input
-                label="SLO Target"
-                type="number"
-                min="0"
-                max="1"
-                step="0.001"
-                value={sloTarget}
-                onChange={(e) => setSloTarget(e.target.value)}
-              />
-              <Input
-                label="Correlation Window (s)"
-                type="number"
-                min="10"
-                max="600"
-                value={correlationWindowSeconds}
-                onChange={(e) => setCorrelationWindowSeconds(e.target.value)}
-              />
-              <Input
-                label="Forecast Horizon (s)"
-                type="number"
-                min="60"
-                max="86400"
-                value={forecastHorizonSeconds}
-                onChange={(e) => setForecastHorizonSeconds(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
 
         <div className="flex justify-end">
           <Button
@@ -192,5 +119,6 @@ export default function RcaJobComposer({ onCreate, creating }) {
 
 RcaJobComposer.propTypes = {
   onCreate: PropTypes.func.isRequired,
+  onDownloadTemplate: PropTypes.func,
   creating: PropTypes.bool,
 };

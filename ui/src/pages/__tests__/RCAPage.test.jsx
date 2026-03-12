@@ -79,7 +79,8 @@ describe("RCAPage", () => {
     const payload = createJobMock.mock.calls[0][0];
     expect(payload).toHaveProperty("start");
     expect(payload).toHaveProperty("end");
-    expect(payload).toHaveProperty("sensitivity");
+    expect(payload).toHaveProperty("step");
+    expect(payload).not.toHaveProperty("sensitivity");
   });
 
   it("shows quick-stat tiles when a report is available", () => {

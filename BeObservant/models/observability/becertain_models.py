@@ -22,6 +22,7 @@ class AnalyzeRequestPayload(BaseModel):
     start: int
     end: int
     step: str = "15s"
+    config_yaml: Optional[str] = None
     services: List[str] = Field(default_factory=list)
     log_query: Optional[str] = None
     metric_queries: Optional[List[str]] = None
@@ -146,3 +147,9 @@ class AnalyzeReportDeleteResponse(BaseModel):
     report_id: str
     status: AnalyzeJobStatus = AnalyzeJobStatus.DELETED
     deleted: bool = True
+
+class AnalyzeConfigTemplateResponse(BaseModel):
+    version: int
+    defaults: JSONDict
+    template_yaml: str
+    file_name: str

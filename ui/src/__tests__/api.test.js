@@ -69,6 +69,18 @@ describe("api request behavior", () => {
     expect(options.headers.Authorization).toBe("Bearer token-abc");
   });
 
+  it("requests the RCA config template from BeCertain with scoped headers", async () => {
+    api.setAuthToken("token-abc");
+    api.setUserOrgIds(["org-a"]);
+
+    await api.getRcaAnalyzeConfigTemplate();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toContain("/api/becertain/analyze/config-template");
+    expect(options.headers["X-Scope-OrgID"]).toBe("org-a");
+  });
+
   it("throws structured error body on non-2xx", async () => {
     vi.stubGlobal(
       "fetch",

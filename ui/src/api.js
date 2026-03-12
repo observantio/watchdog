@@ -810,6 +810,10 @@ export async function createRcaAnalyzeJob(payload) {
   return requestJson("/api/becertain/analyze/jobs", { payload });
 }
 
+export async function getRcaAnalyzeConfigTemplate() {
+  return request("/api/becertain/analyze/config-template");
+}
+
 export async function listRcaJobs(params = {}) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
