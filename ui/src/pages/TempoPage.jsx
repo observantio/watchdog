@@ -419,7 +419,7 @@ export default function TempoPage() {
   return (
     <div className="animate-fade-in">
       <PageHeader
-        icon={null}
+        icon="timeline"
         title="Tracing"
         subtitle="Search and analyze distributed traces across your services"
       >

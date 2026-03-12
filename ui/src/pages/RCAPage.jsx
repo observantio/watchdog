@@ -362,7 +362,7 @@ export default function RCAPage() {
     <div className="space-y-6">
       <PageHeader
         icon="psychology"
-        title="Be Certain"
+        title="AI Root Cause Analysis (RCA)"
         subtitle="Generate, find, and manage tenant-scoped RCA reports through Be Observant."
       >
         <Button variant="secondary" size="sm" onClick={refreshJobs}>

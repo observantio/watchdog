@@ -584,7 +584,7 @@ export default function AlertManagerPage() {
           <span className="material-icons text-3xl text-sre-primary">
             notifications_active
           </span>{" "}
-          Be Notified
+          Alerts &amp; Rules
         </h1>
         <p className="text-sre-text-muted">
           Comprehensive alerting system with rules, channels, and silences
