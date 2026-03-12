@@ -7,6 +7,7 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 from typing import Optional
+import json
 
 from sqlalchemy.orm import Session
 
@@ -25,7 +26,12 @@ def log_audit(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> None:
-    ctx_ip, ctx_user_agent = get_request_audit_context()
+    json.dumps(details)
+    ctx_ip: Optional[str] = None
+    ctx_user_agent: Optional[str] = None
+    if ip_address is None or user_agent is None:
+        ctx_ip, ctx_user_agent = get_request_audit_context()
+
     db.add(AuditLog(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -33,6 +39,6 @@ def log_audit(
         resource_type=resource_type,
         resource_id=resource_id,
         details=details,
-        ip_address=ip_address or ctx_ip,
-        user_agent=user_agent or ctx_user_agent,
+        ip_address=ip_address if ip_address is not None else ctx_ip,
+        user_agent=user_agent if user_agent is not None else ctx_user_agent,
     ))

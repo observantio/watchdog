@@ -10,6 +10,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 import secrets
 from datetime import datetime, timezone
 from typing import List, Optional, TYPE_CHECKING
@@ -128,6 +129,13 @@ def _resolve_existing_user(
         return None
 
     if candidate.auth_provider == config.AUTH_PROVIDER:
+        existing_subject = str(getattr(candidate, "external_subject", "") or "").strip()
+        if existing_subject and subject and existing_subject != subject:
+            service.logger.warning(
+                "OIDC subject mismatch for existing external account %s; refusing login",
+                candidate.id,
+            )
+            return None
         return candidate
 
     if not _can_auto_link_by_email(claims):
@@ -191,11 +199,14 @@ def _ensure_default_tenant(db: Session) -> Tenant:
         is_active=True,
     )
     db.add(tenant)
+    nested = db.begin_nested() if hasattr(db, "begin_nested") else nullcontext()
     try:
-        db.flush()
-        return tenant
+        with nested:
+            db.flush()
+            return tenant
     except IntegrityError:
-        db.rollback()
+        if not hasattr(db, "begin_nested"):
+            db.rollback()
         existing = db.query(Tenant).filter_by(name=config.DEFAULT_ADMIN_TENANT).first()
         if existing:
             return existing
@@ -271,9 +282,6 @@ def update_oidc_user(
     full_name: Optional[str],
     subject: str,
 ) -> None:
-    # Keep the account linked to the configured external provider, but do not
-    # clear `needs_password_change` automatically: first-login password bootstrap
-    # may still be pending for newly provisioned users.
     user.auth_provider = config.AUTH_PROVIDER
 
     if subject and user.external_subject != subject:
@@ -293,4 +301,4 @@ def update_oidc_user(
             user.email = email
 
     if full_name is not None and user.full_name != full_name:
-        user.full_name = full_name or None
+        user.full_name = full_name

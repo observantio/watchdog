@@ -57,6 +57,14 @@ export default function GrafanaPage() {
 
   const toast = useToast();
   const lastErrorToastRef = useRef({ key: "", ts: 0 });
+  const isMountedRef = useRef(true);
+
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    [],
+  );
 
   const handleApiError = useCallback(
     (e) => {
@@ -172,14 +180,18 @@ export default function GrafanaPage() {
   const loadGroups = useCallback(async () => {
     try {
       const groupsData = await getGroups().catch(() => []);
-      setGroups(groupsData);
+      if (isMountedRef.current) {
+        setGroups(groupsData);
+      }
     } catch {
       /* silent */
     }
   }, []);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
+    if (isMountedRef.current) {
+      setLoading(true);
+    }
     try {
       if (activeTab === "dashboards") {
         const [dashboardsData, foldersData, datasourcesData] =
@@ -199,6 +211,7 @@ export default function GrafanaPage() {
             getFolders({ showHidden: filters.showHidden }).catch(() => []),
             getDatasources().catch(() => []),
           ]);
+        if (!isMountedRef.current) return;
         setDashboards(dashboardsData);
         setFolders(foldersData);
         setDatasources(datasourcesData);
@@ -209,17 +222,21 @@ export default function GrafanaPage() {
             showHidden: filters.showHidden,
           }).catch(() => []),
         ]);
+        if (!isMountedRef.current) return;
         setDatasources(datasourcesData);
       } else if (activeTab === "folders") {
         const foldersData = await getFolders({
           showHidden: filters.showHidden,
         }).catch(() => []);
+        if (!isMountedRef.current) return;
         setFolders(foldersData);
       }
     } catch (e) {
       handleApiError(e);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [activeTab, query, filters, handleApiError]);
 

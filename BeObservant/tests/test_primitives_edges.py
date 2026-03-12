@@ -465,7 +465,7 @@ async def test_system_helpers_cookie_security_secret_provider_and_agent_edges(mo
 
     assert cookie_helpers._parse_networks(["127.0.0.0/8"])
     assert cookie_helpers.is_secure_cookie_request(_request(), trust_proxy_headers=False) is False
-    assert cookie_helpers.is_secure_cookie_request(_request(headers=[(b"x-forwarded-proto", b"https")]), trust_proxy_headers=True) is True
+    assert cookie_helpers.is_secure_cookie_request(_request(headers=[(b"x-forwarded-proto", b"https")]), trust_proxy_headers=True) is False
     assert cookie_helpers.is_secure_cookie_request(_request(client=None), trust_proxy_headers=True, trusted_proxy_cidrs=["127.0.0.0/8"]) is False
     assert cookie_helpers.is_secure_cookie_request(_request(client=("bad-ip", 1)), trust_proxy_headers=True, trusted_proxy_cidrs=["127.0.0.0/8"]) is False
     assert cookie_helpers.is_secure_cookie_request(_request(client=("203.0.113.10", 1)), trust_proxy_headers=True, trusted_proxy_cidrs=["127.0.0.0/8"]) is False
@@ -555,10 +555,11 @@ def test_encryption_edges(monkeypatch):
     encryption_module._get_fernet.cache_clear()
     monkeypatch.setattr(encryption_module.app_config, "DATA_ENCRYPTION_KEY", key)
     encrypted = encryption_module.encrypt_config({"name": "svc", "count": 2})
-    assert list(encrypted) == ["__encrypted__"]
+    assert list(encrypted) == ["__encrypted__", "__v"]
     assert encryption_module.decrypt_config(encrypted) == {"name": "svc", "count": 2}
     assert encryption_module.decrypt_config({"plain": True}) == {"plain": True}
-    assert encryption_module.decrypt_config({"__encrypted__": 123}) == {"__encrypted__": 123}
+    with pytest.raises(ValueError, match="payload must be a string"):
+        encryption_module.decrypt_config({"__encrypted__": 123})
 
     encryption_module._get_fernet.cache_clear()
     monkeypatch.setattr(encryption_module.app_config, "DATA_ENCRYPTION_KEY", Fernet.generate_key().decode())

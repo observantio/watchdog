@@ -43,17 +43,18 @@ def _bcrypt_rounds() -> int:
         rounds = int(raw) if raw is not None else 12
     except (TypeError, ValueError):
         rounds = 12
-    return max(10, min(rounds, 15))
+    return max(12, min(rounds, 15))
 
 
 def hash_password(service: DatabaseAuthService, password: str) -> str:
     if not isinstance(password, str) or not password:
         raise ValueError("password must be a non-empty string")
-
-    pw = password.encode("utf-8")
     rounds = _bcrypt_rounds()
 
     def _hash() -> str:
+        pw = password.encode("utf-8")
+        if len(pw) > 72:
+            raise ValueError("password must be 72 bytes or fewer when UTF-8 encoded")
         return bcrypt.hashpw(pw, bcrypt.gensalt(rounds=rounds)).decode("utf-8")
 
     return _with_password_semaphore(service, _hash)
@@ -65,11 +66,13 @@ def verify_password(service: DatabaseAuthService, plain_password: str, hashed_pa
     if not isinstance(hashed_password, str) or not hashed_password:
         return False
 
-    pw = plain_password.encode("utf-8")
     hpw = hashed_password.encode("utf-8")
 
     def _verify() -> bool:
         try:
+            pw = plain_password.encode("utf-8")
+            if len(pw) > 72:
+                return False
             return bcrypt.checkpw(pw, hpw)
         except (TypeError, ValueError):
             return False
@@ -135,8 +138,6 @@ def reset_user_password_temp(service: DatabaseAuthService, actor_user_id: str, t
 
         now = datetime.now(timezone.utc)
         target.hashed_password = hash_password(service, temporary_password)
-        # Reset creates/refreshes local credentials so externally-provisioned
-        # accounts can be moved back to local-password login.
         target.auth_provider = "local"
         target.needs_password_change = True
         target.password_changed_at = now

@@ -79,6 +79,18 @@ def _consume_recovery_code(service: DatabaseAuthService, db_user: User, code: st
     return False
 
 
+def _verify_totp_code_in_db_user(service: DatabaseAuthService, db_user: User, code: str) -> bool:
+    if not db_user or not db_user.totp_secret:
+        return False
+    if _consume_recovery_code(service, db_user, code):
+        return True
+    try:
+        secret = _decrypt_mfa_secret(service, db_user.totp_secret)
+    except ValueError:
+        return False
+    return bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+
+
 def enroll_totp(service: DatabaseAuthService, user_id: str) -> Dict[str, str]:
     if not _get_fernet(service):
         raise ValueError("DATA_ENCRYPTION_KEY must be configured to use TOTP")
@@ -116,16 +128,7 @@ def verify_totp_code(service: DatabaseAuthService, user: User, code: str) -> boo
         return False
     with get_db_session() as db:
         db_user = db.query(User).filter_by(id=user.id).first()
-        if not db_user or not db_user.totp_secret:
-            return False
-        if _consume_recovery_code(service, db_user, code):
-            db.add(db_user)
-            return True
-        try:
-            secret = _decrypt_mfa_secret(service, db_user.totp_secret)
-        except ValueError:
-            return False
-        return bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+        return _verify_totp_code_in_db_user(service, db_user, code) if db_user else False
 
 
 def disable_totp(
@@ -138,11 +141,8 @@ def disable_totp(
         user = db.query(User).filter_by(id=user_id).first()
         if not user or not user.mfa_enabled:
             return False
-        verified = (
-            current_password and service.verify_password(current_password, user.hashed_password)
-        ) or (
-            code and verify_totp_code(service, user, code)
-        )
+        del current_password
+        verified = bool(code and _verify_totp_code_in_db_user(service, user, code))
         if not verified:
             return False
         user.mfa_enabled = False
@@ -155,7 +155,7 @@ def disable_totp(
 def reset_totp(service: DatabaseAuthService, user_id: str, admin_id: str) -> bool:
     with get_db_session() as db:
         user = db.query(User).filter_by(id=user_id).first()
-        if not user:
+        if not user or not user.mfa_enabled:
             return False
         user.mfa_enabled = False
         user.totp_secret = None
@@ -165,9 +165,11 @@ def reset_totp(service: DatabaseAuthService, user_id: str, admin_id: str) -> boo
 
 def mfa_setup_challenge(service: DatabaseAuthService, user: User) -> JSONDict:
     setup_token = create_mfa_setup_token_op(user)
+    if not setup_token:
+        raise ValueError("Unable to create MFA setup token")
     return {
         service._MFA_SETUP_RESPONSE: True,
-        "setup_token": setup_token.access_token if setup_token else None,
+        "setup_token": setup_token.access_token,
     }
 
 

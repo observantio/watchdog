@@ -20,7 +20,7 @@ The following is not allowed:
 - Sharing private or sensitive information without permission
 
 ## Engineering Conduct Expectations
-When working on `server/`, contributors should:
+When working on `BeObservant`, contributors should:
 - Prioritize safety, correctness, and maintainability
 - Avoid reckless or destructive changes without explicit approval
 - Document breaking changes and operational risk clearly

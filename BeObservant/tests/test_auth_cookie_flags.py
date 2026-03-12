@@ -38,8 +38,10 @@ def _request_with_scheme_and_headers(scheme: str = "http", headers: dict | None 
 class AuthCookieFlagsTests(unittest.TestCase):
     def test_set_auth_cookie_secure_based_on_trusted_forwarded_proto(self):
         previous_trust = config.TRUST_PROXY_HEADERS
+        previous_cidrs = list(getattr(config, "TRUSTED_PROXY_CIDRS", []))
         try:
             config.TRUST_PROXY_HEADERS = True
+            config.TRUSTED_PROXY_CIDRS = ["127.0.0.0/8"]
             req = _request_with_scheme_and_headers(headers={"x-forwarded-proto": "https"})
             self.assertTrue(cookie_secure(req))
 
@@ -48,6 +50,7 @@ class AuthCookieFlagsTests(unittest.TestCase):
             self.assertFalse(cookie_secure(req2))
         finally:
             config.TRUST_PROXY_HEADERS = previous_trust
+            config.TRUSTED_PROXY_CIDRS = previous_cidrs
 
     def test_set_auth_cookie_forced_secure_in_production(self):
         prev_force = config.FORCE_SECURE_COOKIES

@@ -209,8 +209,8 @@ def test_mfa_helpers_and_flows(monkeypatch):
     user.hashed_password = "hashed"
     user.mfa_enabled = True
     user.totp_secret = "enc"
-    monkeypatch.setattr(mfa_mod, "verify_totp_code", lambda service, user, code: code == "123456")
-    assert mfa_mod.disable_totp(service, "u2", current_password="pw") is True
+    monkeypatch.setattr(mfa_mod, "_verify_totp_code_in_db_user", lambda service, user, code: code == "123456")
+    assert mfa_mod.disable_totp(service, "u2", current_password="pw") is False
     user.mfa_enabled = True
     user.totp_secret = "enc"
     assert mfa_mod.disable_totp(service, "u2", code="123456") is True
@@ -220,7 +220,8 @@ def test_mfa_helpers_and_flows(monkeypatch):
     user.mfa_enabled = True
     assert mfa_mod.reset_totp(service, "u2", "admin") is True
     monkeypatch.setattr(mfa_mod, "create_mfa_setup_token_op", lambda user: None)
-    assert mfa_mod.mfa_setup_challenge(service, user) == {"mfa_setup_required": True, "setup_token": None}
+    with pytest.raises(ValueError, match="setup token"):
+        mfa_mod.mfa_setup_challenge(service, user)
     monkeypatch.setattr(mfa_mod, "create_mfa_setup_token_op", lambda user: Token(access_token="jwt", expires_in=60))
     assert mfa_mod.mfa_setup_challenge(service, user)["setup_token"] == "jwt"
     assert mfa_mod.needs_mfa_setup(SimpleNamespace(must_setup_mfa=True, mfa_enabled=False)) is True

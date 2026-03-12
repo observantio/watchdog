@@ -5,6 +5,7 @@ from typing import Dict, Mapping, Optional, TYPE_CHECKING, Union
 
 import httpx
 
+from config import config
 from db_models import User
 from models.access.auth_models import Token
 from custom_types.json import JSONDict
@@ -45,6 +46,9 @@ def _mfa_gate(service: DatabaseAuthService, user: User, mfa_code: Optional[str])
 
 
 def _resolve_oidc_claims(service: DatabaseAuthService, *, tokens: _OidcTokens, expected_nonce: str, enforce_nonce: bool) -> Optional[JSONDict]:
+    if enforce_nonce and expected_nonce and not tokens.id_token:
+        return None
+
     claims: Optional[JSONDict] = None
 
     if tokens.id_token:
@@ -61,9 +65,6 @@ def _resolve_oidc_claims(service: DatabaseAuthService, *, tokens: _OidcTokens, e
         claims = service.oidc_service.verify_access_token(tokens.access_token)
 
     if not claims:
-        return None
-
-    if enforce_nonce and expected_nonce and not tokens.id_token:
         return None
 
     return claims
@@ -95,6 +96,11 @@ def login(service: DatabaseAuthService, username: str, password: str, mfa_code: 
         user = sync_active_user_from_claims(service, claims)
         if user is None:
             return None
+
+        if not bool(getattr(config, "SKIP_LOCAL_MFA_FOR_EXTERNAL", True)):
+            mfa_result = _mfa_gate(service, user, mfa_code)
+            if mfa_result is None or isinstance(mfa_result, dict) or isinstance(mfa_result, Token):
+                return mfa_result
 
         token = service.create_access_token(user)
         return token if isinstance(token, Token) else None
@@ -136,7 +142,7 @@ def exchange_oidc_authorization_code(
         tokens_payload = service.oidc_service.exchange_authorization_code(
             code,
             redirect_uri,
-            code_verifier=(code_verifier if txn.get("code_challenge") else None),
+            code_verifier=(code_verifier if (txn.get("code_challenge") or code_verifier) else None),
         )
 
         tokens = _OidcTokens.from_mapping(tokens_payload if isinstance(tokens_payload, dict) else {})
@@ -187,7 +193,14 @@ def get_oidc_authorization_url(
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
     )
-    return {str(key): str(value) for key, value in result.items()} if isinstance(result, dict) else {}
+    if not isinstance(result, dict):
+        raise ValueError("OIDC authorization transaction did not return a mapping")
+
+    authorization_url = result.get("authorization_url")
+    if not isinstance(authorization_url, str) or not authorization_url.strip():
+        raise ValueError("OIDC authorization transaction did not return an authorization_url")
+
+    return {str(key): str(value) for key, value in result.items()}
 
 
 def provision_external_user(service: DatabaseAuthService, *, email: str, username: str, full_name: Optional[str]) -> Optional[str]:

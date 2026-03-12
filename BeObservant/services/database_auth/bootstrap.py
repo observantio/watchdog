@@ -70,7 +70,13 @@ def _ensure_column(db: Session, table: str, col: str, ddl: str) -> bool:
     cols = _table_columns(db, table)
     if not cols or col in cols:
         return False
-    db.execute(text(ddl))
+    try:
+        db.execute(text(ddl))
+    except SQLAlchemyError:
+        cols = _table_columns(db, table)
+        if col in cols:
+            return False
+        raise
     return True
 
 
@@ -209,10 +215,15 @@ def ensure_default_setup(service: DatabaseAuthService) -> None:
                         )
                     return
 
-                if not config.DEFAULT_ADMIN_PASSWORD or len(config.DEFAULT_ADMIN_PASSWORD) < 16:
-                    raise ValueError("DEFAULT_ADMIN_PASSWORD must be at least 16 characters")
+                if not (config.DEFAULT_ADMIN_TENANT or "").strip():
+                    raise ValueError("DEFAULT_ADMIN_TENANT must be configured")
+
+                if not (config.DEFAULT_ADMIN_USERNAME or "").strip():
+                    raise ValueError("DEFAULT_ADMIN_USERNAME must be configured")
 
                 if not default_tenant:
+                    if not config.DEFAULT_ADMIN_PASSWORD or len(config.DEFAULT_ADMIN_PASSWORD) < 16:
+                        raise ValueError("DEFAULT_ADMIN_PASSWORD must be at least 16 characters")
                     default_tenant = Tenant(
                         name=config.DEFAULT_ADMIN_TENANT,
                         display_name="Default Organization",
@@ -234,6 +245,8 @@ def ensure_default_setup(service: DatabaseAuthService) -> None:
                 )
 
                 if not admin_user:
+                    if not config.DEFAULT_ADMIN_PASSWORD or len(config.DEFAULT_ADMIN_PASSWORD) < 16:
+                        raise ValueError("DEFAULT_ADMIN_PASSWORD must be at least 16 characters")
                     admin_user = User(
                         tenant_id=default_tenant.id,
                         username=admin_username,

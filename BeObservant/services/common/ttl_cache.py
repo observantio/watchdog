@@ -9,10 +9,11 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 """
 
 import asyncio
+from contextlib import suppress
 import json
 import logging
 import time
-from typing import Awaitable, Callable, Dict, Optional, Protocol, runtime_checkable
+from typing import AsyncIterator, Awaitable, Callable, Dict, Optional, Protocol, Sequence, runtime_checkable
 
 from config import config
 from custom_types.json import JSONValue, is_json_value
@@ -32,6 +33,7 @@ class RedisAsyncClient(Protocol):
     async def set(self, key: str, value: bytes, ex: int) -> object: ...
     async def get(self, key: str) -> Optional[bytes]: ...
     async def keys(self, pattern: str) -> list[str] | list[bytes]: ...
+    def scan_iter(self, match: str | None = None) -> AsyncIterator[str | bytes]: ...
     async def delete(self, *keys: str | bytes) -> object: ...
     async def aclose(self) -> object: ...
     async def close(self) -> object: ...
@@ -45,7 +47,9 @@ class TTLCache:
         self._key_prefix = (config.TTL_CACHE_KEY_PREFIX or "beobs:ttl").strip()
         self._redis_client: Optional[RedisAsyncClient] = None
         self._redis_connected = False
-        self._redis_loop_id: Optional[int] = None
+        self._redis_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._redis_init_lock = asyncio.Lock()
+        self._pending: Dict[str, asyncio.Future[Optional[JSONValue]]] = {}
 
     def _redis_key(self, key: str) -> str:
         return f"{self._key_prefix}:{key}"
@@ -73,7 +77,7 @@ class TTLCache:
         client = self._redis_client
         self._redis_client = None
         self._redis_connected = False
-        self._redis_loop_id = None
+        self._redis_loop = None
         if client is None:
             return
         try:
@@ -94,50 +98,52 @@ class TTLCache:
         if _redis_asyncio is None or not self._redis_url:
             return False
 
-        loop_id = id(asyncio.get_running_loop())
+        async with self._redis_init_lock:
+            loop = asyncio.get_running_loop()
 
-        if self._redis_client is None or self._redis_loop_id != loop_id:
-            await self._close_redis_client()
-            try:
-                self._redis_client = _redis_asyncio.from_url(
-                    self._redis_url,
-                    decode_responses=False,
-                    health_check_interval=30,
-                    socket_keepalive=True,
-                )
-                self._redis_loop_id = loop_id
-            except (AttributeError, OSError, RuntimeError, ValueError) as exc:
-                logger.warning("Failed to initialize Redis client for TTLCache; using in-memory fallback: %s", exc)
-                self._redis_client = None
-                return False
+            if self._redis_client is None or self._redis_loop is not loop:
+                await self._close_redis_client()
+                try:
+                    self._redis_client = _redis_asyncio.from_url(
+                        self._redis_url,
+                        decode_responses=False,
+                        health_check_interval=30,
+                        socket_keepalive=True,
+                    )
+                    self._redis_loop = loop
+                except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+                    logger.warning("Failed to initialize Redis client for TTLCache; using in-memory fallback: %s", exc)
+                    self._redis_client = None
+                    return False
 
-        client = self._redis_client
-        if self._redis_connected and client is not None:
-            return True
-
-        try:
-            if client is None:
-                return False
-            ok = await client.ping()
-            if ok:
-                self._redis_connected = True
-                logger.info("Connected to Redis for TTL cache: %s", self._redis_url)
-                await self._flush_memory_to_redis()
+            client = self._redis_client
+            if self._redis_connected and client is not None:
                 return True
-        except (OSError, RuntimeError, ValueError) as exc:
-            logger.warning("Redis TTL cache unreachable; falling back to in-memory cache: %s", exc)
-            await self._close_redis_client()
-            return False
 
-        return False
+            try:
+                if client is None:
+                    return False
+                ok = await client.ping()
+                if ok:
+                    self._redis_connected = True
+                    logger.info("Connected to Redis for TTL cache: %s", self._redis_url)
+                    await self._flush_memory_to_redis()
+                    return True
+            except (OSError, RuntimeError, ValueError) as exc:
+                logger.warning("Redis TTL cache unreachable; falling back to in-memory cache: %s", exc)
+                await self._close_redis_client()
+                return False
+
+            return False
 
     async def _flush_memory_to_redis(self) -> None:
         client = self._redis_client
-        if client is None or not self._data:
+        if client is None:
             return
 
         now = time.monotonic()
-        items = list(self._data.items())
+        async with self._lock:
+            items = list(self._data.items())
 
         for k, (v, expires) in items:
             ttl = int(expires - now)
@@ -180,7 +186,16 @@ class TTLCache:
             return value
 
     async def set(self, key: str, value: JSONValue, ttl_seconds: int) -> None:
-        ttl = max(0, int(ttl_seconds))
+        ttl = int(ttl_seconds)
+
+        if ttl <= 0:
+            async with self._lock:
+                self._data.pop(key, None)
+            return
+
+        expires_at = time.monotonic() + ttl
+        async with self._lock:
+            self._data[key] = (value, expires_at)
 
         if await self._ensure_redis():
             try:
@@ -193,9 +208,6 @@ class TTLCache:
                 logger.warning("Redis TTL cache SET failed; using in-memory fallback: %s", exc)
                 await self._close_redis_client()
 
-        async with self._lock:
-            self._data[key] = (value, time.monotonic() + ttl)
-
     async def get_or_set(
         self, key: str, factory: Callable[[], Awaitable[Optional[JSONValue]]], ttl_seconds: int
     ) -> Optional[JSONValue]:
@@ -203,12 +215,32 @@ class TTLCache:
         if v is not None:
             return v
 
-        value = await factory()
-        if value is None:
-            return None
+        async with self._lock:
+            pending = self._pending.get(key)
+            if pending is None:
+                pending = asyncio.get_running_loop().create_future()
+                self._pending[key] = pending
+                owner = True
+            else:
+                owner = False
 
-        await self.set(key, value, ttl_seconds)
-        return value
+        if not owner:
+            return await pending
+
+        try:
+            value = await factory()
+            if value is not None:
+                await self.set(key, value, ttl_seconds)
+            pending.set_result(value)
+            return value
+        except Exception as exc:
+            pending.set_exception(exc)
+            raise
+        finally:
+            async with self._lock:
+                self._pending.pop(key, None)
+            with suppress(Exception):
+                await pending
 
     async def clear(self) -> None:
         if await self._ensure_redis():
@@ -216,7 +248,12 @@ class TTLCache:
                 client = self._redis_client
                 if client is None:
                     return
-                keys = await client.keys(f"{self._key_prefix}:*")
+                pattern = f"{self._key_prefix}:*"
+                keys: Sequence[str | bytes]
+                try:
+                    keys = [key async for key in client.scan_iter(match=pattern)]
+                except AttributeError:
+                    keys = await client.keys(pattern)
                 if keys:
                     await client.delete(*keys)
             except (OSError, RuntimeError, ValueError) as exc:

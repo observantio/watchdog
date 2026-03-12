@@ -13,6 +13,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
+import re
 from typing import Sequence
 
 from fastapi import Request
@@ -22,7 +23,19 @@ from config import config
 Network = IPv4Network | IPv6Network
 
 def _parse_networks(cidrs: Sequence[str]) -> list[Network]:
-    return [ip_network(c, strict=False) for c in cidrs]
+    try:
+        return [ip_network(c, strict=False) for c in cidrs]
+    except ValueError:
+        return []
+
+
+def _forwarded_proto(request: Request) -> str:
+    forwarded = request.headers.get("forwarded", "")
+    match = re.search(r"(?:^|[;,\s])proto=\"?([A-Za-z]+)", forwarded)
+    if match:
+        return match.group(1).strip().lower()
+    proto = request.headers.get("x-forwarded-proto", "")
+    return proto.split(",")[0].strip().lower()
 
 def is_secure_cookie_request(
     request: Request,
@@ -37,8 +50,7 @@ def is_secure_cookie_request(
         return False
 
     if not trusted_proxy_cidrs:
-        proto = request.headers.get("x-forwarded-proto", "")
-        return proto.split(",")[0].strip().lower() == "https"
+        return False
 
     client = request.client
     if not client:
@@ -50,11 +62,13 @@ def is_secure_cookie_request(
         return False
 
     networks = _parse_networks(trusted_proxy_cidrs)
+    if not networks:
+        return False
+
     if not any(peer_ip in net for net in networks):
         return False
 
-    proto = request.headers.get("x-forwarded-proto", "")
-    return proto.split(",")[0].strip().lower() == "https"
+    return _forwarded_proto(request) == "https"
 
 
 def cookie_secure(request: Request) -> bool:
