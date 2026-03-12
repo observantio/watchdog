@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from threading import RLock
 from types import SimpleNamespace
 from typing import Any
 
@@ -126,6 +127,7 @@ class DashboardState:
 
 class WorkflowState:
     def __init__(self, *, admin_requires_mfa: bool = False) -> None:
+        self._lock = RLock()
         self.tenant_id = "tenant-a"
         self.org_id = "org-a"
         self.users: dict[str, UserState] = {}
@@ -159,8 +161,9 @@ class WorkflowState:
         return [Permission(name) for name in permission_names]
 
     def _sync_user_tokens(self, user: UserState) -> None:
-        self.tokens[f"token-{user.id}"] = self._token_data_for_user(user)
-        self.tokens[f"setup-{user.id}"] = self._token_data_for_user(user, is_mfa_setup=True)
+        with self._lock:
+            self.tokens[f"token-{user.id}"] = self._token_data_for_user(user)
+            self.tokens[f"setup-{user.id}"] = self._token_data_for_user(user, is_mfa_setup=True)
 
     def _add_user(
         self,
@@ -177,24 +180,25 @@ class WorkflowState:
         group_ids: list[str] | None = None,
         password: str = "password123",
     ) -> UserState:
-        user = UserState(
-            id=user_id,
-            username=username,
-            email=email,
-            full_name=full_name,
-            tenant_id=self.tenant_id,
-            org_id=self.org_id,
-            role=role,
-            permissions=list(permissions),
-            group_ids=list(group_ids or []),
-            is_superuser=is_superuser,
-            must_setup_mfa=must_setup_mfa,
-            mfa_enabled=mfa_enabled,
-            password=password,
-        )
-        self.users[user_id] = user
-        self._sync_user_tokens(user)
-        return user
+        with self._lock:
+            user = UserState(
+                id=user_id,
+                username=username,
+                email=email,
+                full_name=full_name,
+                tenant_id=self.tenant_id,
+                org_id=self.org_id,
+                role=role,
+                permissions=list(permissions),
+                group_ids=list(group_ids or []),
+                is_superuser=is_superuser,
+                must_setup_mfa=must_setup_mfa,
+                mfa_enabled=mfa_enabled,
+                password=password,
+            )
+            self.users[user_id] = user
+            self._sync_user_tokens(user)
+            return user
 
     def _token_data_for_user(self, user: UserState, *, is_mfa_setup: bool = False) -> TokenData:
         return TokenData(
@@ -214,23 +218,27 @@ class WorkflowState:
         return {"Authorization": f"Bearer {token}"}
 
     def decode_token(self, token: str) -> TokenData | None:
-        token_data = self.tokens.get(token)
-        return token_data.model_copy(deep=True) if token_data else None
+        with self._lock:
+            token_data = self.tokens.get(token)
+            return token_data.model_copy(deep=True) if token_data else None
 
     def get_user_by_id(self, user_id: str) -> SimpleNamespace | None:
-        user = self.users.get(user_id)
-        return user.as_runtime() if user else None
+        with self._lock:
+            user = self.users.get(user_id)
+            return user.as_runtime() if user else None
 
     def get_user_by_id_in_tenant(self, user_id: str, tenant_id: str) -> SimpleNamespace | None:
-        user = self.users.get(user_id)
-        if user is None or user.tenant_id != tenant_id:
-            return None
-        return user.as_runtime()
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None or user.tenant_id != tenant_id:
+                return None
+            return user.as_runtime()
 
     def get_user_permissions(self, user: object) -> list[str]:
-        user_id = str(getattr(user, "id", "") or getattr(user, "user_id", ""))
-        state = self.users.get(user_id)
-        return list(state.permissions if state else [])
+        with self._lock:
+            user_id = str(getattr(user, "id", "") or getattr(user, "user_id", ""))
+            state = self.users.get(user_id)
+            return list(state.permissions if state else [])
 
     def is_external_auth_enabled(self) -> bool:
         return False
@@ -239,17 +247,18 @@ class WorkflowState:
         return True
 
     def login(self, username: str, password: str, mfa_code: str | None = None) -> Token | dict[str, Any] | None:
-        user = next((item for item in self.users.values() if item.username == username), None)
-        if user is None or not user.is_active or user.password != password:
-            return None
-        if user.must_setup_mfa and not user.mfa_enabled:
-            return {"mfa_setup_required": True, "setup_token": f"setup-{user.id}"}
-        if user.mfa_enabled:
-            if not mfa_code:
-                return {"mfa_required": True}
-            if mfa_code != "123456":
+        with self._lock:
+            user = next((item for item in self.users.values() if item.username == username), None)
+            if user is None or not user.is_active or user.password != password:
                 return None
-        return Token(access_token=f"token-{user.id}", expires_in=3600)
+            if user.must_setup_mfa and not user.mfa_enabled:
+                return {"mfa_setup_required": True, "setup_token": f"setup-{user.id}"}
+            if user.mfa_enabled:
+                if not mfa_code:
+                    return {"mfa_required": True}
+                if mfa_code != "123456":
+                    return None
+            return Token(access_token=f"token-{user.id}", expires_in=3600)
 
     def enroll_totp(self, user_id: str) -> dict[str, str]:
         if user_id not in self.users:
@@ -262,128 +271,139 @@ class WorkflowState:
     def verify_enable_totp(self, user_id: str, code: str) -> list[str]:
         if code != "123456":
             raise ValueError("Invalid TOTP code")
-        user = self.users[user_id]
-        user.mfa_enabled = True
-        user.must_setup_mfa = False
-        self._sync_user_tokens(user)
-        return ["recovery-1", "recovery-2"]
+        with self._lock:
+            user = self.users[user_id]
+            user.mfa_enabled = True
+            user.must_setup_mfa = False
+            self._sync_user_tokens(user)
+            return ["recovery-1", "recovery-2"]
 
     def disable_totp(self, user_id: str, *, current_password: str | None = None, code: str | None = None) -> bool:
-        user = self.users.get(user_id)
-        if user is None or not user.mfa_enabled:
-            return False
-        if current_password and current_password != user.password:
-            return False
-        if code and code != "123456":
-            return False
-        user.mfa_enabled = False
-        self._sync_user_tokens(user)
-        return True
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None or not user.mfa_enabled:
+                return False
+            if current_password and current_password != user.password:
+                return False
+            if code and code != "123456":
+                return False
+            user.mfa_enabled = False
+            self._sync_user_tokens(user)
+            return True
 
     def reset_totp(self, user_id: str, _admin_id: str) -> bool:
-        user = self.users.get(user_id)
-        if user is None:
-            return False
-        user.mfa_enabled = False
-        user.must_setup_mfa = True
-        self._sync_user_tokens(user)
-        return True
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None:
+                return False
+            user.mfa_enabled = False
+            user.must_setup_mfa = True
+            self._sync_user_tokens(user)
+            return True
 
     def create_user(self, payload: Any, tenant_id: str, *_args: Any) -> SimpleNamespace:
-        user_id = f"u-{self.next_user_id}"
-        self.next_user_id += 1
-        role = getattr(payload, "role", Role.USER)
-        permissions = [permission.value for permission in ROLE_PERMISSIONS[role]]
-        user = self._add_user(
-            user_id=user_id,
-            username=payload.username,
-            email=payload.email,
-            full_name=getattr(payload, "full_name", None) or payload.username,
-            role=role,
-            permissions=permissions,
-            group_ids=list(getattr(payload, "group_ids", []) or []),
-            password=getattr(payload, "password", None) or "password123",
-        )
-        user.tenant_id = tenant_id
-        user.org_id = getattr(payload, "org_id", self.org_id) or self.org_id
-        self._sync_user_tokens(user)
-        return user.as_runtime()
+        with self._lock:
+            user_id = f"u-{self.next_user_id}"
+            self.next_user_id += 1
+            role = getattr(payload, "role", Role.USER)
+            permissions = [permission.value for permission in ROLE_PERMISSIONS[role]]
+            user = self._add_user(
+                user_id=user_id,
+                username=payload.username,
+                email=payload.email,
+                full_name=getattr(payload, "full_name", None) or payload.username,
+                role=role,
+                permissions=permissions,
+                group_ids=list(getattr(payload, "group_ids", []) or []),
+                password=getattr(payload, "password", None) or "password123",
+            )
+            user.tenant_id = tenant_id
+            user.org_id = getattr(payload, "org_id", self.org_id) or self.org_id
+            self._sync_user_tokens(user)
+            return user.as_runtime()
 
     def build_user_response(self, user: object, _permissions: list[str]) -> UserResponse:
-        state = self.users[str(getattr(user, "id"))]
-        return UserResponse(
-            id=state.id,
-            username=state.username,
-            email=state.email,
-            full_name=state.full_name,
-            role=state.role,
-            group_ids=list(state.group_ids),
-            is_active=state.is_active,
-            org_id=state.org_id,
-            tenant_id=state.tenant_id,
-            created_at=state.created_at,
-            last_login=None,
-            permissions=self._permission_enums(state.permissions),
-            direct_permissions=[],
-            needs_password_change=False,
-            api_keys=[],
-            mfa_enabled=state.mfa_enabled,
-            must_setup_mfa=state.must_setup_mfa,
-            auth_provider="local",
-        )
+        with self._lock:
+            state = self.users[str(getattr(user, "id"))]
+            return UserResponse(
+                id=state.id,
+                username=state.username,
+                email=state.email,
+                full_name=state.full_name,
+                role=state.role,
+                group_ids=list(state.group_ids),
+                is_active=state.is_active,
+                org_id=state.org_id,
+                tenant_id=state.tenant_id,
+                created_at=state.created_at,
+                last_login=None,
+                permissions=self._permission_enums(state.permissions),
+                direct_permissions=[],
+                needs_password_change=False,
+                api_keys=[],
+                mfa_enabled=state.mfa_enabled,
+                must_setup_mfa=state.must_setup_mfa,
+                auth_provider="local",
+            )
 
     def get_user_by_username(self, username: str) -> SimpleNamespace | None:
-        user = next((item for item in self.users.values() if item.username == username), None)
-        return user.as_runtime() if user else None
+        with self._lock:
+            user = next((item for item in self.users.values() if item.username == username), None)
+            return user.as_runtime() if user else None
 
     def list_users(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[SimpleNamespace]:
-        users = [user for user in self.users.values() if user.tenant_id == tenant_id]
-        return [user.as_runtime() for user in users[offset : offset + limit]]
+        with self._lock:
+            users = [user for user in self.users.values() if user.tenant_id == tenant_id]
+            return [user.as_runtime() for user in users[offset : offset + limit]]
 
     def update_user(self, user_id: str, payload: Any, tenant_id: str, *_args: Any) -> SimpleNamespace | None:
-        user = self.users.get(user_id)
-        if user is None or user.tenant_id != tenant_id:
-            return None
-        data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else dict(payload)
-        for field_name, value in data.items():
-            if field_name == "permissions":
-                continue
-            if value is None:
-                continue
-            setattr(user, field_name, value)
-        self._sync_user_tokens(user)
-        return user.as_runtime()
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None or user.tenant_id != tenant_id:
+                return None
+            data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else dict(payload)
+            for field_name, value in data.items():
+                if field_name == "permissions":
+                    continue
+                if value is None:
+                    continue
+                setattr(user, field_name, value)
+            self._sync_user_tokens(user)
+            return user.as_runtime()
 
     def update_password(self, user_id: str, payload: Any, tenant_id: str) -> bool:
-        user = self.users.get(user_id)
-        if user is None or user.tenant_id != tenant_id:
-            return False
-        current_password = getattr(payload, "current_password", None)
-        if current_password is not None and current_password != user.password:
-            return False
-        user.password = payload.new_password
-        return True
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None or user.tenant_id != tenant_id:
+                return False
+            current_password = getattr(payload, "current_password", None)
+            if current_password is not None and current_password != user.password:
+                return False
+            user.password = payload.new_password
+            return True
 
     def reset_user_password_temp(self, actor_user_id: str, target_user_id: str, tenant_id: str) -> dict[str, str]:
         del actor_user_id
-        user = self.users[target_user_id]
-        if user.tenant_id != tenant_id:
-            raise ValueError("target user not in tenant")
-        user.password = "Temp-Password-123"
-        return {
-            "temporary_password": user.password,
-            "target_email": user.email,
-            "target_username": user.username,
-        }
+        with self._lock:
+            user = self.users[target_user_id]
+            if user.tenant_id != tenant_id:
+                raise ValueError("target user not in tenant")
+            user.password = "Temp-Password-123"
+            return {
+                "temporary_password": user.password,
+                "target_email": user.email,
+                "target_username": user.username,
+            }
 
     def delete_user(self, user_id: str, tenant_id: str, _actor_user_id: str) -> bool:
-        user = self.users.get(user_id)
-        if user is None or user.tenant_id != tenant_id:
-            return False
-        self.users.pop(user_id, None)
-        self.tokens.pop(f"token-{user_id}", None)
-        self.tokens.pop(f"setup-{user_id}", None)
-        return True
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None or user.tenant_id != tenant_id:
+                return False
+            self.users.pop(user_id, None)
+            self.tokens.pop(f"token-{user_id}", None)
+            self.tokens.pop(f"setup-{user_id}", None)
+            return True
 
     def update_user_permissions(
         self,
@@ -392,87 +412,95 @@ class WorkflowState:
         tenant_id: str,
         *_args: Any,
     ) -> bool:
-        user = self.users.get(user_id)
-        if user is None or user.tenant_id != tenant_id:
-            return False
-        user.permissions = sorted({str(name) for name in permission_names})
-        self._sync_user_tokens(user)
-        return True
+        with self._lock:
+            user = self.users.get(user_id)
+            if user is None or user.tenant_id != tenant_id:
+                return False
+            user.permissions = sorted({str(name) for name in permission_names})
+            self._sync_user_tokens(user)
+            return True
 
     def list_all_permissions(self) -> list[dict[str, object]]:
         return [{"name": permission.value, "resource_type": permission.value.split(":", 1)[-1]} for permission in Permission]
 
     def list_groups(self, tenant_id: str, *_args: Any, **_kwargs: Any) -> list[Group]:
-        return [group for group in self.groups.values() if group.tenant_id == tenant_id]
+        with self._lock:
+            return [group for group in self.groups.values() if group.tenant_id == tenant_id]
 
     def create_group(self, payload: Any, tenant_id: str, *_args: Any) -> Group:
-        group_id = f"g-{self.next_group_id}"
-        self.next_group_id += 1
-        group = Group(
-            id=group_id,
-            tenant_id=tenant_id,
-            name=payload.name,
-            description=getattr(payload, "description", None),
-            created_at=utcnow(),
-            updated_at=utcnow(),
-            permissions=[],
-        )
-        self.groups[group_id] = group
-        return group
+        with self._lock:
+            group_id = f"g-{self.next_group_id}"
+            self.next_group_id += 1
+            group = Group(
+                id=group_id,
+                tenant_id=tenant_id,
+                name=payload.name,
+                description=getattr(payload, "description", None),
+                created_at=utcnow(),
+                updated_at=utcnow(),
+                permissions=[],
+            )
+            self.groups[group_id] = group
+            return group
 
     def get_group(self, group_id: str, tenant_id: str, *_args: Any, **_kwargs: Any) -> Group | None:
-        group = self.groups.get(group_id)
-        if group is None or group.tenant_id != tenant_id:
-            return None
-        return group
+        with self._lock:
+            group = self.groups.get(group_id)
+            if group is None or group.tenant_id != tenant_id:
+                return None
+            return group
 
     def update_group(self, group_id: str, payload: Any, tenant_id: str, *_args: Any, **_kwargs: Any) -> Group | None:
-        group = self.get_group(group_id, tenant_id)
-        if group is None:
-            return None
-        data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else dict(payload)
-        updates = group.model_copy(update={key: value for key, value in data.items() if value is not None})
-        updates.updated_at = utcnow()
-        self.groups[group_id] = updates
-        return updates
+        with self._lock:
+            group = self.get_group(group_id, tenant_id)
+            if group is None:
+                return None
+            data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else dict(payload)
+            updates = group.model_copy(update={key: value for key, value in data.items() if value is not None})
+            updates.updated_at = utcnow()
+            self.groups[group_id] = updates
+            return updates
 
     def delete_group(self, group_id: str, tenant_id: str, *_args: Any, **_kwargs: Any) -> bool:
-        group = self.get_group(group_id, tenant_id)
-        if group is None:
-            return False
-        self.groups.pop(group_id, None)
-        for user in self.users.values():
-            user.group_ids = [existing for existing in user.group_ids if existing != group_id]
-            self._sync_user_tokens(user)
-        return True
+        with self._lock:
+            group = self.get_group(group_id, tenant_id)
+            if group is None:
+                return False
+            self.groups.pop(group_id, None)
+            for user in self.users.values():
+                user.group_ids = [existing for existing in user.group_ids if existing != group_id]
+                self._sync_user_tokens(user)
+            return True
 
     def update_group_permissions(self, group_id: str, permission_names: list[str], tenant_id: str, *_args: Any, **_kwargs: Any) -> bool:
-        group = self.get_group(group_id, tenant_id)
-        if group is None:
-            return False
-        updated = group.model_copy(
-            update={
-                "permissions": [
-                    PermissionInfo(id=name, name=name, display_name=name, description=None, resource_type="workflow", action="test")
-                    for name in permission_names
-                ]
-            }
-        )
-        self.groups[group_id] = updated
-        return True
+        with self._lock:
+            group = self.get_group(group_id, tenant_id)
+            if group is None:
+                return False
+            updated = group.model_copy(
+                update={
+                    "permissions": [
+                        PermissionInfo(id=name, name=name, display_name=name, description=None, resource_type="workflow", action="test")
+                        for name in permission_names
+                    ]
+                }
+            )
+            self.groups[group_id] = updated
+            return True
 
     def update_group_members(self, group_id: str, user_ids: list[str], *_args: Any, **_kwargs: Any) -> bool:
-        if group_id not in self.groups:
-            return False
-        for user in self.users.values():
-            user.group_ids = [existing for existing in user.group_ids if existing != group_id]
-        for user_id in user_ids:
-            user = self.users.get(user_id)
-            if user is None:
-                continue
-            user.group_ids.append(group_id)
-            self._sync_user_tokens(user)
-        return True
+        with self._lock:
+            if group_id not in self.groups:
+                return False
+            for user in self.users.values():
+                user.group_ids = [existing for existing in user.group_ids if existing != group_id]
+            for user_id in user_ids:
+                user = self.users.get(user_id)
+                if user is None:
+                    continue
+                user.group_ids.append(group_id)
+                self._sync_user_tokens(user)
+            return True
 
     def _api_key_visible_to_user(self, key: ApiKeyState, user: UserState, show_hidden: bool) -> bool:
         if key.owner_user_id == user.id:
@@ -511,75 +539,82 @@ class WorkflowState:
         )
 
     def list_api_keys(self, user_id: str, show_hidden: bool = False) -> list[ApiKey]:
-        user = self.users[user_id]
-        visible = [key for key in self.api_keys.values() if self._api_key_visible_to_user(key, user, show_hidden)]
-        return [self._api_key_model(key, user) for key in sorted(visible, key=lambda item: item.id)]
+        with self._lock:
+            user = self.users[user_id]
+            visible = [key for key in self.api_keys.values() if self._api_key_visible_to_user(key, user, show_hidden)]
+            return [self._api_key_model(key, user) for key in sorted(visible, key=lambda item: item.id)]
 
     def create_api_key(self, user_id: str, _tenant_id: str, payload: Any) -> ApiKey:
-        key_id = f"key-{self.next_api_key_id}"
-        self.next_api_key_id += 1
-        state = ApiKeyState(
-            id=key_id,
-            owner_user_id=user_id,
-            owner_username=self.users[user_id].username,
-            name=payload.name,
-            key=str(getattr(payload, "key", None) or f"org-{self.next_api_key_id}"),
-            otlp_token=f"otlp-{key_id}",
-            is_default=not any(key.owner_user_id == user_id for key in self.api_keys.values()),
-        )
-        self.api_keys[key_id] = state
-        return self._api_key_model(state, self.users[user_id])
+        with self._lock:
+            key_id = f"key-{self.next_api_key_id}"
+            self.next_api_key_id += 1
+            state = ApiKeyState(
+                id=key_id,
+                owner_user_id=user_id,
+                owner_username=self.users[user_id].username,
+                name=payload.name,
+                key=str(getattr(payload, "key", None) or f"org-{self.next_api_key_id}"),
+                otlp_token=f"otlp-{key_id}",
+                is_default=not any(key.owner_user_id == user_id for key in self.api_keys.values()),
+            )
+            self.api_keys[key_id] = state
+            return self._api_key_model(state, self.users[user_id])
 
     def update_api_key(self, user_id: str, key_id: str, payload: ApiKeyUpdate) -> ApiKey:
-        key = self.api_keys[key_id]
-        if key.owner_user_id != user_id:
-            raise ValueError("API key not found")
-        if payload.name is not None:
-            key.name = payload.name
-        if payload.is_enabled is not None:
-            key.is_enabled = payload.is_enabled
-        if payload.is_default is not None:
-            key.is_default = payload.is_default
-        key.updated_at = utcnow()
-        return self._api_key_model(key, self.users[user_id])
+        with self._lock:
+            key = self.api_keys[key_id]
+            if key.owner_user_id != user_id:
+                raise ValueError("API key not found")
+            if payload.name is not None:
+                key.name = payload.name
+            if payload.is_enabled is not None:
+                key.is_enabled = payload.is_enabled
+            if payload.is_default is not None:
+                key.is_default = payload.is_default
+            key.updated_at = utcnow()
+            return self._api_key_model(key, self.users[user_id])
 
     def regenerate_api_key_otlp_token(self, user_id: str, key_id: str) -> ApiKey:
-        key = self.api_keys[key_id]
-        if key.owner_user_id != user_id:
-            raise ValueError("API key not found")
-        key.otlp_token = f"regen-{key_id}"
-        key.updated_at = utcnow()
-        return self._api_key_model(key, self.users[user_id])
+        with self._lock:
+            key = self.api_keys[key_id]
+            if key.owner_user_id != user_id:
+                raise ValueError("API key not found")
+            key.otlp_token = f"regen-{key_id}"
+            key.updated_at = utcnow()
+            return self._api_key_model(key, self.users[user_id])
 
     def delete_api_key(self, user_id: str, key_id: str) -> bool:
-        key = self.api_keys.get(key_id)
-        if key is None or key.owner_user_id != user_id:
-            return False
-        self.api_keys.pop(key_id, None)
-        return True
+        with self._lock:
+            key = self.api_keys.get(key_id)
+            if key is None or key.owner_user_id != user_id:
+                return False
+            self.api_keys.pop(key_id, None)
+            return True
 
     def set_api_key_hidden(self, user_id: str, key_id: str, hidden: bool) -> None:
-        user = self.users[user_id]
-        if hidden:
-            user.hidden_api_key_ids.add(key_id)
-        else:
-            user.hidden_api_key_ids.discard(key_id)
+        with self._lock:
+            user = self.users[user_id]
+            if hidden:
+                user.hidden_api_key_ids.add(key_id)
+            else:
+                user.hidden_api_key_ids.discard(key_id)
 
     def list_api_key_shares(self, user_id: str, _tenant_id: str, key_id: str) -> list[dict[str, object]]:
-        key = self.api_keys[key_id]
-        if key.owner_user_id != user_id:
-            raise ValueError("API key not found")
-        return [
-            {
-                "user_id": shared_user_id,
-                "username": self.users[shared_user_id].username,
-                "email": self.users[shared_user_id].email,
-                "can_use": True,
-                "created_at": key.created_at,
-            }
-            for shared_user_id in sorted(key.shared_user_ids)
-            if shared_user_id in self.users
-        ]
+        with self._lock:
+            key = self.api_keys[key_id]
+            if key.owner_user_id != user_id:
+                raise ValueError("API key not found")
+            return [
+                {
+                    "user_id": shared_user_id,
+                    "username": self.users[shared_user_id].username,
+                    "email": self.users[shared_user_id].email,
+                    "can_use": True,
+                    "created_at": key.created_at,
+                }
+                for shared_user_id in sorted(key.shared_user_ids)
+                if shared_user_id in self.users
+            ]
 
     def replace_api_key_shares(
         self,
@@ -589,26 +624,29 @@ class WorkflowState:
         user_ids: list[str],
         group_ids: list[str],
     ) -> list[dict[str, object]]:
-        key = self.api_keys[key_id]
-        if key.owner_user_id != user_id:
-            raise ValueError("API key not found")
-        key.shared_user_ids = {item for item in user_ids if item in self.users}
-        key.shared_group_ids = set(group_ids)
-        key.updated_at = utcnow()
-        return self.list_api_key_shares(user_id, self.tenant_id, key_id)
+        with self._lock:
+            key = self.api_keys[key_id]
+            if key.owner_user_id != user_id:
+                raise ValueError("API key not found")
+            key.shared_user_ids = {item for item in user_ids if item in self.users}
+            key.shared_group_ids = set(group_ids)
+            key.updated_at = utcnow()
+            return self.list_api_key_shares(user_id, self.tenant_id, key_id)
 
     def delete_api_key_share(self, user_id: str, _tenant_id: str, key_id: str, shared_user_id: str) -> bool:
-        key = self.api_keys[key_id]
-        if key.owner_user_id != user_id or shared_user_id not in key.shared_user_ids:
-            return False
-        key.shared_user_ids.discard(shared_user_id)
-        key.updated_at = utcnow()
-        return True
+        with self._lock:
+            key = self.api_keys[key_id]
+            if key.owner_user_id != user_id or shared_user_id not in key.shared_user_ids:
+                return False
+            key.shared_user_ids.discard(shared_user_id)
+            key.updated_at = utcnow()
+            return True
 
     def validate_otlp_token(self, token: str, *, suppress_errors: bool = True) -> str | None:
         del suppress_errors
-        key = next((item for item in self.api_keys.values() if item.otlp_token == token), None)
-        return key.key if key and key.is_enabled else None
+        with self._lock:
+            key = next((item for item in self.api_keys.values() if item.otlp_token == token), None)
+            return key.key if key and key.is_enabled else None
 
     def _resource_visible(self, visibility: str, owner_id: str, tenant_id: str, shared_group_ids: list[str], current_user: TokenData) -> bool:
         if getattr(current_user, "is_superuser", False):
