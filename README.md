@@ -51,6 +51,13 @@ Be Observant adds the pieces those components do not provide as a single opinion
 | `.env.example` | Environment contract for all services. |
 | `tests` | OTEL collector and sample telemetry generators used to feed demo traces and logs into the stack. |
 
+## Repo Links
+
+- **Be Observant (main control plane)**: https://github.com/observantio/beobservant
+- **Be Ojo (opentelemtry agent)**: https://github.com/observantio/ojo
+- **Be Notified (alerting & incidents)**: https://github.com/observantio/benotified
+- **Be Certain (RCA / AIops engine)**: https://github.com/observantio/becertain
+
 ## High-Level Architecture
 
 ```mermaid
@@ -68,7 +75,7 @@ flowchart LR
 
 ### Service Responsibilities
 
-#### `Be Observant`
+#### Be Observant | Main Proxy
 
 This is the main application server.
 
@@ -82,7 +89,7 @@ From the code, it does all of the following:
 - Provides `/health` and `/ready` checks and a `/api/system/metrics` endpoint for internal UI metrics.
 - Sets security headers, request-size limits, concurrency limits, and CORS.
 
-#### `Be Gateway`
+#### Be Gateway | Secure Gate Keeper
 
 This service is the telemetry gatekeeper.
 
@@ -97,7 +104,7 @@ It is designed to sit behind Envoy's external authorization hook and does the fo
 
 Without this service, the system would still have storage backends, but not a protected multi-tenant OTLP ingestion path.
 
-#### `Be Notified`
+#### Be Notified | Notification and Rule Engine
  
 This service owns alerting workflows beyond raw Alertmanager delivery.
 
@@ -114,7 +121,7 @@ From the routers and services, it is responsible for:
 - Jira integration management and Jira ticket/comment synchronization.
 - Accepting inbound Alertmanager webhooks.
 
-#### `Be Certain`
+#### Be Certain | RCA and AIops Engine
 
 This service is the RCA engine.
 
@@ -130,7 +137,7 @@ Its responsibilities include:
 - Storing RCA jobs and reports in its own database.
 - Enforcing internal service-to-service auth and tenant-aware permission context.
 
-#### `ui`
+#### ui | Interface for Users
 
 The frontend is not a demo shell. It is the main operator experience.
 
