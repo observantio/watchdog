@@ -385,7 +385,7 @@ export default function DashboardEditorModal({
                     (t.dashboard.panels || [])
                       .map((p) => p.title)
                       .slice(0, 3)
-                      .join("\n") || "No panels";
+                      .join("\n") || "This is either a template with no panels or a complex dashboard where panel titles are not easily extracted.";
                   return (
                     <button
                       key={t.id}
