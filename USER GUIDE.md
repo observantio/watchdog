@@ -1,4 +1,4 @@
-# Observantio User Guide
+# Observantio's User Guide
 
 This guide explains how to install, understand, and use the full application stack in this workspace.
 

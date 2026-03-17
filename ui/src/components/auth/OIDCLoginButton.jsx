@@ -9,8 +9,8 @@ export default function OIDCLoginButton({
   return (
     <Button
       type="button"
-      variant="secondary"
-      className="w-full"
+      variant="primary"
+      className="w-full bg-gradient-to-r from-sre-primary via-sre-primary-light to-sre-success text-white shadow-lg border border-black dark:border-white"
       loading={loading}
       onClick={onClick}
     >

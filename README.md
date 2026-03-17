@@ -1,4 +1,4 @@
-# Observantio
+# Observantio's Watchdog
 
 Watchdog is a self-hosted observability control plane built around Grafana, Loki, Tempo, Mimir, Alertmanager, and a set of application services that add tenancy, access control, alert workflows, and AI-assisted root cause analysis.
 

@@ -196,17 +196,12 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-sre-bg p-4">
       <Card className="w-full max-w-md">
         <div className="text-center mb-8">
-          <span
-            className="material-icons text-7xl text-sre-black eye-blink"
-            aria-hidden="true"
-          >
-            visibility
-          </span>
+          <img src="/favicon.png" alt="Watchdog logo" className="mx-auto  w-43 h-43 dark:filter dark:invert" />
           <h1 className="text-3xl font-bold text-sre-text mb-2">
             Watchdog
           </h1>
-          <p className="text-sre-text-muted">
-            Observing your entire Infrastructure
+          <p className="font-lg">
+            Observing your entire infrastructure
           </p>
         </div>
 

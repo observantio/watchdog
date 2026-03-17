@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- transparent background triangle with eye -->
-  <polygon points="32,8 56,56 8,56" fill="#000000" />
-  <circle cx="32" cy="36" r="10" fill="white" />
-  <circle cx="32" cy="36" r="5" fill="#000000" />
-</svg>
