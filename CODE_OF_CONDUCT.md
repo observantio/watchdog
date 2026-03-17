@@ -1,7 +1,7 @@
 # Server Code of Conduct
 
 ## Scope
-This Code of Conduct applies to all collaboration in the `BeObservant` service, including:
+This Code of Conduct applies to all collaboration in the `watchdog` service, including:
 - Source code, issues, pull requests, reviews, and discussions
 - Chat, comments, and incident-response collaboration related to this service
 
@@ -20,7 +20,7 @@ The following is not allowed:
 - Sharing private or sensitive information without permission
 
 ## Engineering Conduct Expectations
-When working on `BeObservant`, contributors should:
+When working on `watchdog`, contributors should:
 - Prioritize safety, correctness, and maintainability
 - Avoid reckless or destructive changes without explicit approval
 - Document breaking changes and operational risk clearly

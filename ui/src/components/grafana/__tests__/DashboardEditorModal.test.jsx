@@ -41,7 +41,7 @@ describe("DashboardEditorModal — JSON sample loader", () => {
       />,
     );
 
-    const btn = screen.getByTestId("load-mimir-sample");
+    const btn = screen.getByTestId("load-template-native-otel-collector-overview");
     fireEvent.click(btn);
 
     expect(setJsonContent).toHaveBeenCalled();

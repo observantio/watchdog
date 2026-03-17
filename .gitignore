@@ -28,6 +28,6 @@ coverage/
 *.venv/
 .mypy_cache/
 .ruff_cache/
-BeCertain/
-BeNotified/
+resolver/
+notifier/
 showcase/

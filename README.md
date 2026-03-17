@@ -1,10 +1,10 @@
 # Observantio
 
-Be Observant is a self-hosted observability control plane built around Grafana, Loki, Tempo, Mimir, Alertmanager, and a set of application services that add tenancy, access control, alert workflows, and AI-assisted root cause analysis.
+Watchdog is a self-hosted observability control plane built around Grafana, Loki, Tempo, Mimir, Alertmanager, and a set of application services that add tenancy, access control, alert workflows, and AI-assisted root cause analysis.
 
-![Observantio Quick Demo](assets/Observant.gif)
+![Observantio Quick Demo](assets/watchdog.gif)
 
-If you are new to the project, the simplest way to think about it is this: the Grafana stack is the storage and query layer, and Be Observant is the application layer that makes it practical for a team and enterprise to use that stack together.
+If you are new to the project, the simplest way to think about it is this: the Grafana stack is the storage and query layer, and Watchdog is the application layer that makes it practical for a team and enterprise to use that stack together.
 
 In plain terms, this workspace gives you:
 
@@ -18,7 +18,7 @@ This repository is best understood as one product made of several cooperating se
 
 ## What The System Is Trying To Achieve
 
-Be Observant aims to turn the raw LGTM stack into a usable multi-user application.
+Watchdog aims to turn the raw LGTM stack into a usable multi-user application.
 
 The base Grafana components already do storage and querying well:
 
@@ -28,7 +28,7 @@ The base Grafana components already do storage and querying well:
 - Alertmanager handles alert routing and silences.
 - Grafana renders dashboards and data sources.
 
-Be Observant adds the pieces those components do not provide as a single opinionated product:
+Watchdog adds the pieces those components do not provide as a single opinionated product:
 
 - Authentication and session management.
 - User, group, permission, and API key management.
@@ -42,10 +42,10 @@ Be Observant adds the pieces those components do not provide as a single opinion
 
 | Component | Role |
 | --- | --- |
-| `beobservant` | Main FastAPI control plane. Handles auth, users, groups, API keys, Grafana proxy bootstrap, Loki/Tempo/Mimir-facing APIs, system metrics, and secure proxying to BeNotified and BeCertain. |
-| `begateway` | OTLP token validation service for Envoy `ext_authz`. Validates `x-otlp-token`, applies allowlists and rate limits, and returns `X-Scope-OrgID` for downstream tenancy. |
-| `benotified` | Alerting workflow service. Stores and serves alert rules, channels, silences, incidents, and Jira integrations. Consumes Alertmanager webhooks and protects most endpoints with an internal service token. |
-| `becertain` | RCA and analysis engine. Reads logs, metrics, and traces from Loki, Mimir, and Tempo; runs anomaly detection and job-based RCA; stores RCA jobs and reports. |
+| `watchdog` | Main FastAPI control plane. Handles auth, users, groups, API keys, Grafana proxy bootstrap, Loki/Tempo/Mimir-facing APIs, system metrics, and secure proxying to Notifier and Resolver. |
+| `gatekeeper` | OTLP token validation service for Envoy `ext_authz`. Validates `x-otlp-token`, applies allowlists and rate limits, and returns `X-Scope-OrgID` for downstream tenancy. |
+| `notifier` | Alerting workflow service. Stores and serves alert rules, channels, silences, incidents, and Jira integrations. Consumes Alertmanager webhooks and protects most endpoints with an internal service token. |
+| `resolver` | RCA and analysis engine. Reads logs, metrics, and traces from Loki, Mimir, and Tempo; runs anomaly detection and job-based RCA; stores RCA jobs and reports. |
 | `ui` | React/Vite frontend. Exposes dashboards, logs, traces, alerts, incidents, integrations, API keys, users/groups, audit views, and RCA pages. |
 | `docker-compose.yml` | Local reference deployment for the entire stack. |
 | `.env.example` | Environment contract for all services. |
@@ -53,29 +53,29 @@ Be Observant adds the pieces those components do not provide as a single opinion
 
 ## Repo Links
 
-- **Be Observant (main control plane)**: https://github.com/observantio/beobservant
+- **Watchdog (main control plane)**: https://github.com/observantio/watchdog
 - **Ojo (opentelemtry agent)**: https://github.com/observantio/ojo
-- **Be Notified (alerting & incidents)**: https://github.com/observantio/benotified
-- **Be Certain (RCA / AIops engine)**: https://github.com/observantio/becertain
+- **Notifier (alerting & incidents)**: https://github.com/observantio/notifier
+- **Resolver (RCA / AIops engine)**: https://github.com/observantio/resolver
 
 ## High-Level Architecture
 
 ```mermaid
 flowchart LR
   A[Applications / OTel Collector] --> B[otlp-gateway<br/>Envoy]
-  B --> C[gateway-auth<br/>BeGateway ext_authz]
+  B --> C[gateway-auth<br/>Gatekeeper ext_authz]
   C --> D[Loki / Tempo / Mimir]
 
   U[Users] --> UI[UI]
-  U --> API[Be Observant API]
+  U --> API[Watchdog]
   API --> G[Loki / Tempo / Mimir<br/>Alertmanager / Grafana]
-  API --> N[BeNotified]
-  API --> R[BeCertain]
+  API --> N[Notifier]
+  API --> R[Resolver]
 ```
 
 ### Service Responsibilities
 
-#### Be Observant | Main Proxy
+#### Watchdog | Main Proxy
 
 This is the main application server.
 
@@ -84,8 +84,8 @@ From the code, it does all of the following:
 - Boots the main database schema and auth service.
 - Exposes login, logout, registration, OIDC exchange, MFA, user, group, audit, and API key endpoints.
 - Stores and resolves the current user context, permissions, and API-key-backed scope.
-- Proxies observability operations to Loki, Tempo, Grafana, Alertmanager, and BeCertain.
-- Exposes `/api/internal/otlp/validate` so BeGateway can validate OTLP tokens against BeObservant's auth model.
+- Proxies observability operations to Loki, Tempo, Grafana, Alertmanager, and Resolver.
+- Exposes `/api/internal/otlp/validate` so Gatekeeper can validate OTLP tokens against Watchdog's auth model.
 - Provides `/health` and `/ready` checks and a `/api/system/metrics` endpoint for internal UI metrics.
 - Sets security headers, request-size limits, concurrency limits, and CORS.
 
@@ -99,12 +99,12 @@ It is designed to sit behind Envoy's external authorization hook and does the fo
 - Applies optional IP allowlists.
 - Applies request rate limiting.
 - Caches token validation results in memory or Redis.
-- Calls the BeObservant internal validation API when a cache miss occurs.
+- Calls the Watchdog internal validation API when a cache miss occurs.
 - Returns `X-Scope-OrgID` so Loki, Tempo, and Mimir receive the correct tenant scope.
 
 Without this service, the system would still have storage backends, but not a protected multi-tenant OTLP ingestion path.
 
-#### Be Notified | Notification and Rule Engine
+#### Notifier | Notification and Rule Engine
  
 This service owns alerting workflows beyond raw Alertmanager delivery.
 
@@ -121,7 +121,7 @@ From the routers and services, it is responsible for:
 - Jira integration management and Jira ticket/comment synchronization.
 - Accepting inbound Alertmanager webhooks.
 
-#### Be Certain | RCA and AIops Engine
+#### Resolver | RCA and AIops Engine
 
 This service is the RCA engine.
 
@@ -159,10 +159,10 @@ The included `docker-compose.yml` brings up the full local stack:
 
 - `postgres` for application data.
 - `redis` for rate limiting, token cache, and shared ephemeral state.
-- `beobservant` as the main API.
-- `benotified` for alerts, incidents, and integrations.
+- `watchdog` as the main API.
+- `notifier` for alerts, incidents, and integrations.
 - `gateway-auth` for OTLP auth.
-- `becertain` for RCA.
+- `resolver` for RCA.
 - `otlp-gateway` as Envoy on port `4320`.
 - `loki`, `tempo`, `mimir`, and `alertmanager` as the storage and routing backends.
 - `grafana` plus `grafana-proxy` on port `8080`.
@@ -174,11 +174,11 @@ The included `docker-compose.yml` brings up the full local stack:
 | Port | Service | Purpose |
 | --- | --- | --- |
 | `5173` | `ui` | Web UI |
-| `4319` | `beobservant` | Main API and docs |
+| `4319` | `watchdog` | Main API and docs |
 | `4320` | `otlp-gateway` | OTLP ingress through Envoy |
 | `4321` | `gateway-auth` | OTLP auth service |
-| `4322` | `becertain` | RCA engine |
-| `4323` | `benotified` | Alerting service |
+| `4322` | `resolver` | RCA engine |
+| `4323` | `notifier` | Alerting service |
 | `8080` | `grafana-proxy` | Browser access to Grafana |
 
 ## Environment File Overview
@@ -190,10 +190,10 @@ It is large because it configures multiple services at once. Read it in these gr
 - Core runtime: host, port, log level, database URLs.
 - Auth: JWT signing, bootstrap admin, OIDC, Keycloak, MFA, cookie security.
 - Ingestion security: OTLP tokens, gateway allowlists, rate limits, proxy trust settings.
-- Service-to-service auth: shared tokens and signing keys for BeNotified and BeCertain.
+- Service-to-service auth: shared tokens and signing keys for Notifier and Resolver.
 - Alerting: channel types, webhook tokens, SMTP settings, Jira support.
 - Grafana runtime: admin password, auth proxy config, datasource provisioning.
-- BeCertain analysis tuning: correlation window, thresholds, timeouts, quality gating.
+- Resolver analysis tuning: correlation window, thresholds, timeouts, quality gating.
 - Optional Vault and backup settings.
 
 Two practical warnings for new users:
@@ -210,7 +210,7 @@ The included installer is meant for evaluation and local testing.
 It will:
 
 - Check for required commands.
-- Clone missing repos for `BeCertain` and `BeNotified`.
+- Clone missing repos for `resolver` and `Notifier`.
 - Create or update `.env`.
 - Generate secrets and a bootstrap admin account.
 - Start the compose stack.
@@ -222,12 +222,12 @@ python3 install.py
 ### Option B: Manual Setup
 
 ```bash
-git clone https://github.com/observantio/beobservant Observantio
+git clone https://github.com/observantio/watchdog Observantio
 cd Observantio
 cp .env.example .env
 ```
 
-For local developer tooling, the workspace root and the BeCertain and BeNotified service folders now each include a `pyproject.toml` with the canonical pytest, coverage, and mypy defaults for that scope.
+For local developer tooling, the workspace root and the  `resolver` and Notifier service folders now each include a `pyproject.toml` with the canonical pytest, coverage, and mypy defaults for that scope.
 
 Then edit `.env` and set, at minimum:
 
@@ -238,10 +238,10 @@ Then edit `.env` and set, at minimum:
 - `DATA_ENCRYPTION_KEY`
 - `DEFAULT_OTLP_TOKEN`
 - `GATEWAY_INTERNAL_SERVICE_TOKEN`
-- `BENOTIFIED_SERVICE_TOKEN` and `BENOTIFIED_EXPECTED_SERVICE_TOKEN`
-- `BECERTAIN_SERVICE_TOKEN` and `BECERTAIN_EXPECTED_SERVICE_TOKEN`
-- `BENOTIFIED_CONTEXT_SIGNING_KEY` and `BENOTIFIED_CONTEXT_VERIFY_KEY`
-- `BECERTAIN_CONTEXT_SIGNING_KEY` and `BECERTAIN_CONTEXT_VERIFY_KEY`
+- `NOTIFIER_SERVICE_TOKEN` and `NOTIFIER_EXPECTED_SERVICE_TOKEN`
+- `RESOLVER_SERVICE_TOKEN` and `RESOLVER_EXPECTED_SERVICE_TOKEN`
+- `NOTIFIER_CONTEXT_SIGNING_KEY` and `NOTIFIER_CONTEXT_VERIFY_KEY`
+- `RESOLVER_CONTEXT_SIGNING_KEY` and `RESOLVER_CONTEXT_VERIFY_KEY`
 
 Start the stack:
 
@@ -307,8 +307,8 @@ The alerting flow is intentionally opinionated:
 
 - Rules are managed as application objects, not only as raw backend config.
 - Rules are synchronized to Mimir for evaluation.
-- Active alerts surface in the Be Observant UI.
-- Alertmanager webhook events feed BeNotified.
+- Active alerts surface in the Watchdog UI.
+- Alertmanager webhook events feed Notifier.
 - Incidents become first-class objects with assignees, notes, and optional Jira linkage.
 
 If you are new to the rule editor, start from a known-good template, then tune expressions and thresholds for your environment. That approach matches how the stack is built: validate the workflow first, then narrow noise and sensitivity.
@@ -359,7 +359,7 @@ Operators can create notes, assign incidents to users, and link incidents to Jir
 
 The API Keys area provides tenant and product scoping, OTLP token management, key sharing with users and groups, token regeneration, and a downloadable starter OpenTelemetry Collector configuration.
 
-Operators can create a new API key, download a YAML configuration for that key, or use their own collector configuration with the provided token. Once the collector runs with `otelcol-contrib --config otel.yaml`, the platform accepts metrics, logs, and traces, and maps them to the correct organisation or tenant context for retrieval through Mimir, Tempo, Loki, and Be Certain.
+Operators can create a new API key, download a YAML configuration for that key, or use their own collector configuration with the provided token. Once the collector runs with `otelcol-contrib --config otel.yaml`, the platform accepts metrics, logs, and traces, and maps them to the correct organisation or tenant context for retrieval through Mimir, Tempo, Loki, and Resolver.
 
 #### Users and Groups
 
@@ -394,20 +394,20 @@ If you want, I can also turn this into a more polished enterprise-style version 
 There are three different security boundaries in this stack:
 
 1. User-to-application auth.
-   BeObservant handles login, sessions, permissions, API keys, and optional OIDC/Keycloak.
+   Watchdog handles login, sessions, permissions, API keys, and optional OIDC/Keycloak.
 
 2. Telemetry-ingest auth.
-   BeGateway validates `x-otlp-token` before Envoy forwards data to Loki, Tempo, or Mimir.
+   Gatekeeper validates `x-otlp-token` before Envoy forwards data to Loki, Tempo, or Mimir.
 
 3. Service-to-service auth.
-   BeObservant talks to BeNotified and BeCertain using dedicated service tokens and signed context JWTs.
+   Watchdog talks to Notifier and Resolver using dedicated service tokens and signed context JWTs.
 
 ## Limits And Expectations
 
 - This workspace is well suited for local evaluation, demos, and homelab environments.
 - The installer is explicitly experimental.
 - The docs in this repository should be treated as the source of truth for this workspace, not older external deployment examples.
-- Empty environments will not produce useful RCA. BeCertain needs enough logs, metrics, and traces to correlate signals.
+- Empty environments will not produce useful RCA. Resolver needs enough logs, metrics, and traces to correlate signals.
 
 ## Documentation
 

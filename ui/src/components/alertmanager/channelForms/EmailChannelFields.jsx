@@ -70,7 +70,7 @@ export default function EmailChannelFields({ formData, setFormData }) {
               from: e.target.value,
             })
           }
-          placeholder="beobservant@example.com"
+          placeholder="watchdog@example.com"
         />
       </div>
 

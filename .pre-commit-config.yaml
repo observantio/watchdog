@@ -4,80 +4,80 @@ repos:
       - id: server-unit-tests
         name: server unit tests
         language: system
-        entry: bash -lc 'cd BeObservant && python -m pytest -q'
+        entry: bash -lc 'cd watchdog && python -m pytest -q'
         pass_filenames: false
         always_run: true
 
       - id: gateway-auth-unit-tests
         name: gateway-auth-service unit tests
         language: system
-        entry: bash -lc 'cd BeGateway && python -m pytest -q'
+        entry: bash -lc 'cd gatekeeper && python -m pytest -q'
         pass_filenames: false
         always_run: true
 
-      - id: beobservant-mypy
-        name: BeObservant mypy
+      - id: watchdog-mypy
+        name: Watchdog mypy
         language: system
         entry: >-
-          bash -lc 'cd BeObservant &&
+          bash -lc 'cd watchdog &&
           APP_ENV=development
           ENVIRONMENT=development
           VAULT_ENABLED=false
-          DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/beobservant
-          BENOTIFIED_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/benotified
-          BECERTAIN_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/becertain
+          DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog
+          NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier
+          RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver
           CORS_ORIGINS=http://localhost:3000
           CORS_ALLOW_CREDENTIALS=true
           JWT_AUTO_GENERATE_KEYS=true
           GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789
-          BENOTIFIED_EXPECTED_SERVICE_TOKEN=ci_benotified_expected_service_token_123456789
-          BENOTIFIED_SERVICE_TOKEN=ci_benotified_service_token_123456789
-          BENOTIFIED_CONTEXT_VERIFY_KEY=ci_benotified_context_verify_key_12345678901234567890
-          BENOTIFIED_CONTEXT_SIGNING_KEY=ci_benotified_context_signing_key_12345678901234567890
-          BECERTAIN_EXPECTED_SERVICE_TOKEN=ci_becertain_expected_service_token_123456789
-          BECERTAIN_SERVICE_TOKEN=ci_becertain_service_token_123456789
-          BECERTAIN_CONTEXT_VERIFY_KEY=ci_becertain_context_verify_key_12345678901234567890
-          BECERTAIN_CONTEXT_SIGNING_KEY=ci_becertain_context_signing_key_12345678901234567890
+          NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789
+          NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789
+          NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890
+          NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890
+          RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789
+          RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789
+          RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890
+          RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890
           INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789
           PYTHONPATH=$PWD
           mypy --config-file "mypy.ini" .'
         pass_filenames: false
         always_run: true
 
-      - id: beobservant-pylint
-        name: BeObservant pylint
+      - id: watchdog-pylint
+        name: Watchdog pylint
         language: system
         entry: >-
-          bash -lc 'cd BeObservant &&
-          export APP_ENV=development ENVIRONMENT=development VAULT_ENABLED=false DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/beobservant BENOTIFIED_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/benotified BECERTAIN_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/becertain CORS_ORIGINS=http://localhost:3000 CORS_ALLOW_CREDENTIALS=true JWT_AUTO_GENERATE_KEYS=true GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789 BENOTIFIED_EXPECTED_SERVICE_TOKEN=ci_benotified_expected_service_token_123456789 BENOTIFIED_SERVICE_TOKEN=ci_benotified_service_token_123456789 BENOTIFIED_CONTEXT_VERIFY_KEY=ci_benotified_context_verify_key_12345678901234567890 BENOTIFIED_CONTEXT_SIGNING_KEY=ci_benotified_context_signing_key_12345678901234567890 BECERTAIN_EXPECTED_SERVICE_TOKEN=ci_becertain_expected_service_token_123456789 BECERTAIN_SERVICE_TOKEN=ci_becertain_service_token_123456789 BECERTAIN_CONTEXT_VERIFY_KEY=ci_becertain_context_verify_key_12345678901234567890 BECERTAIN_CONTEXT_SIGNING_KEY=ci_becertain_context_signing_key_12345678901234567890 INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789 PYTHONPATH=$PWD &&
+          bash -lc 'cd watchdog &&
+          export APP_ENV=development ENVIRONMENT=development VAULT_ENABLED=false DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver CORS_ORIGINS=http://localhost:3000 CORS_ALLOW_CREDENTIALS=true JWT_AUTO_GENERATE_KEYS=true GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789 NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789 NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789 NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890 NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890 RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789 RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789 RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890 RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890 INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789 PYTHONPATH=$PWD &&
           TARGETS="$(find . -maxdepth 1 -mindepth 1 \( -type d -o -name \"*.py\" \) ! -name '\''.*'\'' ! -name tests ! -name __pycache__ ! -name __init__.py ! -name build ! -name dist ! -name tmp ! -name vendor | sort)" &&
           pylint --rcfile "$PWD/.pylintrc" $TARGETS'
         pass_filenames: false
         always_run: true
 
-      - id: begateway-mypy
-        name: BeGateway mypy
+      - id: gatekeeper-mypy
+        name: Gatekeeper mypy
         language: system
         entry: >-
-          bash -lc 'cd BeGateway &&
+          bash -lc 'cd gatekeeper &&
           APP_ENV=development
           ENVIRONMENT=development
           VAULT_ENABLED=false
-          DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/beobservant
-          BENOTIFIED_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/benotified
-          BECERTAIN_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/becertain
+          DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog
+          NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier
+          RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver
           CORS_ORIGINS=http://localhost:3000
           CORS_ALLOW_CREDENTIALS=true
           JWT_AUTO_GENERATE_KEYS=true
           GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789
-          BENOTIFIED_EXPECTED_SERVICE_TOKEN=ci_benotified_expected_service_token_123456789
-          BENOTIFIED_SERVICE_TOKEN=ci_benotified_service_token_123456789
-          BENOTIFIED_CONTEXT_VERIFY_KEY=ci_benotified_context_verify_key_12345678901234567890
-          BENOTIFIED_CONTEXT_SIGNING_KEY=ci_benotified_context_signing_key_12345678901234567890
-          BECERTAIN_EXPECTED_SERVICE_TOKEN=ci_becertain_expected_service_token_123456789
-          BECERTAIN_SERVICE_TOKEN=ci_becertain_service_token_123456789
-          BECERTAIN_CONTEXT_VERIFY_KEY=ci_becertain_context_verify_key_12345678901234567890
-          BECERTAIN_CONTEXT_SIGNING_KEY=ci_becertain_context_signing_key_12345678901234567890
+          NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789
+          NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789
+          NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890
+          NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890
+          RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789
+          RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789
+          RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890
+          RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890
           INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789
           PYTHONPATH=$PWD
           mypy --config-file "mypy.ini" .'

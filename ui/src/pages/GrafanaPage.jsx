@@ -905,7 +905,7 @@ export default function GrafanaPage() {
         onClose={() => setGrafanaConfirmDialog({ isOpen: false, path: null })}
         onConfirm={confirmOpenInGrafana}
         title="Open in Grafana"
-        message="This will proxy through Be Observant to get a secure, scoped, authenticated, and restricted view of what you can view and share under Grafana. If you want full admin access, please contact an admin and you can log into Grafana directly with a different username and password."
+        message="This will proxy through Watchdog to get a secure, scoped, authenticated, and restricted view of what you can view and share under Grafana. If you want full admin access, please contact an admin and you can log into Grafana directly with a different username and password."
         variant="primary"
         confirmText="Continue to Grafana"
         cancelText="Cancel"

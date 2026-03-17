@@ -55,7 +55,7 @@ const pkceChallengeFromVerifier = async (verifier) => {
 
 const clearLegacyGrafanaCookie = () => {
   if (typeof document === "undefined") return;
-  document.cookie = "beobservant_token=; Path=/; Max-Age=0; SameSite=Lax";
+  document.cookie = "watchdog_token=; Path=/; Max-Age=0; SameSite=Lax";
 };
 
 const isOnOidcCallback = () =>

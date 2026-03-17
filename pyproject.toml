@@ -30,7 +30,7 @@ dev = [
   "pytest-asyncio>=1.3.0",
 ]
 
-beobservant = [
+watchdog = [
   "fastapi",
   "starlette",
   "httpx",
@@ -59,7 +59,7 @@ beobservant = [
   "hvac",
 ]
 
-begateway = [
+gatekeeper = [
   "fastapi",
   "httpx",
   "pydantic",
@@ -68,7 +68,7 @@ begateway = [
   "redis",
 ]
 
-benotified = [
+notifier = [
   "fastapi",
   "starlette",
   "httpx",
@@ -93,7 +93,7 @@ benotified = [
   "hvac",
 ]
 
-becertain = [
+resolver = [
   "fastapi",
   "uvicorn[standard]",
   "httpx",
@@ -109,23 +109,23 @@ becertain = [
 ]
 
 test = [
-  "observantio[dev,beobservant,begateway,benotified,becertain]",
+  "observantio[dev,watchdog,gatekeeper,notifier,resolver]",
 ]
 
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = [
-  "BeCertain/tests",
-  "BeGateway/tests",
-  "BeNotified/tests",
-  "BeObservant/tests",
+  "resolver/tests",
+  "gatekeeper/tests",
+  "notifier/tests",
+  "watchdog/tests",
 ]
 addopts = "-q"
 pythonpath = [
-  "BeCertain",
-  "BeGateway",
-  "BeNotified",
-  "BeObservant",
+  "resolver",
+  "gatekeeper",
+  "notifier",
+  "watchdog",
 ]
 asyncio_mode = "auto"
 filterwarnings = [
@@ -156,22 +156,22 @@ explicit_package_bases = true
 exclude_gitignore = true
 ignore_missing_imports = true
 exclude = [
-  "^(ui/|showcase/|configs/|tests/|build/|dist/|venv/|\\.venv/|__pycache__/|BeObservant/tests/|BeGateway/tests/|BeNotified/tests/|BeCertain/tests/)",
+  "^(ui/|showcase/|configs/|tests/|build/|dist/|venv/|\\.venv/|__pycache__/|watchdog/tests/|gatekeeper/tests/|notifier/tests/|resolver/tests/)",
 ]
 
 [tool.pylint.main]
 jobs = 1
 ignore = [".git", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "venv", "node_modules", "build", "dist", "tmp", "vendor"]
 ignore-paths = [
-  "^\\./?BeCertain/tests/.*$",
-  "^\\./?BeGateway/tests/.*$",
-  "^\\./?BeNotified/tests/.*$",
-  "^\\./?BeObservant/tests/.*$",
+  "^\\./?resolver/tests/.*$",
+  "^\\./?gatekeepery/tests/.*$",
+  "^\\./?notifier/tests/.*$",
+  "^\\./?watchdog/tests/.*$",
   "^\\./?tests/.*$",
   "^\\./?ui/.*$",
   "^\\./?showcase/.*$",
 ]
-init-hook = "import os,sys; root=os.getcwd(); [sys.path.insert(0,p) for p in [f'{root}/BeCertain',f'{root}/BeGateway',f'{root}/BeNotified',f'{root}/BeObservant'] if p not in sys.path]"
+init-hook = "import os,sys; root=os.getcwd(); [sys.path.insert(0,p) for p in [f'{root}/resolver',f'{root}/gatekeeper',f'{root}/Notifier',f'{root}/Watchdog'] if p not in sys.path]"
 
 [tool.pylint.messages_control]
 disable = [

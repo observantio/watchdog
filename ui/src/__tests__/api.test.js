@@ -58,7 +58,7 @@ describe("api request behavior", () => {
     expect(options.headers.Authorization).toBe("Bearer token-abc");
   });
 
-  it("adds X-Scope-OrgID for BeCertain requests", async () => {
+  it("adds X-Scope-OrgID for Resolver requests", async () => {
     api.setAuthToken("token-abc");
     api.setUserOrgIds(["org-a"]);
 
@@ -69,7 +69,7 @@ describe("api request behavior", () => {
     expect(options.headers.Authorization).toBe("Bearer token-abc");
   });
 
-  it("requests the RCA config template from BeCertain with scoped headers", async () => {
+  it("requests the RCA config template from Resolver with scoped headers", async () => {
     api.setAuthToken("token-abc");
     api.setUserOrgIds(["org-a"]);
 
@@ -77,7 +77,7 @@ describe("api request behavior", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, options] = fetch.mock.calls[0];
-    expect(url).toContain("/api/becertain/analyze/config-template");
+    expect(url).toContain("/api/resolver/analyze/config-template");
     expect(options.headers["X-Scope-OrgID"]).toBe("org-a");
   });
 

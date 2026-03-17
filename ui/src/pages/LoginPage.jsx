@@ -203,7 +203,7 @@ export default function LoginPage() {
             visibility
           </span>
           <h1 className="text-3xl font-bold text-sre-text mb-2">
-            Be Observant
+            Watchdog
           </h1>
           <p className="text-sre-text-muted">
             Observing your entire Infrastructure
@@ -384,7 +384,7 @@ export default function LoginPage() {
                             await import("../utils/helpers");
                           downloadFile(
                             setupRecoveryCodes.join("\n"),
-                            "beobservant-recovery-codes.txt",
+                            "watchdog-recovery-codes.txt",
                             "text/plain",
                           );
                           toast.success("Recovery codes downloaded");

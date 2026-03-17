@@ -12,26 +12,26 @@ When you run this project, you are not starting one server. You are starting a p
 
 | Service | Port| Why It Exists |
 |:---|:---|:---|
-| `beobservant` | `4319` | Main API and control plane. Owns users, groups, API keys, auth, most UI-facing APIs, and secure proxying to the rest of the platform. |
-| `begateway` | `4321` | Validates OTLP tokens for telemetry ingestion and returns tenant scope. |
-| `benotified` | `4323` | Stores and serves alert rules, channels, silences, incidents, and Jira integrations. |
-| `becertain` | `4322` | Runs RCA and anomaly analysis over logs, metrics, and traces. |
+| `watchdog` | `4319` | Main API and control plane. Owns users, groups, API keys, auth, most UI-facing APIs, and secure proxying to the rest of the platform. |
+| `gatekeeper` | `4321` | Validates OTLP tokens for telemetry ingestion and returns tenant scope. |
+| `notifier` | `4323` | Stores and serves alert rules, channels, silences, incidents, and Jira integrations. |
+| `resolver` | `4322` | Runs RCA and anomaly analysis over logs, metrics, and traces. |
 | `ui` | `5173` | React frontend for operators. |
 
 ### Supporting infrastructure
 
 | Service | Why It Exists |
 |:---|:---|
-| `postgres` | Persistent storage for beobservant, benotified, and beertain. |
+| `postgres` | Persistent storage for watchdog, notifier, and beertain. |
 | `redis` | Rate limits, token caches, and shared fast state. |
-| `otlp-gateway` | Envoy edge for OTLP traffic. Calls begateway before forwarding telemetry. |
+| `otlp-gateway` | Envoy edge for OTLP traffic. Calls gatekeeper before forwarding telemetry. |
 | `gateway-auth` | Decoupled server that acts as redis cache between the main server and envoy to validate and translate otlp keys to tenant keys |
 | `loki` | Log storage and query engine. |
 | `tempo` | Trace storage and query engine. |
 | `mimir` | Metrics storage and rule evaluation backend. |
 | `alertmanager` | Alert routing and silence management backend. |
 | `grafana` | Dashboard and datasource UI backend. |
-| `grafana-proxy` | Browser-facing proxy for Grafana with BeObservant auth in front. |
+| `grafana-proxy` | Browser-facing proxy for Grafana with Watchdog auth in front. |
 | `otel-agent` | Demo/test telemetry generator included in the compose stack. |
 
 ## 2. How The Whole System Works
@@ -39,34 +39,34 @@ When you run this project, you are not starting one server. You are starting a p
 ### 2.1 User flow
 
 1. A user opens the UI.
-2. The UI authenticates against BeObservant.
-3. BeObservant returns user identity, permissions, and API-key-backed scope.
-4. The UI calls BeObservant APIs for logs, traces, alerts, incidents, Grafana objects, and RCA.
-5. BeObservant proxies or signs downstream requests to the appropriate backend service.
+2. The UI authenticates against Watchdog.
+3. Watchdog returns user identity, permissions, and API-key-backed scope.
+4. The UI calls Watchdog APIs for logs, traces, alerts, incidents, Grafana objects, and RCA.
+5. Watchdog proxies or signs downstream requests to the appropriate backend service.
 
 ### 2.2 Telemetry flow
 
 1. An app or collector sends OTLP traffic to `otlp-gateway` on port `4320`.
-2. Envoy calls BeGateway for authorization.
-3. BeGateway validates `x-otlp-token`, applies allowlists and rate limits, and resolves the org scope.
+2. Envoy calls Gatekeeper for authorization.
+3. Gatekeeper validates `x-otlp-token`, applies allowlists and rate limits, and resolves the org scope.
 4. Envoy forwards the request to Loki, Tempo, or Mimir with `X-Scope-OrgID`.
 
 ### 2.3 Alert flow
 
 1. Alert rules are created in the UI.
-2. BeObservant forwards those actions into BeNotified.
-3. BeNotified stores the rule and synchronizes rule definitions to Mimir.
+2. Watchdog forwards those actions into Notifier.
+3. Notifier stores the rule and synchronizes rule definitions to Mimir.
 4. Mimir evaluates rules.
 5. Alertmanager routes alerts.
-6. Webhook events feed BeNotified.
-7. BeNotified stores incidents and exposes them back to the UI.
+6. Webhook events feed Notifier.
+7. Notifier stores incidents and exposes them back to the UI.
 
 ### 2.4 RCA flow
 
 1. A user creates an RCA job in the UI.
-2. BeObservant signs and forwards the request to BeCertain.
-3. BeCertain reads from Loki, Tempo, and Mimir.
-4. BeCertain stores job state and report output.
+2. Watchdog signs and forwards the request to Resolver.
+3. Resolver reads from Loki, Tempo, and Mimir.
+4. Resolver stores job state and report output.
 5. The UI retrieves the completed report and shows summaries, anomalies, topology, causal views, and ranked root causes.
 
 ## 3. Before You Start
@@ -153,8 +153,8 @@ These must be internally consistent:
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
 - `DATABASE_URL`
-- `BENOTIFIED_DATABASE_URL`
-- `BECERTAIN_DATABASE_URL`
+- `NOTIFIER_DATABASE_URL`
+- `RESOLVER_DATABASE_URL`
 
 If you change the Postgres username or password, update all dependent URLs too.
 
@@ -175,14 +175,14 @@ These values must be strong and unique:
 
 - `DATA_ENCRYPTION_KEY`
 - `GATEWAY_INTERNAL_SERVICE_TOKEN`
-- `BENOTIFIED_SERVICE_TOKEN`
-- `BENOTIFIED_EXPECTED_SERVICE_TOKEN`
-- `BENOTIFIED_CONTEXT_SIGNING_KEY`
-- `BENOTIFIED_CONTEXT_VERIFY_KEY`
-- `BECERTAIN_SERVICE_TOKEN`
-- `BECERTAIN_EXPECTED_SERVICE_TOKEN`
-- `BECERTAIN_CONTEXT_SIGNING_KEY`
-- `BECERTAIN_CONTEXT_VERIFY_KEY`
+- `NOTIFIER_SERVICE_TOKEN`
+- `NOTIFIER_EXPECTED_SERVICE_TOKEN`
+- `NOTIFIER_CONTEXT_SIGNING_KEY`
+- `NOTIFIER_CONTEXT_VERIFY_KEY`
+- `RESOLVER_SERVICE_TOKEN`
+- `RESOLVER_EXPECTED_SERVICE_TOKEN`
+- `RESOLVER_CONTEXT_SIGNING_KEY`
+- `RESOLVER_CONTEXT_VERIFY_KEY`
 
 Recommended first-run rule:
 
@@ -216,17 +216,17 @@ Important keys:
 
 Leave the root URL aligned with the proxied path unless you know you need a different reverse-proxy layout.
 
-### 5.7 BeCertain tuning
+### 5.7 Resolver tuning
 
 These settings control how strict or permissive RCA becomes:
 
-- `BECERTAIN_CORRELATION_WINDOW_SECONDS`
-- `BECERTAIN_QUALITY_GATING_PROFILE`
-- `BECERTAIN_QUALITY_MAX_ANOMALY_DENSITY_PER_METRIC_PER_HOUR`
-- `BECERTAIN_QUALITY_MAX_CHANGE_POINT_DENSITY_PER_METRIC_PER_HOUR`
-- `BECERTAIN_QUALITY_MIN_CORROBORATION_SIGNALS`
-- `BECERTAIN_RCA_EVENT_CONFIDENCE_THRESHOLD`
-- `BECERTAIN_RCA_MIN_CONFIDENCE_DISPLAY`
+- `RESOLVER_CORRELATION_WINDOW_SECONDS`
+- `RESOLVER_QUALITY_GATING_PROFILE`
+- `RESOLVER_QUALITY_MAX_ANOMALY_DENSITY_PER_METRIC_PER_HOUR`
+- `RESOLVER_QUALITY_MAX_CHANGE_POINT_DENSITY_PER_METRIC_PER_HOUR`
+- `RESOLVER_QUALITY_MIN_CORROBORATION_SIGNALS`
+- `RESOLVER_RCA_EVENT_CONFIDENCE_THRESHOLD`
+- `RESOLVER_RCA_MIN_CONFIDENCE_DISPLAY`
 
 Start with the defaults. Tune only after you have real telemetry and understand how noisy your environment is.
 
@@ -239,7 +239,7 @@ docker compose ps
 
 Initial startup can take a while because multiple images are being built and the application services wait on databases and observability backends.
 
-For local development outside Docker, use the service-level `pyproject.toml` files in `BeCertain` and `BeNotified` as the canonical entry points for pytest, coverage, and mypy-aware editor tooling.
+For local development outside Docker, use the service-level `pyproject.toml` files in `Resolver` and `Notifier` as the canonical entry points for pytest, coverage, and mypy-aware editor tooling.
 
 ## 7. Verify The Stack Cleanly
 
@@ -261,8 +261,8 @@ Open these URLs in a browser:
 What success looks like:
 
 - The UI login page loads.
-- The BeObservant health endpoint is healthy.
-- The BeObservant ready endpoint eventually reports downstream checks as ready.
+- The Watchdog health endpoint is healthy.
+- The Watchdog ready endpoint eventually reports downstream checks as ready.
 - Grafana loads through the proxy after UI authentication.
 
 ## 8. First Login And Access Setup
@@ -412,7 +412,7 @@ Use it to:
 
 ### 10.8 RCA
 
-This page is the BeCertain frontend.
+This page is the Resolver frontend.
 
 Use it to:
 
@@ -526,7 +526,7 @@ For anything beyond local evaluation, review this list:
 |:---|:---|:---|
 | UI loads but login fails | Bootstrap credentials or auth mode mismatch | `.env`, auth provider, admin bootstrap values |
 | No logs or traces appear | Bad OTLP token, wrong endpoint, or collector misrouting | `x-otlp-token`, `http://localhost:4320`, collector exporter endpoints |
-| `ready` stays not ready | One or more downstream services are still unhealthy | `docker compose ps`, BeObservant ready payload |
+| `ready` stays not ready | One or more downstream services are still unhealthy | `docker compose ps`, Watchdog ready payload |
 | Grafana opens incorrectly | Proxy/root URL mismatch or not authenticated | Grafana proxy settings and browser auth state |
 | Alert rule exists but nothing fires | Rule expression, scope, or dataset mismatch | org/product selection, metric names, actual metric presence |
 | Incident cannot be resolved | Underlying alert still active | active alerts state in Alert Manager |
@@ -562,15 +562,15 @@ If documentation and code disagree, prefer the code in this order:
 3. service `main.py`, routers, and config files
 4. frontend route and API files
 
-That order reflects how this guide was derived.# Be Observant User Guide
+That order reflects how this guide was derived.# Watchdog User Guide
 
-This guide covers deployment, first-time usage, core workflows, and operational hardening for Be Observant.
+This guide covers deployment, first-time usage, core workflows, and operational hardening for Watchdog.
 
 ## 1. Scope and Assumptions
 
 - Current focus: local, homelab, and pre-production evaluation.
 - You should validate hardening, backups, and failure scenarios before production rollout.
-- Main stack components: `beobservant`, `gateway-auth`, `otlp-gateway`, `grafana-proxy`, `benotified`, `becertain`.
+- Main stack components: `watchdog`, `gateway-auth`, `otlp-gateway`, `grafana-proxy`, `notifier`, `resolver`.
 
 ## 2. Prerequisites
 
@@ -584,17 +584,17 @@ This guide covers deployment, first-time usage, core workflows, and operational 
 ### Option A: Installer (Fastest)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/observantio/beobservant/main/install.py -o /tmp/install.py
+curl -fsSL https://raw.githubusercontent.com/observantio/watchdog/main/install.py -o /tmp/install.py
 python3 /tmp/install.py
 ```
 
 ### Option B: Source Build (Development)
 
 ```bash
-git clone https://github.com/observantio/beobservant Observantio
+git clone https://github.com/observantio/watchdog Observantio
 cd Observantio
-git clone https://github.com/observantio/becertain BeCertain
-git clone https://github.com/observantio/benotified BeNotified
+git clone https://github.com/observantio/resolver Resolver
+git clone https://github.com/observantio/notifier Notifier
 cp .env.example .env
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
@@ -648,7 +648,7 @@ Access:
 4. Track incidents in Incident Board (InOps) with assignees and notes.
 5. Close incidents with a resolution note for long-term learning context.
 
-### 5.5 RCA Flow (BeCertain)
+### 5.5 RCA Flow (Resolver)
 
 1. Open RCA page and choose target service/window.
 2. Trigger analysis job.
@@ -662,7 +662,7 @@ From `.env.example`:
 - Core/API: `PORT`, `LOG_LEVEL`, `DATABASE_URL`, `DB_AUTO_CREATE_SCHEMA`
 - Auth/JWT: `JWT_ALGORITHM`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_AUTO_GENERATE_KEYS`
 - Tenancy: `DEFAULT_ORG_ID`, `DEFAULT_ADMIN_*`
-- Proxy/service auth: `BENOTIFIED_*`, `BECERTAIN_*`, `GATEWAY_INTERNAL_SERVICE_TOKEN`
+- Proxy/service auth: `NOTIFIER_*`, `RESOLVER_*`, `GATEWAY_INTERNAL_SERVICE_TOKEN`
 - Security boundaries: `TRUST_PROXY_HEADERS`, `TRUSTED_PROXY_CIDRS`, `FORCE_SECURE_COOKIES`, `ALLOWLIST_FAIL_OPEN`
 - Allowlists: `AUTH_PUBLIC_IP_ALLOWLIST`, `WEBHOOK_IP_ALLOWLIST`, `GATEWAY_IP_ALLOWLIST`, `GRAFANA_PROXY_IP_ALLOWLIST`
 - Rate limits: `RATE_LIMIT_*`, `MAX_REQUEST_BYTES`, `MAX_CONCURRENT_REQUESTS`
@@ -686,13 +686,13 @@ From `.env.example`:
 | `403` on API actions | Missing permission or wrong active scope | Verify user permissions, group membership, and selected API key |
 | No telemetry data | Token mismatch or collector misconfiguration | Validate `x-otlp-token`, endpoint, and collector exporter config |
 | Grafana proxy unauthorized | Missing UI session/auth mismatch | Sign in via UI first; verify auth and proxy configuration |
-| RCA jobs fail/hang | BeCertain unavailable or no usable signal | Check service health/logs and ensure dataset has enough volume |
+| RCA jobs fail/hang | Resolver unavailable or no usable signal | Check service health/logs and ensure dataset has enough volume |
 | Alert test fails | No enabled channels or misconfigured integration | Enable channels and validate credentials/config |
-| Grafana Proxy 500 | This means the proxy can't communicate with either Be Observant or Grafana and is an IP drift, restart the grafana proxy server |
+| Grafana Proxy 500 | This means the proxy can't communicate with either Watchdog or Grafana and is an IP drift, restart the grafana proxy server |
 
 ## 9. Helpful Links
 
 - README: [README.md](README.md)
 - Environment reference: [.env.example](.env.example)
-- Issues: https://github.com/observantio/beobservant/issues
-- Repository: https://github.com/observantio/beobservant
+- Issues: https://github.com/observantio/watchdog/issues
+- Repository: https://github.com/observantio/watchdog

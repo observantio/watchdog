@@ -91,10 +91,10 @@ async function requestWithHeaders(path, opts = {}, headers = {}) {
 
 async function request(path, opts = {}) {
   const isLokiTempo = path.includes("/api/loki") || path.includes("/api/tempo");
-  const isBeCertain = path.includes("/api/becertain");
+  const isResolver = path.includes("/api/resolver");
   const isAlertmanager = path.includes("/api/alertmanager");
 
-  if ((isLokiTempo || isBeCertain) && userOrgIds && userOrgIds.length > 0) {
+  if ((isLokiTempo || isResolver) && userOrgIds && userOrgIds.length > 0) {
     return requestWithHeaders(path, opts, { "X-Scope-OrgID": userOrgIds[0] });
   }
 
@@ -807,11 +807,11 @@ export async function getTrace(traceID) {
 }
 
 export async function createRcaAnalyzeJob(payload) {
-  return requestJson("/api/becertain/analyze/jobs", { payload });
+  return requestJson("/api/resolver/analyze/jobs", { payload });
 }
 
 export async function getRcaAnalyzeConfigTemplate() {
-  return request("/api/becertain/analyze/config-template");
+  return request("/api/resolver/analyze/config-template");
 }
 
 export async function listRcaJobs(params = {}) {
@@ -822,55 +822,55 @@ export async function listRcaJobs(params = {}) {
     }
   });
   const qs = search.toString();
-  return request(`/api/becertain/analyze/jobs${qs ? `?${qs}` : ""}`);
+  return request(`/api/resolver/analyze/jobs${qs ? `?${qs}` : ""}`);
 }
 
 export async function getRcaJob(jobId) {
-  return request(`/api/becertain/analyze/jobs/${encodeURIComponent(jobId)}`);
+  return request(`/api/resolver/analyze/jobs/${encodeURIComponent(jobId)}`);
 }
 
 export async function getRcaJobResult(jobId) {
   return request(
-    `/api/becertain/analyze/jobs/${encodeURIComponent(jobId)}/result`,
+    `/api/resolver/analyze/jobs/${encodeURIComponent(jobId)}/result`,
   );
 }
 
 export async function getRcaReportById(reportId) {
-  return request(`/api/becertain/reports/${encodeURIComponent(reportId)}`);
+  return request(`/api/resolver/reports/${encodeURIComponent(reportId)}`);
 }
 
 export async function deleteRcaReport(reportId) {
-  return request(`/api/becertain/reports/${encodeURIComponent(reportId)}`, {
+  return request(`/api/resolver/reports/${encodeURIComponent(reportId)}`, {
     method: "DELETE",
   });
 }
 
 export async function fetchRcaMetricAnomalies(payload) {
-  return requestJson("/api/becertain/anomalies/metrics", { payload });
+  return requestJson("/api/resolver/anomalies/metrics", { payload });
 }
 
 export async function fetchRcaLogPatterns(payload) {
-  return requestJson("/api/becertain/anomalies/logs/patterns", { payload });
+  return requestJson("/api/resolver/anomalies/logs/patterns", { payload });
 }
 
 export async function fetchRcaLogBursts(payload) {
-  return requestJson("/api/becertain/anomalies/logs/bursts", { payload });
+  return requestJson("/api/resolver/anomalies/logs/bursts", { payload });
 }
 
 export async function fetchRcaTraceAnomalies(payload) {
-  return requestJson("/api/becertain/anomalies/traces", { payload });
+  return requestJson("/api/resolver/anomalies/traces", { payload });
 }
 
 export async function fetchRcaCorrelate(payload) {
-  return requestJson("/api/becertain/correlate", { payload });
+  return requestJson("/api/resolver/correlate", { payload });
 }
 
 export async function fetchRcaTopology(payload) {
-  return requestJson("/api/becertain/topology/blast-radius", { payload });
+  return requestJson("/api/resolver/topology/blast-radius", { payload });
 }
 
 export async function fetchRcaSloBurn(payload) {
-  return requestJson("/api/becertain/slo/burn", { payload });
+  return requestJson("/api/resolver/slo/burn", { payload });
 }
 
 export async function fetchRcaForecast(payload, params = {}) {
@@ -882,7 +882,7 @@ export async function fetchRcaForecast(payload, params = {}) {
   });
   const qs = search.toString();
   return requestJson(
-    `/api/becertain/forecast/trajectory${qs ? `?${qs}` : ""}`,
+    `/api/resolver/forecast/trajectory${qs ? `?${qs}` : ""}`,
     { payload },
   );
 }
@@ -895,17 +895,17 @@ export async function fetchRcaGranger(payload, params = {}) {
     }
   });
   const qs = search.toString();
-  return requestJson(`/api/becertain/causal/granger${qs ? `?${qs}` : ""}`, {
+  return requestJson(`/api/resolver/causal/granger${qs ? `?${qs}` : ""}`, {
     payload,
   });
 }
 
 export async function fetchRcaBayesian(payload) {
-  return requestJson("/api/becertain/causal/bayesian", { payload });
+  return requestJson("/api/resolver/causal/bayesian", { payload });
 }
 
 export async function getRcaMlWeights() {
-  return request("/api/becertain/ml/weights");
+  return request("/api/resolver/ml/weights");
 }
 
 export async function submitRcaMlWeightFeedback(signal, wasCorrect) {
@@ -913,19 +913,19 @@ export async function submitRcaMlWeightFeedback(signal, wasCorrect) {
     signal: String(signal || ""),
     was_correct: wasCorrect ? "true" : "false",
   });
-  return request(`/api/becertain/ml/weights/feedback?${params.toString()}`, {
+  return request(`/api/resolver/ml/weights/feedback?${params.toString()}`, {
     method: "POST",
   });
 }
 
 export async function resetRcaMlWeights() {
-  return request("/api/becertain/ml/weights/reset", {
+  return request("/api/resolver/ml/weights/reset", {
     method: "POST",
   });
 }
 
 export async function getRcaDeployments() {
-  return request("/api/becertain/events/deployments");
+  return request("/api/resolver/events/deployments");
 }
 
 export async function searchDashboards({

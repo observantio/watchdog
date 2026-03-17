@@ -55,7 +55,7 @@ function getIncidentCorrelationId(incident) {
 
   const sources = [incident.labels, incident.annotations];
   const keys = [
-    "beobservantCorrelationId",
+    "watchdogCorrelationId",
     "correlation_id",
     "correlationId",
     "group",
@@ -77,7 +77,7 @@ function getIncidentLabelEntries(incident) {
   if (!labels || typeof labels !== "object") return [];
   const nextLabels = { ...labels };
   const metricStates = String(
-    incident?.annotations?.beobservantMetricStates || "",
+    incident?.annotations?.watchdogMetricStates || "",
   ).trim();
   if (metricStates) {
     nextLabels.state = metricStates;

@@ -11,7 +11,7 @@ function DsFilterBar({
   groups,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-
+  
   return (
     <div className="bg-gradient-to-r from-sre-surface to-sre-bg-alt rounded-xl border border-sre-border/50 shadow-sm overflow-hidden">
       <button

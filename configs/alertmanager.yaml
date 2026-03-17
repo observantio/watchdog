@@ -6,7 +6,7 @@ route:
   group_wait: 10s
   group_interval: 10s
   repeat_interval: 12h
-  receiver: 'beobservant-webhook'
+  receiver: 'watchdog-webhook'
   routes:
     - match:
         severity: critical
@@ -17,9 +17,9 @@ route:
       receiver: 'warning'
 
 receivers:
-  - name: 'beobservant-webhook'
+  - name: 'watchdog-webhook'
     webhook_configs:
-      - url: 'http://benotified:4323/internal/v1/alertmanager/alerts/webhook'
+      - url: 'http://notifier:4323/internal/v1/alertmanager/alerts/webhook'
         send_resolved: true
         http_config:
           follow_redirects: true
@@ -29,7 +29,7 @@ receivers:
 
   - name: 'critical'
     webhook_configs:
-      - url: 'http://benotified:4323/internal/v1/alertmanager/alerts/critical'
+      - url: 'http://notifier:4323/internal/v1/alertmanager/alerts/critical'
         send_resolved: true
         http_config:
           authorization:
@@ -38,7 +38,7 @@ receivers:
 
   - name: 'warning'
     webhook_configs:
-      - url: 'http://benotified:4323/internal/v1/alertmanager/alerts/warning'
+      - url: 'http://notifier:4323/internal/v1/alertmanager/alerts/warning'
         send_resolved: true
         http_config:
           authorization:

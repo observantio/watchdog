@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 from __future__ import annotations
 
 import base64
@@ -11,9 +12,9 @@ import subprocess
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
-REPO_URL = "https://github.com/observantio/beobservant.git"
-BECERTAIN_REPO_URL = "https://github.com/observantio/becertain.git"
-BENOTIFIED_REPO_URL = "https://github.com/observantio/benotified.git"
+REPO_URL = "https://github.com/observantio/watchdog.git"
+RESOLVER_REPO_URL = "https://github.com/observantio/resolver.git"
+NOTIFIER_REPO_URL = "https://github.com/observantio/notifier.git"
 
 PASSWORD_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -217,7 +218,7 @@ def choose_api_service_host(workdir: Path, compose_file: Path) -> str:
     except Exception:
         return "gateway"
 
-    for candidate in ("beobservant", "gateway", "server", "api"):
+    for candidate in ("watchdog", "gateway", "server", "api"):
         if re.search(rf"(?m)^\s*{re.escape(candidate)}\s*:\s*$", text):
             return candidate
 
@@ -231,7 +232,7 @@ def choose_api_service_host(workdir: Path, compose_file: Path) -> str:
             text=True,
         )
         services = [s.strip() for s in p.stdout.splitlines() if s.strip()]
-        for candidate in ("beobservant", "gateway", "server", "api"):
+        for candidate in ("watchdog", "gateway", "server", "api"):
             if candidate in services:
                 return candidate
         if services:
@@ -269,13 +270,13 @@ def prepare_env(
         env_file.write_text("", encoding="utf-8")
         ok(f"Created: {env_file}")
 
-    db_user = "beobservant"
-    db_name = "beobservant"
+    db_user = "watchdog"
+    db_name = "watchdog"
     db_pass = admin_pass
 
     db_url = f"postgresql://{db_user}:{db_pass}@postgres:5432/{db_name}"
-    bn_db_url = f"postgresql://{db_user}:{db_pass}@postgres:5432/beobservant_notified"
-    bc_db_url = f"postgresql://{db_user}:{db_pass}@postgres:5432/beobservant_becertain"
+    bn_db_url = f"postgresql://{db_user}:{db_pass}@postgres:5432/watchdog_notified"
+    bc_db_url = f"postgresql://{db_user}:{db_pass}@postgres:5432/watchdog_resolver"
 
     upsert_env(env_file, "APP_ENV", mode)
     upsert_env(env_file, "ENVIRONMENT", mode)
@@ -289,8 +290,8 @@ def prepare_env(
     upsert_env(env_file, "POSTGRES_DB", db_name)
 
     upsert_env(env_file, "DATABASE_URL", db_url)
-    upsert_env(env_file, "BENOTIFIED_DATABASE_URL", bn_db_url)
-    upsert_env(env_file, "BECERTAIN_DATABASE_URL", bc_db_url)
+    upsert_env(env_file, "NOTIFIER_DATABASE_URL", bn_db_url)
+    upsert_env(env_file, "RESOLVER_DATABASE_URL", bc_db_url)
     upsert_env(env_file, "DB_AUTO_CREATE_SCHEMA", "true")
 
     upsert_env(env_file, "DEFAULT_ADMIN_BOOTSTRAP_ENABLED", "true")
@@ -324,21 +325,21 @@ def prepare_env(
 
     upsert_env_if_missing(env_file, "GATEWAY_INTERNAL_SERVICE_TOKEN", random_alnum(40))
 
-    bn_token = read_env_value(env_file, "BENOTIFIED_SERVICE_TOKEN") or random_alnum(40)
-    upsert_env(env_file, "BENOTIFIED_SERVICE_TOKEN", bn_token)
-    upsert_env(env_file, "BENOTIFIED_EXPECTED_SERVICE_TOKEN", bn_token)
-    bn_sign = read_env_value(env_file, "BENOTIFIED_CONTEXT_SIGNING_KEY") or random_alnum(48)
-    upsert_env(env_file, "BENOTIFIED_CONTEXT_SIGNING_KEY", bn_sign)
-    upsert_env(env_file, "BENOTIFIED_CONTEXT_VERIFY_KEY", bn_sign)
-    upsert_env(env_file, "BENOTIFIED_URL", "http://benotified:4323")
+    bn_token = read_env_value(env_file, "NOTIFIER_SERVICE_TOKEN") or random_alnum(40)
+    upsert_env(env_file, "NOTIFIER_SERVICE_TOKEN", bn_token)
+    upsert_env(env_file, "NOTIFIER_EXPECTED_SERVICE_TOKEN", bn_token)
+    bn_sign = read_env_value(env_file, "NOTIFIER_CONTEXT_SIGNING_KEY") or random_alnum(48)
+    upsert_env(env_file, "NOTIFIER_CONTEXT_SIGNING_KEY", bn_sign)
+    upsert_env(env_file, "NOTIFIER_CONTEXT_VERIFY_KEY", bn_sign)
+    upsert_env(env_file, "NOTIFIER_URL", "http://notifier:4323")
 
-    bc_token = read_env_value(env_file, "BECERTAIN_SERVICE_TOKEN") or random_alnum(40)
-    upsert_env(env_file, "BECERTAIN_SERVICE_TOKEN", bc_token)
-    upsert_env(env_file, "BECERTAIN_EXPECTED_SERVICE_TOKEN", bc_token)
-    bc_sign = read_env_value(env_file, "BECERTAIN_CONTEXT_SIGNING_KEY") or random_alnum(48)
-    upsert_env(env_file, "BECERTAIN_CONTEXT_SIGNING_KEY", bc_sign)
-    upsert_env(env_file, "BECERTAIN_CONTEXT_VERIFY_KEY", bc_sign)
-    upsert_env(env_file, "BECERTAIN_URL", "http://becertain:4322")
+    bc_token = read_env_value(env_file, "RESOLVER_SERVICE_TOKEN") or random_alnum(40)
+    upsert_env(env_file, "RESOLVER_SERVICE_TOKEN", bc_token)
+    upsert_env(env_file, "RESOLVER_EXPECTED_SERVICE_TOKEN", bc_token)
+    bc_sign = read_env_value(env_file, "RESOLVER_CONTEXT_SIGNING_KEY") or random_alnum(48)
+    upsert_env(env_file, "RESOLVER_CONTEXT_SIGNING_KEY", bc_sign)
+    upsert_env(env_file, "RESOLVER_CONTEXT_VERIFY_KEY", bc_sign)
+    upsert_env(env_file, "RESOLVER_URL", "http://resolver:4322")
 
     upsert_env(env_file, "GATEWAY_PORT", "4321")
     upsert_env(env_file, "GATEWAY_AUTH_API_URL", f"http://{api_service_host}:4319/api/internal/otlp/validate")
@@ -428,8 +429,8 @@ def setup_dev() -> Path:
     ok(f"Cloned: {target}")
 
     info("Cloning dependent repos (if missing)")
-    clone_repo_if_missing(BECERTAIN_REPO_URL, target / "BeCertain")
-    clone_repo_if_missing(BENOTIFIED_REPO_URL, target / "BeNotified")
+    clone_repo_if_missing(RESOLVER_REPO_URL, target / "resolver")
+    clone_repo_if_missing(NOTIFIER_REPO_URL, target / "Notifier")
     return target
 
 

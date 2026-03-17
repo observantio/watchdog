@@ -21,7 +21,7 @@ export function DashboardLayout({ dashboardData, agentData }) {
               Welcome to Observantio
             </h2>
             <p className="text-sm text-sre-text-muted mt-1 leading-relaxed">
-              Observantio is an open-source observability tool that provides a unified platform for monitoring, alerting, and log management. It is designed to be user-friendly and customizable, allowing you to easily visualize and analyze your system's performance and health. Powered by LGTM, Alert manager, Be Certain and Be Notifed
+              Observantio is an open-source observability tool that provides a unified platform for monitoring, alerting, and log management. It is designed to be user-friendly and customizable, allowing you to easily visualize and analyze your system's performance and health. Powered by LGTM, Alert manager, Resolver and Be Notifed
             </p>
             <p className="text-xs text-sre-text-muted mt-3">
               Licensed under Apache License 2.0. You are free to use, modify,

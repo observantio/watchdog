@@ -38,7 +38,7 @@ jobs:
       PYTHONPATH: .
     defaults:
       run:
-        working-directory: BeGateway
+        working-directory: gatekeeper
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: BeObservant
+        working-directory: watchdog
     steps:
       - uses: actions/checkout@v4
 
@@ -84,15 +84,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: BeGateway
-            service: BeGateway
-            requirements: BeGateway/requirements.txt
+          - name: Gateway
+            service: gatekeeper
+            requirements: gatekeeper/requirements.txt
             mypy_config: mypy.ini
             extra_packages: ""
             run_pylint: "false"
-          - name: BeObservant
-            service: BeObservant
-            requirements: BeObservant/requirements.txt
+          - name: Watchdog
+            service: watchdog
+            requirements: watchdog/requirements.txt
             mypy_config: mypy.ini
             pylint_config: .pylintrc
             extra_packages: "types-psutil"
@@ -101,21 +101,21 @@ jobs:
       APP_ENV: development
       ENVIRONMENT: development
       VAULT_ENABLED: "false"
-      DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/beobservant
-      BENOTIFIED_DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/benotified
-      BECERTAIN_DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/becertain
+      DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/watchdog
+      NOTIFIER_DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/notifier
+      RESOLVER_DATABASE_URL: postgresql://ci_user:ci_password_123@localhost:5432/resolver
       CORS_ORIGINS: http://localhost:3000
       CORS_ALLOW_CREDENTIALS: "true"
       JWT_AUTO_GENERATE_KEYS: "true"
       GATEWAY_INTERNAL_SERVICE_TOKEN: ci_gateway_internal_service_token_123456789
-      BENOTIFIED_EXPECTED_SERVICE_TOKEN: ci_benotified_expected_service_token_123456789
-      BENOTIFIED_SERVICE_TOKEN: ci_benotified_service_token_123456789
-      BENOTIFIED_CONTEXT_VERIFY_KEY: ci_benotified_context_verify_key_12345678901234567890
-      BENOTIFIED_CONTEXT_SIGNING_KEY: ci_benotified_context_signing_key_12345678901234567890
-      BECERTAIN_EXPECTED_SERVICE_TOKEN: ci_becertain_expected_service_token_123456789
-      BECERTAIN_SERVICE_TOKEN: ci_becertain_service_token_123456789
-      BECERTAIN_CONTEXT_VERIFY_KEY: ci_becertain_context_verify_key_12345678901234567890
-      BECERTAIN_CONTEXT_SIGNING_KEY: ci_becertain_context_signing_key_12345678901234567890
+      NOTIFIER_EXPECTED_SERVICE_TOKEN: ci_notifier_expected_service_token_123456789
+      NOTIFIER_SERVICE_TOKEN: ci_notifier_service_token_123456789
+      NOTIFIER_CONTEXT_VERIFY_KEY: ci_notifier_context_verify_key_12345678901234567890
+      NOTIFIER_CONTEXT_SIGNING_KEY: ci_notifier_context_signing_key_12345678901234567890
+      RESOLVER_EXPECTED_SERVICE_TOKEN: ci_resolver_expected_service_token_123456789
+      RESOLVER_SERVICE_TOKEN: ci_resolver_service_token_123456789
+      RESOLVER_CONTEXT_VERIFY_KEY: ci_resolver_context_verify_key_12345678901234567890
+      RESOLVER_CONTEXT_SIGNING_KEY: ci_resolver_context_signing_key_12345678901234567890
       INBOUND_WEBHOOK_TOKEN: ci_inbound_webhook_token_123456789
       PYTHONPATH: ${{ github.workspace }}/${{ matrix.service }}
     steps:

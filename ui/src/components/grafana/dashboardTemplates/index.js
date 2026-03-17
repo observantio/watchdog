@@ -1,22 +1,31 @@
-import mimirSystemProcess from "./mimir-system-process.json";
-import ojoAgentDashboard from "./ojo-agent-dashboard.json";
+import native from "./native.json";
+import linux from "./linux.json";
+import windows from "./windows.json";
 
 export const DASHBOARD_TEMPLATES = [
   {
-    id: "mimir-system-process",
-    name: "Complete System & Process Observability",
+    id: "native-otel-collector-overview",
+    name: "OTel Collector Overview",
     icon: "monitor_heart",
     summary:
       "Single super-detailed template covering CPU, memory, disk, network, filesystem, paging, and process metrics.",
     datasourceUid: "mimir-prometheus",
-    dashboard: mimirSystemProcess,
+    dashboard: native,
   },
   {
-    id: "ojo-agent-dashboard",
-    name: "Ojo Agent Dashboard",
+    id: "linux-collector-overview",
+    name: "Linux Collector Overview",
     icon: "visibility",
-    summary: "Grafana dashboard for Ojo agent metrics.",
+    summary: "Grafana dashboard for Linux collector metrics using the Observantio Collector.",
     datasourceUid: "Prometheus",
-    dashboard: ojoAgentDashboard,
+    dashboard: linux,
+  },
+  {
+    id: "windows-collector-overview",
+    name: "Windows Collector Overview",
+    icon: "visibility",
+    summary: "Grafana dashboard for Windows collector metrics using the Observantio Collector.",
+    datasourceUid: "Prometheus",
+    dashboard: windows,
   },
 ];

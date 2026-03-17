@@ -195,9 +195,9 @@ function AppContent() {
 
       {location.pathname !== "/login" && (
         <footer className="container text-center text-xs text-sre-text-muted mt-8 mb-8">
-          © Be Observant v0.0.2 — Apache 2.0 License —{" "}
+          © Watchdog v0.0.2 — Apache 2.0 License —{" "}
           <a
-            href="https://github.com/StefanKumarasinghe/BeObservant"
+            href="https://github.com/observantio/watchdog"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sre-primary hover:underline"

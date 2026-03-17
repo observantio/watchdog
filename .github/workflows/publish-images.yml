@@ -1,4 +1,4 @@
-name: Publish BEOBSERVANT Image
+name: Publish WATCHDOG Image
 
 on:
   workflow_run:
@@ -55,22 +55,22 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push beobservant
+      - name: Build and push watchdog
         uses: docker/build-push-action@v6
         with:
-          context: ./BeObservant
-          file: ./BeObservant/Dockerfile
+          context: ./watchdog
+          file: ./watchdog/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/beobservant:stable
-            ghcr.io/${{ github.repository_owner }}/beobservant:${{ github.event.workflow_run.id }}
+            ghcr.io/${{ github.repository_owner }}/watchdog:stable
+            ghcr.io/${{ github.repository_owner }}/watchdog:${{ github.event.workflow_run.id }}
 
-      - name: Build and push begateway
+      - name: Build and push Gatekeeper
         uses: docker/build-push-action@v6
         with:
-          context: ./BeGateway
-          file: ./BeGateway/Dockerfile
+          context: ./gatekeeper
+          file: ./gatekeeper/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/begateway:stable
-            ghcr.io/${{ github.repository_owner }}/begateway:${{ github.event.workflow_run.id }}
+            ghcr.io/${{ github.repository_owner }}/gatekeeper:stable
+            ghcr.io/${{ github.repository_owner }}/gatekeeper:${{ github.event.workflow_run.id }}

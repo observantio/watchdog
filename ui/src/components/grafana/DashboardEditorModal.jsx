@@ -396,11 +396,7 @@ export default function DashboardEditorModal({
                           ? "border-sre-primary bg-sre-primary/10 shadow-md"
                           : "border-sre-border bg-sre-surface hover:border-sre-primary hover:bg-sre-primary/5"
                       }`}
-                      data-testid={
-                        t.id === "mimir-system-process"
-                          ? "load-mimir-sample"
-                          : undefined
-                      }
+                      data-testid={`load-template-${t.id}`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div

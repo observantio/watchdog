@@ -363,7 +363,7 @@ export default function RCAPage() {
       <PageHeader
         icon="psychology"
         title="AI Root Cause Analysis (RCA)"
-        subtitle="Generate, find, and manage tenant-scoped RCA reports through Be Observant."
+        subtitle="Generate, find, and manage tenant-scoped RCA reports through Watchdog."
       >
         <Button variant="secondary" size="sm" onClick={refreshJobs}>
           Refresh Jobs

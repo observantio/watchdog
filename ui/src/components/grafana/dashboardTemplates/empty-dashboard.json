@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 38,
-  "title": "Empty Dashboard",
-  "uid": "empty-dashboard",
-  "timezone": "browser",
-  "version": 1,
-  "time": { "from": "now-1h", "to": "now" },
-  "panels": []
-}

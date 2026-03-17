@@ -10,7 +10,7 @@ describe("RcaJobComposer", () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const onDownloadTemplate = vi.fn().mockResolvedValue({
       template_yaml: "version: 1\n",
-      file_name: "becertain-rca-defaults.yaml",
+      file_name: "resolver-rca-defaults.yaml",
     });
     const file = new File(["version: 1\nsettings:\n  mad_threshold: 8.0\n"], "rca.yaml", {
       type: "application/x-yaml",
@@ -51,7 +51,7 @@ describe("RcaJobComposer", () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const onDownloadTemplate = vi.fn().mockResolvedValue({
       template_yaml: "version: 1\nrequest:\n  step: 15s\n",
-      file_name: "becertain-rca-defaults.yaml",
+      file_name: "resolver-rca-defaults.yaml",
     });
     const originalCreateElement = document.createElement.bind(document);
     const createObjectURL = vi.fn(() => "blob:template");

@@ -2,14 +2,13 @@ import os
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent
 
 PROJECT_ROOTS = {
-    "beobservant": REPO_ROOT / "BeObservant",
-    "benotified": REPO_ROOT / "BeNotified",
-    "gateway": REPO_ROOT / "BeGateway",
-    "becertain": REPO_ROOT / "BeCertain",
+    "watchdog": REPO_ROOT / "watchdog",
+    "notifier": REPO_ROOT / "notifier",
+    "gateway": REPO_ROOT / "gatekeeper",
+    "resolver": REPO_ROOT / "resolver",
 }
 
 CONFLICT_PREFIXES = (
@@ -28,14 +27,14 @@ _ACTIVE_ROOT: Path | None = None
 
 def _detect_project(path: Path) -> Path | None:
     p = str(path)
-    if f"{os.sep}BeObservant{os.sep}tests{os.sep}" in p:
-        return PROJECT_ROOTS["beobservant"]
-    if f"{os.sep}BeNotified{os.sep}tests{os.sep}" in p:
-        return PROJECT_ROOTS["benotified"]
-    if f"{os.sep}BeGateway{os.sep}tests{os.sep}" in p:
+    if f"{os.sep}watchdog{os.sep}tests{os.sep}" in p:
+        return PROJECT_ROOTS["watchdog"]
+    if f"{os.sep}notifier{os.sep}tests{os.sep}" in p:
+        return PROJECT_ROOTS["notifier"]
+    if f"{os.sep}gatekeeper{os.sep}tests{os.sep}" in p:
         return PROJECT_ROOTS["gateway"]
-    if f"{os.sep}BeCertain{os.sep}tests{os.sep}" in p:
-        return PROJECT_ROOTS["becertain"]
+    if f"{os.sep}resolver{os.sep}tests{os.sep}" in p:
+        return PROJECT_ROOTS["resolver"]
     return None
 
 
@@ -47,7 +46,6 @@ def _set_import_root(root: Path, purge_modules: bool = True) -> None:
     sys.path.insert(0, root_str)
 
     if purge_modules:
-        # Force module re-resolution from the currently active project root.
         to_delete = []
         for name in sys.modules:
             if name in CONFLICT_PREFIXES:
@@ -71,6 +69,4 @@ def pytest_pycollect_makemodule(module_path, path=None, parent=None):
 def pytest_runtest_setup(item):
     root = _detect_project(Path(str(item.path)))
     if root is not None:
-        # Avoid purging during runtime; tests may hold module references
-        # collected under this root, and purging here causes duplicate modules.
         _set_import_root(root, purge_modules=False)

@@ -20,7 +20,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks: [obs]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U beobservant"]
+      test: ["CMD-SHELL", "pg_isready -U watchdog"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,9 +34,9 @@ services:
     networks: [obs]
     restart: unless-stopped
 
-  beobservant:
+  watchdog:
     build:
-      context: ./BeObservant
+      context: ./watchdog
       dockerfile: Dockerfile
     env_file:
       - .env
@@ -47,9 +47,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      benotified:
+      notifier:
         condition: service_started
-      becertain:
+      resolver:
         condition: service_started
     environment:
       RATE_LIMIT_BACKEND: ${RATE_LIMIT_BACKEND:-redis}
@@ -63,9 +63,9 @@ services:
       retries: 3
       start_period: 10s
 
-  benotified:
+  notifier:
     build:
-      context: ./BeNotified
+      context: ./notifier
       dockerfile: Dockerfile
     env_file:
       - .env
@@ -91,7 +91,7 @@ services:
 
   gateway-auth:
     build:
-      context: ./BeGateway
+      context: ./gatekeeper
       dockerfile: Dockerfile
     env_file:
       - .env
@@ -100,7 +100,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      beobservant:
+      watchdog:
         condition: service_healthy
     environment:
       GATEWAY_HOST: 0.0.0.0
@@ -113,17 +113,17 @@ services:
       retries: 3
       start_period: 10s
 
-  becertain:
+  resolver:
     build:
-      context: ./BeCertain
+      context: ./resolver
       dockerfile: Dockerfile
     env_file:
       - .env         
     networks: [obs]
     environment:
       REDIS_URL: redis://redis:6379/0
-      BECERTAIN_HOST: 0.0.0.0
-      BECERTAIN_PORT: 4322
+      RESOLVER_HOST: 0.0.0.0
+      RESOLVER_PORT: 4322
     depends_on:
       postgres:
         condition: service_healthy
@@ -279,7 +279,7 @@ services:
       - "5173:80"
     restart: unless-stopped
     depends_on:
-      beobservant:
+      watchdog:
         condition: service_healthy
 
   grafana-proxy:
@@ -289,7 +289,7 @@ services:
     depends_on:
       grafana:
         condition: service_started
-      beobservant:
+      watchdog:
         condition: service_healthy
     networks: [obs]
     ports:

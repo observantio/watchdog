@@ -36,7 +36,7 @@ export default function RcaJobComposer({ onCreate, onDownloadTemplate, creating 
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = response?.file_name || "becertain-rca-defaults.yaml";
+      anchor.download = response?.file_name || "resolver-rca-defaults.yaml";
       anchor.click();
       window.URL.revokeObjectURL(url);
     } finally {
@@ -75,7 +75,7 @@ export default function RcaJobComposer({ onCreate, onDownloadTemplate, creating 
               <p className="mt-1 text-xs leading-relaxed text-sre-text-muted">
                 Upload a YAML file to override RCA thresholds, weights,
                 built-in queries, and analyzer tuning for this job only. When
-                no file is provided, BeCertain uses the server defaults.
+                no file is provided, Resolver uses the server defaults.
               </p>
             </div>
             <Button
