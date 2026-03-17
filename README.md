@@ -60,18 +60,7 @@ Watchdog adds the pieces those components do not provide as a single opinionated
 
 ## High-Level Architecture
 
-```mermaid
-flowchart LR
-  A[Applications / OTel Collector] --> B[otlp-gateway<br/>Envoy]
-  B --> C[gateway-auth<br/>Gatekeeper ext_authz]
-  C --> D[Loki / Tempo / Mimir]
-
-  U[Users] --> UI[UI]
-  U --> API[Watchdog]
-  API --> G[Loki / Tempo / Mimir<br/>Alertmanager / Grafana]
-  API --> N[Notifier]
-  API --> R[Resolver]
-```
+![Observantio Architecture](assets/watchdog.png)
 
 ### Service Responsibilities
 
