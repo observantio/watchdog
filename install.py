@@ -430,7 +430,7 @@ def setup_dev() -> Path:
 
     info("Cloning dependent repos (if missing)")
     clone_repo_if_missing(RESOLVER_REPO_URL, target / "resolver")
-    clone_repo_if_missing(NOTIFIER_REPO_URL, target / "Notifier")
+    clone_repo_if_missing(NOTIFIER_REPO_URL, target / "notifier")
     return target
 
 
