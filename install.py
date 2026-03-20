@@ -405,6 +405,19 @@ def prepare_env(
     upsert_env(env_file, "GRAFANA_PASSWORD", admin_pass)
     upsert_env(env_file, "GF_SECURITY_ADMIN_PASSWORD", admin_pass)
 
+    # Grafana auth proxy integration defaults
+    upsert_env(env_file, "GF_SERVER_ROOT_URL", "http://localhost:8080/grafana/")
+    upsert_env(env_file, "GF_SERVER_SERVE_FROM_SUB_PATH", "true")
+    upsert_env(env_file, "GF_AUTH_PROXY_ENABLED", "true")
+    upsert_env(env_file, "GF_AUTH_PROXY_HEADER_NAME", "X-WEBAUTH-USER")
+    upsert_env(env_file, "GF_AUTH_PROXY_AUTO_SIGN_UP", "true")
+    upsert_env(env_file, "GF_AUTH_PROXY_HEADERS", "Email:X-WEBAUTH-EMAIL Name:X-WEBAUTH-NAME Role:X-WEBAUTH-ROLE")
+    upsert_env(env_file, "GF_AUTH_PROXY_WHITELIST", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+    upsert_env(env_file, "GF_AUTH_ANONYMOUS_ENABLED", "false")
+    upsert_env(env_file, "GF_AUTH_BASIC_ENABLED", "true")
+    upsert_env(env_file, "GF_SECURITY_ALLOW_EMBEDDING", "true")
+    upsert_env(env_file, "GF_USERS_ALLOW_SIGN_UP", "false")
+
     ok(f"Updated: {env_file}")
 
 
