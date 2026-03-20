@@ -3,7 +3,7 @@ WORKDIR /app
 ARG VITE_OTLP_GATEWAY_HOST
 ENV VITE_OTLP_GATEWAY_HOST=$VITE_OTLP_GATEWAY_HOST
 COPY package.json package-lock.json* ./
-RUN npm ci 
+RUN npm ci --include=optional
 COPY . .
 RUN NODE_ENV=production npm run build
 
