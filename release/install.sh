@@ -54,7 +54,6 @@ random_hex() {
 }
 
 random_fernet_key() {
-  # Fernet requires URL-safe base64 encoding of exactly 32 random bytes.
   if command -v python3 >/dev/null 2>&1; then
     python3 - <<'PY'
 import base64
@@ -229,9 +228,13 @@ if [[ "${is_production_env}" == "false" && -z "${gateway_ip_allowlist}" ]]; then
   set_env_key "GATEWAY_ALLOWLIST_FAIL_OPEN" "true"
 fi
 
+grafana_proxy_ip_allowlist="$(get_env_key GRAFANA_PROXY_IP_ALLOWLIST)"
+if [[ -z "${grafana_proxy_ip_allowlist}" ]]; then
+  set_env_key "GRAFANA_PROXY_IP_ALLOWLIST" "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+fi
+
 grafana_auth_proxy_whitelist="$(get_env_key GF_AUTH_PROXY_WHITELIST)"
 if [[ -z "${grafana_auth_proxy_whitelist}" || "${grafana_auth_proxy_whitelist}" == "127.0.0.1,::1" ]]; then
-  # Grafana receives auth-proxy requests from grafana-proxy over Docker bridge (typically 172.x).
   set_env_key "GF_AUTH_PROXY_WHITELIST" "127.0.0.1,::1,172.16.0.0/12"
 fi
 
