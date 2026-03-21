@@ -124,3 +124,14 @@ After startup, check:
 - `curl http://localhost:4319/health`
 
 If host port `4319` is private, run the health check on the host itself or from inside the Docker network.
+
+## Grafana Proxy Auth Note
+
+If `GRAFANA_PROXY_IP_ALLOWLIST` or `GF_AUTH_PROXY_WHITELIST` is empty/incorrect, Grafana proxy auth will not be trusted and users will see the native Grafana login page.
+
+Minimum recommended values:
+
+- `GRAFANA_PROXY_IP_ALLOWLIST=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`
+- `GF_AUTH_PROXY_WHITELIST=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`
+
+Also ensure users access Grafana through the proxy path (`/grafana` on port `8080`) rather than direct port `3000`.
