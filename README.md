@@ -252,6 +252,7 @@ curl http://localhost:4323/health
 
 For internal services that are not published to host ports (`gateway-auth`, `resolver`), use `docker compose logs` or container-internal checks.
 
+
 ## First-Run User Journey
 
 1. Open `http://localhost:5173`.
@@ -406,6 +407,7 @@ There are three different security boundaries in this stack:
 
 - Detailed walkthrough: [User Guide](USER%20GUIDE.md)
 - Environment reference: [Example Environment File](.env.example)
+- Release deployment and hardening: [Deployment Guide](DEPLOYMENT.md)
 
 ## License And Notices
 

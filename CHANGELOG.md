@@ -12,7 +12,7 @@ This changelog follows a simple human-first format and keeps entries focused on 
 
 - Introduced a production release flow that ships deployable assets as GitHub Release attachments.
 - Added `docker-compose.prod.yml` for image-based deployment (no local source build required).
-- Added a release installer script (`release/install.sh`) so users can extract the release tarball and bootstrap quickly.
+- Added a release installer script (`release/install.sh`) so users can run the orchestration
 - Added `release/versions.json` as the central version manifest for independent per-service image tags.
 - Added release packaging for architecture-specific bundles (`amd64`, `arm64`, and `multi` metadata bundle).
 

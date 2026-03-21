@@ -44,6 +44,7 @@ export default function LoginPage() {
   const hasOIDC = Boolean(authMode?.oidc_enabled);
   const hasPassword = Boolean(authMode?.password_enabled);
   const showDivider = hasOIDC && hasPassword;
+  const showLoginLogo = !showMfaSetup && !mfaRequired;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -196,7 +197,13 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-sre-bg p-4">
       <Card className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/favicon.png" alt="Watchdog logo" className="mx-auto  w-43 h-43 dark:filter dark:invert" />
+          {showLoginLogo && (
+            <img
+              src="/favicon.png"
+              alt="Watchdog logo"
+              className="mx-auto  w-43 h-43 dark:filter dark:invert"
+            />
+          )}
           <h1 className="text-3xl font-bold text-sre-text mb-2">
             Watchdog
           </h1>

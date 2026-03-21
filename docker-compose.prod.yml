@@ -260,6 +260,13 @@ services:
 
   ui:
     image: ghcr.io/${IMAGE_REGISTRY_OWNER:-observantio}/ui:${IMAGE_TAG_UI:-v0.0.0}
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:4319}
+        VITE_OTLP_GATEWAY_HOST: ${VITE_OTLP_GATEWAY_HOST:-http://localhost:4320}
+        VITE_OIDC_PROVIDER_LABEL: ${VITE_OIDC_PROVIDER_LABEL:-Microsoft SSO / Keycloak}
     env_file:
       - .env
     networks: [obs]

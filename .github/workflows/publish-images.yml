@@ -139,31 +139,51 @@ jobs:
       - name: Extract changelog entry for this version
         env:
           VERSION: ${{ needs.resolve-versions.outputs.bundle_version }}
+          NOTIFIER_VERSION: ${{ needs.resolve-versions.outputs.notifier_version }}
+          RESOLVER_VERSION: ${{ needs.resolve-versions.outputs.resolver_version }}
         run: |
           set -euo pipefail
-          if [ ! -f CHANGELOG.md ]; then
-            echo "CHANGELOG.md not found at repository root." >&2
-            exit 1
-          fi
-          awk -v version="$VERSION" '
-            BEGIN { in_section=0; found=0 }
-            /^## \[/ {
-              if ($0 ~ "^## \\[" version "\\]") {
-                in_section=1
-                found=1
-                print
-                next
+          extract_section() {
+            local file="$1"
+            local version="$2"
+            local label="$3"
+            if [ ! -f "$file" ]; then
+              echo "Missing changelog file: $file" >&2
+              return 1
+            fi
+            if ! awk -v version="$version" '
+              BEGIN { in_section=0; found=0 }
+              /^## \[/ {
+                if ($0 ~ "^## \\[" version "\\]") {
+                  in_section=1
+                  found=1
+                  print
+                  next
+                }
+                if (in_section==1) exit
               }
-              if (in_section==1) exit
-            }
-            in_section==1 { print }
-            END {
-              if (!found) {
-                print "No changelog entry found for " version > "/dev/stderr"
-                exit 1
-              }
-            }
-          ' CHANGELOG.md > release-notes.md
+              in_section==1 { print }
+              END { exit(found ? 0 : 1) }
+            ' "$file" > "/tmp/changelog-${label}.md"; then
+              echo "No changelog entry found for ${label} version ${version} in ${file}" >&2
+              return 1
+            fi
+          }
+
+          extract_section "CHANGELOG.md" "${VERSION}" "bundle"
+          extract_section "notifier/CHANGELOG.md" "${NOTIFIER_VERSION}" "notifier"
+          extract_section "resolver/CHANGELOG.md" "${RESOLVER_VERSION}" "resolver"
+
+          {
+            echo "# Bundle ${VERSION}"
+            cat /tmp/changelog-bundle.md
+            echo
+            echo "# Notifier ${NOTIFIER_VERSION}"
+            cat /tmp/changelog-notifier.md
+            echo
+            echo "# Resolver ${RESOLVER_VERSION}"
+            cat /tmp/changelog-resolver.md
+          } > release-notes.md
 
       - name: Create release from tag
         uses: softprops/action-gh-release@v2
@@ -198,36 +218,40 @@ jobs:
 
       - name: Build bundle directory
         run: |
-          mkdir -p bundle
-          cp -r configs bundle/
-          cp docker-compose.prod.yml bundle/
-          cp release/install.sh bundle/install.sh
-          cp .env.example bundle/.env.example
-          cp release/versions.json bundle/versions.json
+          BUNDLE_DIR="observantio-${BUNDLE_VERSION}-linux-${ARCH}"
+          mkdir -p "bundle/${BUNDLE_DIR}"
+          cp -r configs "bundle/${BUNDLE_DIR}/"
+          cp docker-compose.prod.yml "bundle/${BUNDLE_DIR}/"
+          cp release/install.sh "bundle/${BUNDLE_DIR}/install.sh"
+          cp .env.example "bundle/${BUNDLE_DIR}/.env.example"
+          cp release/versions.json "bundle/${BUNDLE_DIR}/versions.json"
 
       - name: Pin bundle env metadata
         run: |
-          sed -i "s/^OBSERVANTIO_BUNDLE_VERSION=.*/OBSERVANTIO_BUNDLE_VERSION=${BUNDLE_VERSION}/" bundle/.env.example
-          sed -i "s/^IMAGE_TAG_WATCHDOG=.*/IMAGE_TAG_WATCHDOG=${WATCHDOG_VERSION}/" bundle/.env.example
-          sed -i "s/^IMAGE_TAG_GATEKEEPER=.*/IMAGE_TAG_GATEKEEPER=${GATEKEEPER_VERSION}/" bundle/.env.example
-          sed -i "s/^IMAGE_TAG_UI=.*/IMAGE_TAG_UI=${UI_VERSION}/" bundle/.env.example
-          sed -i "s/^IMAGE_TAG_OTEL_AGENT=.*/IMAGE_TAG_OTEL_AGENT=${OTEL_AGENT_VERSION}/" bundle/.env.example
-          sed -i "s/^IMAGE_TAG_NOTIFIER=.*/IMAGE_TAG_NOTIFIER=${NOTIFIER_VERSION}/" bundle/.env.example
-          sed -i "s/^IMAGE_TAG_RESOLVER=.*/IMAGE_TAG_RESOLVER=${RESOLVER_VERSION}/" bundle/.env.example
-          if grep -q '^RELEASE_ARCH=' bundle/.env.example; then
-            sed -i "s/^RELEASE_ARCH=.*/RELEASE_ARCH=${ARCH}/" bundle/.env.example
+          BUNDLE_DIR="observantio-${BUNDLE_VERSION}-linux-${ARCH}"
+          ENV_FILE="bundle/${BUNDLE_DIR}/.env.example"
+          sed -i "s/^OBSERVANTIO_BUNDLE_VERSION=.*/OBSERVANTIO_BUNDLE_VERSION=${BUNDLE_VERSION}/" "${ENV_FILE}"
+          sed -i "s/^IMAGE_TAG_WATCHDOG=.*/IMAGE_TAG_WATCHDOG=${WATCHDOG_VERSION}/" "${ENV_FILE}"
+          sed -i "s/^IMAGE_TAG_GATEKEEPER=.*/IMAGE_TAG_GATEKEEPER=${GATEKEEPER_VERSION}/" "${ENV_FILE}"
+          sed -i "s/^IMAGE_TAG_UI=.*/IMAGE_TAG_UI=${UI_VERSION}/" "${ENV_FILE}"
+          sed -i "s/^IMAGE_TAG_OTEL_AGENT=.*/IMAGE_TAG_OTEL_AGENT=${OTEL_AGENT_VERSION}/" "${ENV_FILE}"
+          sed -i "s/^IMAGE_TAG_NOTIFIER=.*/IMAGE_TAG_NOTIFIER=${NOTIFIER_VERSION}/" "${ENV_FILE}"
+          sed -i "s/^IMAGE_TAG_RESOLVER=.*/IMAGE_TAG_RESOLVER=${RESOLVER_VERSION}/" "${ENV_FILE}"
+          if grep -q '^RELEASE_ARCH=' "${ENV_FILE}"; then
+            sed -i "s/^RELEASE_ARCH=.*/RELEASE_ARCH=${ARCH}/" "${ENV_FILE}"
           else
-            printf '\nRELEASE_ARCH=%s\n' "${ARCH}" >> bundle/.env.example
+            printf '\nRELEASE_ARCH=%s\n' "${ARCH}" >> "${ENV_FILE}"
           fi
 
       - name: Build release tarball
         run: |
-          tar -czf "observantio-configs-${BUNDLE_VERSION}-linux-${ARCH}.tar.gz" -C bundle .
+          BUNDLE_DIR="observantio-${BUNDLE_VERSION}-linux-${ARCH}"
+          tar -czf "observantio-${BUNDLE_VERSION}-linux-${ARCH}.tar.gz" -C bundle "${BUNDLE_DIR}"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.BUNDLE_VERSION }}
           overwrite_files: true
-          files: observantio-configs-${{ env.BUNDLE_VERSION }}-linux-${{ env.ARCH }}.tar.gz
+          files: observantio-${{ env.BUNDLE_VERSION }}-linux-${{ env.ARCH }}.tar.gz
           fail_on_unmatched_files: true

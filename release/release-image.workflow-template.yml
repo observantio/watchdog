@@ -46,29 +46,60 @@ jobs:
       - name: Extract changelog entry for this version
         run: |
           set -euo pipefail
-          if [ ! -f CHANGELOG.md ]; then
-            echo "CHANGELOG.md not found at repository root." >&2
-            exit 1
-          fi
-          awk -v version="$VERSION" '
-            BEGIN { in_section=0; found=0 }
-            /^## \[/ {
-              if ($0 ~ "^## \\[" version "\\]") {
-                in_section=1
-                found=1
-                print
-                next
+          extract_section() {
+            local file="$1"
+            local version="$2"
+            local label="$3"
+            if [ ! -f "$file" ]; then
+              echo "Missing changelog file: $file" >&2
+              return 1
+            fi
+            if ! awk -v version="$version" '
+              BEGIN { in_section=0; found=0 }
+              /^## \[/ {
+                if ($0 ~ "^## \\[" version "\\]") {
+                  in_section=1
+                  found=1
+                  print
+                  next
+                }
+                if (in_section==1) exit
               }
-              if (in_section==1) exit
-            }
-            in_section==1 { print }
-            END {
-              if (!found) {
-                print "No changelog entry found for " version > "/dev/stderr"
-                exit 1
-              }
-            }
-          ' CHANGELOG.md > release-notes.md
+              in_section==1 { print }
+              END { exit(found ? 0 : 1) }
+            ' "$file" > "/tmp/changelog-${label}.md"; then
+              echo "No changelog entry found for ${label} version ${version} in ${file}" >&2
+              return 1
+            fi
+          }
+
+          notifier_version="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("release/versions.json").read_text(encoding="utf-8"))["notifier"])
+          PY
+          )"
+          resolver_version="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("release/versions.json").read_text(encoding="utf-8"))["resolver"])
+          PY
+          )"
+
+          extract_section "CHANGELOG.md" "${VERSION}" "bundle"
+          extract_section "notifier/CHANGELOG.md" "${notifier_version}" "notifier"
+          extract_section "resolver/CHANGELOG.md" "${resolver_version}" "resolver"
+
+          {
+            echo "# Bundle ${VERSION}"
+            cat /tmp/changelog-bundle.md
+            echo
+            echo "# Notifier ${notifier_version}"
+            cat /tmp/changelog-notifier.md
+            echo
+            echo "# Resolver ${resolver_version}"
+            cat /tmp/changelog-resolver.md
+          } > release-notes.md
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2

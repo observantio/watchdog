@@ -10,7 +10,8 @@ function resolveDefaultApiBase() {
 export const API_BASE = import.meta.env.VITE_API_URL || resolveDefaultApiBase();
 export const GRAFANA_URL =
   import.meta.env.VITE_GRAFANA_URL || "http://localhost:8080/grafana";
-export const OIDC_PROVIDER_LABEL = "SSO";
+export const OIDC_PROVIDER_LABEL =
+  import.meta.env.VITE_OIDC_PROVIDER_LABEL || "SSO";
 
 export const LOKI_OTLP_ENDPOINT =
   import.meta.env.VITE_LOKI_OTLP_ENDPOINT || "http://loki:3100/otlp";

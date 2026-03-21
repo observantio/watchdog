@@ -1,7 +1,11 @@
 FROM node:20-alpine AS build
 WORKDIR /app
+ARG VITE_API_URL
 ARG VITE_OTLP_GATEWAY_HOST
+ARG VITE_OIDC_PROVIDER_LABEL
+ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_OTLP_GATEWAY_HOST=$VITE_OTLP_GATEWAY_HOST
+ENV VITE_OIDC_PROVIDER_LABEL=$VITE_OIDC_PROVIDER_LABEL
 COPY package.json package-lock.json* ./
 RUN npm ci --include=optional && npm install @rollup/rollup-linux-x64-musl --save-optional
 COPY . .
