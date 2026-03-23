@@ -1469,7 +1469,7 @@ export default function IncidentBoardPage() {
             <div className="flex flex-col gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-sre-text">
-                  <span className="material-icons text-3xl text-sre-primary">
+                  <span className="material-icons text-3xl text-sre-text">
                     assignment
                   </span>{" "}
                   InOps

@@ -195,13 +195,13 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-sre-bg p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md !border-0 hover:!border-0">
         <div className="text-center mb-8">
           {showLoginLogo && (
             <img
               src="/favicon.png"
               alt="Watchdog logo"
-              className="mx-auto  w-43 h-43 dark:filter dark:invert"
+              className="mx-auto  w-40 h-40 dark:filter dark:invert"
             />
           )}
           <h1 className="text-3xl font-bold text-sre-text mb-2">

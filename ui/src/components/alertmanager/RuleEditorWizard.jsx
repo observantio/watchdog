@@ -7,6 +7,7 @@ export default function RuleEditorWizard({
   onNext,
   onPrevious,
   onSubmit,
+  onStepClick,
   canProceed,
   isSubmitting,
   hasErrors,
@@ -62,23 +63,30 @@ export default function RuleEditorWizard({
                 key={step.key || step.label || index}
                 className="flex flex-col items-center"
               >
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
-                    isCompleted
-                      ? "bg-sre-success text-white shadow-lg"
-                      : isActive
-                        ? "bg-sre-primary text-white shadow-lg ring-4 ring-sre-primary/20"
-                        : "bg-sre-surface border-2 border-sre-border text-sre-text-muted"
-                  }`}
+                <button
+                  type="button"
+                  onClick={() => onStepClick?.(index)}
+                  className="group"
+                  aria-label={`Go to ${step.label}`}
                 >
-                  {isCompleted ? (
-                    <span className="material-icons text-lg">check</span>
-                  ) : (
-                    <span className="material-icons text-base">
-                      {step.icon}
-                    </span>
-                  )}
-                </div>
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
+                      isCompleted
+                        ? "bg-sre-success text-white shadow-lg"
+                        : isActive
+                          ? "bg-sre-primary text-white shadow-lg ring-4 ring-sre-primary/20"
+                          : "bg-sre-surface border-2 border-sre-border text-sre-text-muted group-hover:border-sre-primary/70 group-hover:text-sre-text"
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <span className="material-icons text-lg">check</span>
+                    ) : (
+                      <span className="material-icons text-base">
+                        {step.icon}
+                      </span>
+                    )}
+                  </div>
+                </button>
                 <div className="mt-2 text-center min-w-0 flex-1">
                   <div
                     className={`text-xs font-medium ${isActive ? "text-sre-primary" : isCompleted ? "text-sre-success" : "text-sre-text-muted"}`}
@@ -168,6 +176,7 @@ RuleEditorWizard.propTypes = {
   onNext: PropTypes.func.isRequired,
   onPrevious: PropTypes.func.isRequired,
   onSubmit: PropTypes.func.isRequired,
+  onStepClick: PropTypes.func,
   canProceed: PropTypes.bool.isRequired,
   isSubmitting: PropTypes.bool,
   hasErrors: PropTypes.bool.isRequired,

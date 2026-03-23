@@ -118,7 +118,7 @@ export function Card({
   return (
     <Component
       className={clsx(
-        "bg-sre-surface/50 rounded-xl",
+        "bg-sre-surface/50 rounded-xl border border-sre-border/60 p-4",
         "transition-all duration-300",
         "hover:border-sre-border/80",
         className,
@@ -837,6 +837,7 @@ export function ConfirmDialog({
   confirmText = "Confirm",
   cancelText = "Cancel",
   variant = "danger",
+  messageTone = "default",
   loading = false,
 }) {
   const handleConfirm = async () => {
@@ -867,9 +868,24 @@ export function ConfirmDialog({
         </div>
       }
     >
-      <div className="py-4">
-        <p className="text-sre-text">{message}</p>
-      </div>
+      {messageTone === "danger" ? (
+        <div className="py-3">
+          <div className="rounded-lg border border-sre-error/55 bg-sre-error/14 px-3 py-2.5">
+            <div className="flex items-start gap-2">
+              <span className="material-icons text-base leading-5 text-sre-error">
+                warning
+              </span>
+              <p className="text-sm font-medium text-sre-error leading-relaxed">
+                {message}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="py-4">
+          <p className="text-sre-text">{message}</p>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -882,6 +898,7 @@ ConfirmDialog.propTypes = {
   message: PropTypes.string.isRequired,
   confirmText: PropTypes.string,
   cancelText: PropTypes.string,
+  messageTone: PropTypes.oneOf(["default", "danger"]),
   variant: PropTypes.oneOf([
     "primary",
     "secondary",

@@ -739,22 +739,24 @@ export default function IntegrationsPage() {
         subtitle="Manage notification channels and Jira integrations with private, group, and organization scopes."
       />
 
-      <div className="flex gap-2 border-b border-sre-border justify-center items-center">
-        {VISIBILITY_TABS.map((tab) => (
-          <button
-            type="button"
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`pl-4 pr-4 py-2 text-sm flex items-center justify-center gap-2 border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? "border-sre-primary text-sre-primary"
-                : "border-transparent text-sre-text-muted hover:text-sre-text"
-            }`}
-          >
-            <span className="material-icons text-sm">{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
+      <div className="rounded-xl bg-sre-surface/40 p-2">
+        <div className="flex flex-wrap justify-center items-center gap-2">
+          {VISIBILITY_TABS.map((tab) => (
+            <button
+              type="button"
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 text-sm rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                activeTab === tab.key
+                  ? "bg-sre-primary/10 text-sre-primary"
+                  : "text-sre-text-muted hover:text-sre-text hover:bg-sre-surface"
+              }`}
+            >
+              <span className="material-icons text-sm">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex items-center justify-end">
@@ -770,7 +772,7 @@ export default function IntegrationsPage() {
       </div>
 
       <div className="space-y-6">
-        <Card className="py-6 px-0">
+        <Card className="p-6">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 className="text-xl font-semibold text-sre-text">Notification Channels</h2>
@@ -784,7 +786,7 @@ export default function IntegrationsPage() {
                 aria-label="Add channel"
                 size="sm"
                 variant="primary"
-                className="h-9 w-9 p-0 text-white border border-sre-primary/40 shadow-md hover:shadow-lg"
+                className="h-10 w-10 p-0 text-white border border-sre-primary/40 shadow-md hover:shadow-lg"
               >
                 <span className="material-icons text-lg leading-none">add</span>
               </Button>
@@ -794,7 +796,7 @@ export default function IntegrationsPage() {
           <div className="space-y-4">
             {visibleChannels.length === 0 ? (
               <div className="text-center py-12">
-                <div className="mx-auto w-36 h-36 rounded-full bg-gradient-to-br from-sre-surface/50 to-sre-surface/30 flex items-center justify-center mb-4 shadow-inner">
+                <div className="mx-auto w-36 h-36 rounded-full border-2 border-sre-border bg-gradient-to-br from-sre-surface/50 to-sre-surface/30 flex items-center justify-center mb-4 shadow-inner">
                   <span className="material-icons text-5xl text-sre-text-muted">
                     notifications_off
                   </span>
@@ -822,7 +824,7 @@ export default function IntegrationsPage() {
 
         <hr className="border-sre-border" />
 
-        <Card className="py-6 px-0">
+        <Card className="p-6">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 className="text-xl font-semibold text-sre-text">Jira Integrations</h2>
@@ -836,7 +838,7 @@ export default function IntegrationsPage() {
                 aria-label="Add Jira integration"
                 size="sm"
                 variant="primary"
-                className="h-9 w-9 p-0 text-white border border-sre-primary/40 shadow-md hover:shadow-lg"
+                className="h-10 w-10 p-0 text-white border border-sre-primary/40 shadow-md hover:shadow-lg"
               >
                 <span className="material-icons text-lg leading-none">add</span>
               </Button>
@@ -846,7 +848,7 @@ export default function IntegrationsPage() {
           <div className="space-y-4">
             {visibleJiraIntegrations.length === 0 ? (
               <div className="text-center py-12">
-                <div className="mx-auto w-32 h-32 bg-sre-surface/60 flex items-center justify-center mb-4">
+                <div className="mx-auto w-32 h-32 rounded-full border-2 border-sre-border bg-sre-surface/60 flex items-center justify-center mb-4">
                   <span className="material-icons text-4xl text-sre-text-muted">
                     integration_instructions
                   </span>

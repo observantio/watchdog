@@ -100,4 +100,37 @@ describe("api request behavior", () => {
     expect(options.method).toBe("POST");
     expect(options.body).toContain('"next":"/d/abc"');
   });
+
+  it("retries idempotent requests once on transient status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ detail: "busy" }, 503))
+        .mockResolvedValueOnce(jsonResponse({ id: "u-1" }, 200)),
+    );
+
+    const result = await api.getCurrentUser();
+    expect(result).toEqual({ id: "u-1" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces request aborted code for cancelled requests", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const err = new Error("Aborted");
+        err.name = "AbortError";
+        throw err;
+      }),
+    );
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      api.getTrace("trace-1", { signal: controller.signal }),
+    ).rejects.toMatchObject({
+      code: "REQUEST_ABORTED",
+    });
+  });
 });

@@ -19,8 +19,9 @@ import {
   toggleDatasourceHidden,
   getDashboard,
   createGrafanaBootstrapSession,
+  listMetricNames,
 } from "../api";
-import { Button, ConfirmDialog } from "../components/ui";
+import { Button, ConfirmDialog, Modal, Spinner } from "../components/ui";
 import PageHeader from "../components/ui/PageHeader";
 import DashboardEditorModal from "../components/grafana/DashboardEditorModal";
 import DatasourceEditorModal from "../components/grafana/DatasourceEditorModal";
@@ -33,8 +34,38 @@ import { MIMIR_PROMETHEUS_URL } from "../utils/constants";
 import {
   GRAFANA_DATASOURCE_TYPES as DATASOURCE_TYPES,
   overrideDashboardDatasource,
+  resolveToUid,
 } from "../utils/grafanaUtils";
 import { buildGrafanaLaunchUrl } from "../utils/grafanaLaunchUtils";
+
+function collectDatasourceReferences(node, refs) {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectDatasourceReferences(item, refs));
+    return;
+  }
+
+  Object.entries(node).forEach(([key, value]) => {
+    if (key === "datasourceUid" && value) {
+      refs.add(String(value));
+    }
+
+    if (key === "datasource" && value) {
+      if (typeof value === "string") {
+        refs.add(value);
+      } else if (typeof value === "object") {
+        if (value.uid) refs.add(String(value.uid));
+        if (value.value) refs.add(String(value.value));
+        if (value.name) refs.add(String(value.name));
+        if (value.text) refs.add(String(value.text));
+      }
+    }
+
+    if (value && typeof value === "object") {
+      collectDatasourceReferences(value, refs);
+    }
+  });
+}
 
 export default function GrafanaPage() {
   const { user } = useAuth();
@@ -58,6 +89,8 @@ export default function GrafanaPage() {
   const toast = useToast();
   const lastErrorToastRef = useRef({ key: "", ts: 0 });
   const isMountedRef = useRef(true);
+  const queryRef = useRef(query);
+  const filtersRef = useRef(filters);
 
   useEffect(
     () => () => {
@@ -65,6 +98,14 @@ export default function GrafanaPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   const handleApiError = useCallback(
     (e) => {
@@ -135,6 +176,7 @@ export default function GrafanaPage() {
     isOpen: false,
     title: "",
     message: "",
+    messageTone: "default",
     onConfirm: null,
     variant: "danger",
     confirmText: "Delete",
@@ -143,6 +185,14 @@ export default function GrafanaPage() {
   const [grafanaConfirmDialog, setGrafanaConfirmDialog] = useState({
     isOpen: false,
     path: null,
+  });
+  const [datasourceMetricsDialog, setDatasourceMetricsDialog] = useState({
+    isOpen: false,
+    datasourceName: "",
+    keyName: "",
+    loading: false,
+    error: "",
+    metrics: [],
   });
 
   function openInGrafana(path) {
@@ -189,6 +239,8 @@ export default function GrafanaPage() {
   }, []);
 
   const loadData = useCallback(async () => {
+    const currentQuery = queryRef.current;
+    const currentFilters = filtersRef.current || {};
     if (isMountedRef.current) {
       setLoading(true);
     }
@@ -197,18 +249,18 @@ export default function GrafanaPage() {
         const [dashboardsData, foldersData, datasourcesData] =
           await Promise.all([
             searchDashboards({
-              query: query || undefined,
-              teamId: filters.teamId || undefined,
+              query: currentQuery || undefined,
+              teamId: currentFilters.teamId || undefined,
               folderId:
-                filters.folderKey === "__general__" ? 0 : undefined,
+                currentFilters.folderKey === "__general__" ? 0 : undefined,
               folderUid:
-                filters.folderKey &&
-                filters.folderKey !== "__general__"
-                  ? filters.folderKey
+                currentFilters.folderKey &&
+                currentFilters.folderKey !== "__general__"
+                  ? currentFilters.folderKey
                   : undefined,
-              showHidden: filters.showHidden,
+              showHidden: currentFilters.showHidden,
             }).catch(() => []),
-            getFolders({ showHidden: filters.showHidden }).catch(() => []),
+            getFolders({ showHidden: currentFilters.showHidden }).catch(() => []),
             getDatasources().catch(() => []),
           ]);
         if (!isMountedRef.current) return;
@@ -218,15 +270,15 @@ export default function GrafanaPage() {
       } else if (activeTab === "datasources") {
         const [datasourcesData] = await Promise.all([
           getDatasources({
-            teamId: filters.teamId || undefined,
-            showHidden: filters.showHidden,
+            teamId: currentFilters.teamId || undefined,
+            showHidden: currentFilters.showHidden,
           }).catch(() => []),
         ]);
         if (!isMountedRef.current) return;
         setDatasources(datasourcesData);
       } else if (activeTab === "folders") {
         const foldersData = await getFolders({
-          showHidden: filters.showHidden,
+          showHidden: currentFilters.showHidden,
         }).catch(() => []);
         if (!isMountedRef.current) return;
         setFolders(foldersData);
@@ -238,12 +290,12 @@ export default function GrafanaPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, query, filters, handleApiError]);
+  }, [activeTab, handleApiError]);
 
   useEffect(() => {
     loadData();
     loadGroups();
-  }, [loadData, loadGroups]);
+  }, [activeTab, loadData, loadGroups]);
 
   async function onSearch(e) {
     e.preventDefault();
@@ -660,11 +712,69 @@ export default function GrafanaPage() {
     }
   }
 
-  function handleDeleteDatasource(datasource) {
+  async function findDatasourceLinkedDashboards(datasource) {
+    const targetUid = String(datasource?.uid || "");
+    if (!targetUid) return [];
+
+    const dashboardSummaries = await searchDashboards({
+      showHidden: true,
+    }).catch(() => []);
+    if (!Array.isArray(dashboardSummaries) || dashboardSummaries.length === 0) {
+      return [];
+    }
+
+    const details = await Promise.allSettled(
+      dashboardSummaries
+        .filter((dashboard) => dashboard?.uid)
+        .map(async (dashboard) => {
+          const full = await getDashboard(dashboard.uid);
+          const dashboardBody = full?.dashboard || full;
+          const refs = new Set();
+          collectDatasourceReferences(dashboardBody, refs);
+          const normalizedRefs = new Set(
+            Array.from(refs).map(
+              (ref) => resolveToUid(ref, datasources) || String(ref),
+            ),
+          );
+
+          if (!normalizedRefs.has(targetUid)) return null;
+
+          return {
+            uid: dashboard.uid,
+          };
+        }),
+    );
+
+    return details
+      .filter((result) => result.status === "fulfilled" && result.value)
+      .map((result) => result.value);
+  }
+
+  async function handleDeleteDatasource(datasource) {
+    let linkedDashboards = [];
+    let linkageCheckFailed = false;
+
+    try {
+      linkedDashboards = await findDatasourceLinkedDashboards(datasource);
+    } catch {
+      linkageCheckFailed = true;
+    }
+
+    const linkedCount = linkedDashboards.length;
+
     setConfirmDialog({
       isOpen: true,
-      title: "Delete Datasource",
-      message: `Are you sure you want to delete "${datasource.name}"? This will affect all dashboards using this datasource.`,
+      title:
+        linkedCount > 0
+          ? "Datasource Linked to Dashboards"
+          : "Delete Datasource",
+      confirmText: linkedCount > 0 ? "Delete Anyway" : "Delete",
+      message: linkageCheckFailed
+        ? `Could not verify whether "${datasource.name}" is linked to dashboards. Dashboards will not be deleted, but they may become dangling and queries may fail. Do you still want to continue?`
+        : linkedCount > 0
+          ? `"${datasource.name}" is linked to dashboard${linkedCount !== 1 ? "s" : ""}. Dashboards won't be deleted, but they will be dangling and queries can break. Do you still want to continue?`
+          : `Are you sure you want to delete "${datasource.name}"? This action cannot be undone.`,
+      messageTone: linkedCount > 0 || linkageCheckFailed ? "danger" : "default",
       variant: "danger",
       onConfirm: async () => {
         try {
@@ -676,6 +786,53 @@ export default function GrafanaPage() {
         }
       },
     });
+  }
+
+  async function handleViewDatasourceMetrics(datasource) {
+    const rawOrg = String(datasource?.orgId || datasource?.org_id || "").trim();
+    const datasourceName = String(datasource?.name || "Datasource");
+    const apiKeys = Array.isArray(user?.api_keys) ? user.api_keys : [];
+    const byId = apiKeys.find((k) => String(k?.id || "") === rawOrg);
+    const byKey = apiKeys.find((k) => String(k?.key || "") === rawOrg);
+    const activeKey =
+      apiKeys.find((k) => k?.is_enabled) ||
+      apiKeys.find((k) => k?.is_default) ||
+      apiKeys[0];
+    const resolvedKey = String(
+      byId?.key || byKey?.key || activeKey?.key || "",
+    ).trim();
+    const resolvedKeyName =
+      byId?.name || byKey?.name || activeKey?.name || "Default";
+
+    setDatasourceMetricsDialog({
+      isOpen: true,
+      datasourceName,
+      keyName: resolvedKeyName,
+      loading: true,
+      error: "",
+      metrics: [],
+    });
+
+    try {
+      const resp = await listMetricNames(resolvedKey || undefined);
+      const metrics = Array.isArray(resp?.metrics) ? resp.metrics : [];
+      setDatasourceMetricsDialog((prev) => ({
+        ...prev,
+        loading: false,
+        metrics: metrics.slice().sort((a, b) => a.localeCompare(b)),
+      }));
+    } catch (e) {
+      const msg =
+        e?.body?.detail ||
+        e?.body?.message ||
+        e?.message ||
+        "Failed to load metric names";
+      setDatasourceMetricsDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: msg,
+      }));
+    }
   }
 
   function openFolderEditor(folder = null) {
@@ -788,7 +945,7 @@ export default function GrafanaPage() {
   const hasActiveFilters = filters.teamId || filters.folderKey || filters.showHidden;
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in grafana-page">
       <PageHeader
         icon="dashboard"
         title="Grafana"
@@ -828,6 +985,7 @@ export default function GrafanaPage() {
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={handleDeleteDatasource}
         onToggleDatasourceHidden={handleToggleDatasourceHidden}
+        onViewDatasourceMetrics={handleViewDatasourceMetrics}
         getDatasourceIcon={getDatasourceIcon}
         onCreateFolder={() => openFolderEditor(null)}
         onEditFolder={openFolderEditor}
@@ -895,6 +1053,7 @@ export default function GrafanaPage() {
         onConfirm={confirmDialog.onConfirm || (() => {})}
         title={confirmDialog.title}
         message={confirmDialog.message}
+        messageTone={confirmDialog.messageTone || "default"}
         variant={confirmDialog.variant || "danger"}
         confirmText={confirmDialog.confirmText || "Delete"}
         cancelText="Cancel"
@@ -910,6 +1069,91 @@ export default function GrafanaPage() {
         confirmText="Continue to Grafana"
         cancelText="Cancel"
       />
+
+      <Modal
+        isOpen={datasourceMetricsDialog.isOpen}
+        onClose={() =>
+          setDatasourceMetricsDialog({
+            isOpen: false,
+            datasourceName: "",
+            keyName: "",
+            loading: false,
+            error: "",
+            metrics: [],
+          })
+        }
+        title={`Metrics: ${datasourceMetricsDialog.datasourceName}`}
+        size="md"
+        footer={
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              onClick={() =>
+                setDatasourceMetricsDialog({
+                  isOpen: false,
+                  datasourceName: "",
+                  keyName: "",
+                  loading: false,
+                  error: "",
+                  metrics: [],
+                })
+              }
+            >
+              Close
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/45 bg-indigo-500/15 px-2.5 py-1 text-xs font-semibold text-indigo-300">
+              <span className="material-icons text-[13px] leading-none">
+                key
+              </span>
+              Key: {datasourceMetricsDialog.keyName || "Default"}
+            </span>
+          </div>
+          {datasourceMetricsDialog.loading ? (
+            <div className="py-6">
+              <Spinner size="md" />
+            </div>
+          ) : datasourceMetricsDialog.error ? (
+            <div className="text-sm text-red-500">{datasourceMetricsDialog.error}</div>
+          ) : datasourceMetricsDialog.metrics.length === 0 ? (
+            <div className="text-sm text-sre-text-muted">No metrics found.</div>
+          ) : (
+            <div className="max-h-80 overflow-auto border border-sre-border rounded-lg bg-sre-bg-alt">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-sre-surface border-b border-sre-border">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-sre-text-muted font-semibold w-16">
+                      #
+                    </th>
+                    <th className="text-left px-3 py-2 text-sre-text-muted font-semibold">
+                      Metric Name
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {datasourceMetricsDialog.metrics.map((name, index) => (
+                    <tr
+                      key={name}
+                      className="border-b border-sre-border/40 hover:bg-sre-surface/50"
+                    >
+                      <td className="px-3 py-2 text-sre-text-subtle tabular-nums">
+                        {index + 1}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-sre-text break-all">
+                        {name}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

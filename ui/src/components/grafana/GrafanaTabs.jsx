@@ -62,7 +62,7 @@ export default function GrafanaTabs({ activeTab, onChange }) {
   ];
 
   return (
-    <div className="flex gap-2 mb-6 border-b border-sre-border justify-center items-center">
+    <div className="grafana-main-tabs flex gap-2 mb-6 border-b border-sre-border justify-center items-center">
       {tabs.map((tab) => (
         <button
           key={tab.id}

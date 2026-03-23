@@ -4,7 +4,7 @@ export default function PageHeader({ icon, title, subtitle, children }) {
       <div>
         <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
           {icon ? (
-            <span className="material-icons text-sre-primary text-3xl">
+            <span className="material-icons text-sre-text text-3xl">
               {icon}
             </span>
           ) : null}

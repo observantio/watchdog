@@ -19,15 +19,15 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
   :root[data-theme='light'],
   body[data-theme='light'] {
     /* Light Theme Colors */
-    --sre-bg: #f8fafc;
-    --sre-bg-alt: #f1f5f9;
+    --sre-bg: #ffffff;
+    --sre-bg-alt: #ffffff;
     --sre-bg-card: #ffffff;
     --sre-surface: #ffffff;
-    --sre-surface-light: #f8fafc;
-    --sre-border: #e2e8f0;
-    --sre-text: #1e293b;
-    --sre-text-muted: #64748b;
-    --sre-text-subtle: #94a3b8;
+    --sre-surface-light: #fafafa;
+    --sre-border: #b8c4d6;
+    --sre-text: #0f172a;
+    --sre-text-muted: #475569;
+    --sre-text-subtle: #64748b;
     color-scheme: light;
   }
 
@@ -35,15 +35,15 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
   :root[data-theme='dark'],
   body[data-theme='dark'] {
     /* Dark Theme Colors */
-    --sre-bg: #0a0e1a;
-    --sre-bg-alt: #0f1420;
-    --sre-bg-card: #1a1f2e;
-    --sre-surface: #1a1f2e;
-    --sre-surface-light: #252b3d;
-    --sre-border: #2a3142;
-    --sre-text: #e6edf3;
-    --sre-text-muted: #8b93a8;
-    --sre-text-subtle: #656d84;
+    --sre-bg: #06090f;
+    --sre-bg-alt: #0a1019;
+    --sre-bg-card: #111824;
+    --sre-surface: #151d2a;
+    --sre-surface-light: #1b2535;
+    --sre-border: rgba(240, 247, 255, 0.36);
+    --sre-text: #f3f7ff;
+    --sre-text-muted: #bdc8db;
+    --sre-text-subtle: #8a98ad;
     color-scheme: dark;
   }
 
@@ -133,7 +133,7 @@ select {
   background-position: right 0.75rem center;
   background-repeat: no-repeat;
   background-size: 1rem;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path fill='%2364748b' d='M5.25 7.5L10 12.75 14.75 7.5z'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path fill='%23334155' d='M5.25 7.5L10 12.75 14.75 7.5z'/></svg>");
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
@@ -251,4 +251,210 @@ select.text-xs {
   box-shadow: 0 0 0 2px var(--sre-primary) !important;
 }
 
+/* Dark mode polish: stronger contrast, cleaner controls, subtle depth */
+:root[data-theme='dark'] *:focus-visible,
+body[data-theme='dark'] *:focus-visible,
+.dark *:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+:root[data-theme='dark'] body,
+body[data-theme='dark'],
+.dark body {
+  background:
+    radial-gradient(1200px circle at 85% -10%, rgba(59, 130, 246, 0.14), transparent 45%),
+    linear-gradient(to bottom, var(--sre-bg), var(--sre-bg-alt), var(--sre-bg));
+}
+
+:root[data-theme='dark'] ::selection,
+body[data-theme='dark'] ::selection,
+.dark ::selection {
+  background: rgba(96, 165, 250, 0.38);
+  color: #f8fbff;
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar,
+body[data-theme='dark'] ::-webkit-scrollbar,
+.dark ::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb,
+body[data-theme='dark'] ::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, rgba(226, 232, 240, 0.4), rgba(148, 163, 184, 0.35));
+  border: 2px solid rgba(11, 17, 29, 0.9);
+  border-radius: 999px;
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-track,
+body[data-theme='dark'] ::-webkit-scrollbar-track,
+.dark ::-webkit-scrollbar-track {
+  background: rgba(16, 23, 36, 0.75);
+}
+
+/* Dark theme contrast pass for card and panel borders */
+:root[data-theme='dark'] .border-sre-border,
+body[data-theme='dark'] .border-sre-border,
+.dark .border-sre-border {
+  border-color: rgba(245, 250, 255, 0.62);
+}
+
+:root[data-theme='dark'] .border-sre-border\/40,
+body[data-theme='dark'] .border-sre-border\/40,
+.dark .border-sre-border\/40 {
+  border-color: rgba(245, 250, 255, 0.52);
+}
+
+:root[data-theme='dark'] .border-sre-border\/50,
+body[data-theme='dark'] .border-sre-border\/50,
+.dark .border-sre-border\/50 {
+  border-color: rgba(245, 250, 255, 0.56);
+}
+
+:root[data-theme='dark'] .border-sre-border\/60,
+body[data-theme='dark'] .border-sre-border\/60,
+.dark .border-sre-border\/60 {
+  border-color: rgba(245, 250, 255, 0.6);
+}
+
+:root[data-theme='dark'] .border-dashed,
+:root[data-theme='dark'] .border-dotted,
+body[data-theme='dark'] .border-dashed,
+body[data-theme='dark'] .border-dotted,
+.dark .border-dashed,
+.dark .border-dotted {
+  border-color: rgba(245, 250, 255, 0.66) !important;
+}
+
+/* Dark theme card border normalization for classes not using sre tokens */
+:root[data-theme='dark'] .rounded-lg.border,
+:root[data-theme='dark'] .rounded-xl.border,
+:root[data-theme='dark'] .rounded-2xl.border,
+:root[data-theme='dark'] .rounded-lg.border-2,
+:root[data-theme='dark'] .rounded-xl.border-2,
+:root[data-theme='dark'] .rounded-2xl.border-2,
+body[data-theme='dark'] .rounded-lg.border,
+body[data-theme='dark'] .rounded-xl.border,
+body[data-theme='dark'] .rounded-2xl.border,
+body[data-theme='dark'] .rounded-lg.border-2,
+body[data-theme='dark'] .rounded-xl.border-2,
+body[data-theme='dark'] .rounded-2xl.border-2,
+.dark .rounded-lg.border,
+.dark .rounded-xl.border,
+.dark .rounded-2xl.border,
+.dark .rounded-lg.border-2,
+.dark .rounded-xl.border-2,
+.dark .rounded-2xl.border-2 {
+  border-color: rgba(245, 250, 255, 0.64);
+}
+
+/* Force gray-scale hardcoded borders to brighter white-gray in dark mode */
+:root[data-theme='dark'] [class*='border-gray-'],
+:root[data-theme='dark'] [class*='border-slate-'],
+:root[data-theme='dark'] [class*='border-zinc-'],
+:root[data-theme='dark'] [class*='border-neutral-'],
+:root[data-theme='dark'] [class*='border-stone-'],
+body[data-theme='dark'] [class*='border-gray-'],
+body[data-theme='dark'] [class*='border-slate-'],
+body[data-theme='dark'] [class*='border-zinc-'],
+body[data-theme='dark'] [class*='border-neutral-'],
+body[data-theme='dark'] [class*='border-stone-'],
+.dark [class*='border-gray-'],
+.dark [class*='border-slate-'],
+.dark [class*='border-zinc-'],
+.dark [class*='border-neutral-'],
+.dark [class*='border-stone-'] {
+  border-color: rgba(245, 250, 255, 0.58) !important;
+}
+
+/* Ensure any dotted/dashed containers stay crisp in dark mode */
+:root[data-theme='dark'] .border-dashed[class*='border-'],
+:root[data-theme='dark'] .border-dotted[class*='border-'],
+body[data-theme='dark'] .border-dashed[class*='border-'],
+body[data-theme='dark'] .border-dotted[class*='border-'],
+.dark .border-dashed[class*='border-'],
+.dark .border-dotted[class*='border-'] {
+  border-color: rgba(245, 250, 255, 0.7) !important;
+}
+
+/* Dark theme: strengthen translucent surface blocks used by many cards */
+:root[data-theme='dark'] .bg-sre-surface\/50,
+body[data-theme='dark'] .bg-sre-surface\/50,
+.dark .bg-sre-surface\/50 {
+  background-color: rgba(28, 39, 56, 0.86) !important;
+}
+
+/* Light theme contrast pass for low-opacity and dotted/dashed borders */
+:root[data-theme='light'] .border-sre-border\/40,
+body[data-theme='light'] .border-sre-border\/40 {
+  border-color: rgba(71, 85, 105, 0.38);
+}
+
+:root[data-theme='light'] .border-sre-border\/50,
+body[data-theme='light'] .border-sre-border\/50 {
+  border-color: rgba(51, 65, 85, 0.46);
+}
+
+:root[data-theme='light'] .border-sre-border\/60,
+body[data-theme='light'] .border-sre-border\/60 {
+  border-color: rgba(30, 41, 59, 0.52);
+}
+
+:root[data-theme='light'] .border-dashed,
+:root[data-theme='light'] .border-dotted,
+body[data-theme='light'] .border-dashed,
+body[data-theme='light'] .border-dotted {
+  border-color: #64748b !important;
+}
+
+/* Grafana page light theme: darker card borders for contrast */
+:root[data-theme='light'] .grafana-page .border-sre-border,
+body[data-theme='light'] .grafana-page .border-sre-border {
+  border-color: #708098;
+}
+
+:root[data-theme='light'] .grafana-page .border-sre-border\/40,
+body[data-theme='light'] .grafana-page .border-sre-border\/40 {
+  border-color: rgba(51, 65, 85, 0.52);
+}
+
+:root[data-theme='light'] .grafana-page .border-sre-border\/50,
+body[data-theme='light'] .grafana-page .border-sre-border\/50 {
+  border-color: rgba(30, 41, 59, 0.56);
+}
+
+:root[data-theme='light'] .grafana-page .border-sre-border\/60,
+body[data-theme='light'] .grafana-page .border-sre-border\/60 {
+  border-color: rgba(15, 23, 42, 0.6);
+}
+
+/* Keep Grafana top tabs and bottom tabline at normal light border */
+:root[data-theme='light'] .grafana-page .grafana-main-tabs.border-sre-border,
+body[data-theme='light'] .grafana-page .grafana-main-tabs.border-sre-border {
+  border-color: #b8c4d6;
+}
+
+/* Tempo duration sliders: keep track + thumb border visible */
+.tempo-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: var(--sre-primary);
+  border: 1px solid var(--sre-border);
+  box-shadow: 0 0 0 2px var(--sre-surface);
+}
+
+.tempo-range-slider::-moz-range-thumb {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: var(--sre-primary);
+  border: 1px solid var(--sre-border);
+  box-shadow: 0 0 0 2px var(--sre-surface);
+}
 

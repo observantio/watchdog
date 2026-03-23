@@ -133,11 +133,51 @@ export default function DashboardsTab({
   onDeleteDashboard,
   onToggleHidden,
 }) {
+  const [copiedDashboardUid, setCopiedDashboardUid] = useState("");
+
+  const dashboardLink = (dashboard) => {
+    const path =
+      dashboard?.url ||
+      `/grafana/d/${dashboard?.uid}/${dashboard?.slug || String(dashboard?.title || "").toLowerCase()}`;
+    if (String(path).startsWith("http://") || String(path).startsWith("https://")) {
+      return String(path);
+    }
+    const normalized = String(path).startsWith("/") ? String(path) : `/${String(path)}`;
+    return `${globalThis.location?.origin || ""}${normalized}`;
+  };
+
+  const copyDashboardLink = async (dashboard) => {
+    const link = dashboardLink(dashboard);
+    if (!link) return;
+    try {
+      if (globalThis.navigator?.clipboard?.writeText) {
+        await globalThis.navigator.clipboard.writeText(link);
+      } else {
+        const fallback = document.createElement("textarea");
+        fallback.value = link;
+        fallback.setAttribute("readonly", "");
+        fallback.style.position = "absolute";
+        fallback.style.left = "-9999px";
+        document.body.appendChild(fallback);
+        fallback.select();
+        document.execCommand("copy");
+        document.body.removeChild(fallback);
+      }
+      const uid = String(dashboard?.uid || "");
+      setCopiedDashboardUid(uid);
+      globalThis.setTimeout(() => {
+        setCopiedDashboardUid((current) => (current === uid ? "" : current));
+      }, 1200);
+    } catch {
+      // Keep UX silent if clipboard access is denied.
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="material-icons text-2xl text-sre-primary">
+          <span className="material-icons text-2xl text-sre-text">
             analytics
           </span>
           <div>
@@ -352,6 +392,22 @@ export default function DashboardsTab({
                         d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                       />
                     </svg>
+                  </Button>
+                  {/* Copy link */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyDashboardLink(d)}
+                    title={
+                      copiedDashboardUid === d.uid
+                        ? "Link copied"
+                        : "Copy dashboard link"
+                    }
+                    className="p-2"
+                  >
+                    <span className="material-icons text-base">
+                      {copiedDashboardUid === d.uid ? "check" : "link"}
+                    </span>
                   </Button>
                   {/* Edit */}
                   <Button

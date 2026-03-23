@@ -79,7 +79,7 @@ async def delete_api_key(
 async def hide_api_key(
     key_id: str,
     payload: HideTogglePayload,
-    current_user: TokenData = Depends(require_permission_with_scope(Permission.READ_API_KEYS, "auth")),
+    current_user: TokenData = Depends(require_permission_with_scope(Permission.UPDATE_API_KEYS, "auth")),
 ) -> dict[str, object]:
     await rtp(auth_service.set_api_key_hidden, current_user.user_id, key_id, bool(payload.hidden))
     return {"status": "success", "hidden": bool(payload.hidden)}

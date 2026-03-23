@@ -3,6 +3,7 @@ import {
   useState,
   useMemo,
   useCallback,
+  useRef,
   lazy,
   Suspense,
 } from "react";
@@ -72,6 +73,8 @@ export default function TempoPage() {
   );
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(30);
+  const searchRunIdRef = useRef(0);
+  const activeSearchControllerRef = useRef(null);
 
   const { isAuthenticated, loading: authLoading } = useAuth();
   const toast = useToast();
@@ -117,7 +120,10 @@ export default function TempoPage() {
     try {
       const data = await fetchTempoServices();
       setServices(data || []);
-    } catch {
+    } catch (error) {
+      if (error?.name === "AbortError" || error?.code === "REQUEST_ABORTED") {
+        return;
+      }
       setServices([]);
     }
   }, []);
@@ -191,6 +197,15 @@ export default function TempoPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(
+    () => () => {
+      if (activeSearchControllerRef.current) {
+        activeSearchControllerRef.current.abort();
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!services.length && traces?.data?.length) {
       const discovered = discoverServices(traces.data);
@@ -199,13 +214,13 @@ export default function TempoPage() {
   }, [traces, services.length]);
 
   const handleTraceClick = useCallback(
-    async (traceId, { silent = false } = {}) => {
+    async (traceId, { silent = false, signal } = {}) => {
       if (viewMode !== "list") {
         setViewMode("list");
       }
 
       try {
-        const trace = await getTrace(traceId);
+        const trace = await getTrace(traceId, { signal });
         if (trace?.spans) {
           setSelectedTrace({
             ...trace,
@@ -219,6 +234,9 @@ export default function TempoPage() {
         }
         return true;
       } catch (e) {
+        if (e?.name === "AbortError" || e?.code === "REQUEST_ABORTED") {
+          return false;
+        }
         if (e.status === 404) {
           removePersistedSelectedTrace(traceId);
           prunePersistedSelectedTraceIds(new Set([traceId]));
@@ -327,12 +345,22 @@ export default function TempoPage() {
       setViewMode("list");
     }
 
+    const runId = searchRunIdRef.current + 1;
+    searchRunIdRef.current = runId;
+    if (activeSearchControllerRef.current) {
+      activeSearchControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    activeSearchControllerRef.current = controller;
+
     if (traceIdSearch.trim()) {
       setLoading(true);
       try {
-        await handleTraceClick(traceIdSearch.trim());
+        await handleTraceClick(traceIdSearch.trim(), { signal: controller.signal });
       } finally {
-        setLoading(false);
+        if (runId === searchRunIdRef.current) {
+          setLoading(false);
+        }
       }
       return;
     }
@@ -350,8 +378,10 @@ export default function TempoPage() {
         end: Math.floor(end),
         limit: searchLimit,
         fetchFull: false,
+        signal: controller.signal,
       };
       const res = await searchTraces(searchParams);
+      if (runId !== searchRunIdRef.current) return;
 
       setTraces(res);
       setTracePage(1);
@@ -375,9 +405,12 @@ export default function TempoPage() {
         if (discovered.length) setServices(discovered);
       }
     } catch (e) {
+      if (e?.name === "AbortError" || e?.code === "REQUEST_ABORTED") return;
       toast.error(e?.message || "Failed to search traces");
     } finally {
-      setLoading(false);
+      if (runId === searchRunIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -640,7 +673,7 @@ export default function TempoPage() {
                       Math.max(durationRange[1], newMin + 10000000),
                     ]);
                   }}
-                  className="w-full h-1.5 bg-sre-surface rounded-lg appearance-none cursor-pointer accent-sre-primary"
+                  className="tempo-range-slider w-full h-1.5 bg-sre-surface rounded-lg border border-sre-border/60 appearance-none cursor-pointer accent-sre-primary"
                 />
               </div>
               <div>
@@ -661,7 +694,7 @@ export default function TempoPage() {
                       newMax,
                     ]);
                   }}
-                  className="w-full h-1.5 bg-sre-surface rounded-lg appearance-none cursor-pointer accent-sre-primary"
+                  className="tempo-range-slider w-full h-1.5 bg-sre-surface rounded-lg border border-sre-border/60 appearance-none cursor-pointer accent-sre-primary"
                 />
               </div>
             </div>

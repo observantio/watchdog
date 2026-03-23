@@ -27,39 +27,64 @@ export const useAlertManagerData = ({
     setLoading(true);
     setError(null);
     try {
-      const [alertsData, silencesData, rulesData, channelsData] =
-        await Promise.all([
-          getAlerts({
-            severity: alertFilters?.severity,
-            correlationId: alertFilters?.correlationId,
-            label: alertFilters?.label,
-          }).catch(() => []),
-          getSilences({ showHidden: showHiddenSilences }).catch(() => []),
-          getAlertRules({
-            showHidden: showHiddenRules,
-            owner: ruleFilters?.owner,
-            status: ruleFilters?.status,
-            severity: ruleFilters?.severity,
-            orgId: ruleFilters?.orgId,
-            correlationId: ruleFilters?.correlationId,
-          }).catch(() => []),
-          getNotificationChannels().catch(() => []),
-        ]);
+      const settled = await Promise.allSettled([
+        getAlerts({
+          severity: alertFilters?.severity,
+          correlationId: alertFilters?.correlationId,
+          label: alertFilters?.label,
+        }),
+        getSilences({ showHidden: showHiddenSilences }),
+        getAlertRules({
+          showHidden: showHiddenRules,
+          owner: ruleFilters?.owner,
+          status: ruleFilters?.status,
+          severity: ruleFilters?.severity,
+          orgId: ruleFilters?.orgId,
+          correlationId: ruleFilters?.correlationId,
+        }),
+        getNotificationChannels(),
+      ]);
       if (requestId !== requestIdRef.current) return;
-      setAlerts(alertsData);
-      setSilences(
-        (silencesData || []).filter(
-          (s) =>
-            !(
-              s?.status?.state &&
-              String(s.status.state).toLowerCase() === "expired"
-            ),
-        ),
-      );
-      setRules(
-        Array.isArray(rulesData) ? rulesData.map(normalizeRuleForUI) : [],
-      );
-      setChannels(channelsData);
+
+      const endpointLabels = ["alerts", "silences", "rules", "channels"];
+      const failed = settled
+        .map((result, idx) => ({ result, label: endpointLabels[idx] }))
+        .filter(({ result }) => result.status === "rejected")
+        .map(({ label, result }) => {
+          const reason = result.reason;
+          const message =
+            reason?.message || reason?.body?.message || "request failed";
+          return `${label} (${message})`;
+        });
+
+      if (settled[0].status === "fulfilled") {
+        setAlerts(Array.isArray(settled[0].value) ? settled[0].value : []);
+      }
+      if (settled[1].status === "fulfilled") {
+        const rawSilences = Array.isArray(settled[1].value)
+          ? settled[1].value
+          : [];
+        setSilences(
+          rawSilences.filter(
+            (s) =>
+              !(
+                s?.status?.state &&
+                String(s.status.state).toLowerCase() === "expired"
+              ),
+          ),
+        );
+      }
+      if (settled[2].status === "fulfilled") {
+        const rawRules = Array.isArray(settled[2].value) ? settled[2].value : [];
+        setRules(rawRules.map(normalizeRuleForUI));
+      }
+      if (settled[3].status === "fulfilled") {
+        setChannels(Array.isArray(settled[3].value) ? settled[3].value : []);
+      }
+
+      if (failed.length > 0) {
+        setError(`Failed to load ${failed.join(", ")}`);
+      }
     } catch (e) {
       if (requestId !== requestIdRef.current) return;
       setError(e.message || String(e));

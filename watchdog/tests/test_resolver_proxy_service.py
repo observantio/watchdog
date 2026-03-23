@@ -102,6 +102,7 @@ async def test_resolver_proxy_timeout_maps_to_504(monkeypatch):
             tenant_id="tenant-a",
         )
     assert exc.value.status_code == 504
+    assert exc.value.headers.get("X-Request-ID")
 
 
 @pytest.mark.asyncio
@@ -184,7 +185,7 @@ async def test_resolver_proxy_upstream_error_passthrough(monkeypatch):
             tenant_id="tenant-a",
         )
     assert exc.value.status_code == 502
-    assert "upstream failed" in str(exc.value.detail)
+    assert "Resolver upstream error" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio

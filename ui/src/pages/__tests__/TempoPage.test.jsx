@@ -109,7 +109,12 @@ describe("TempoPage — fetch limit and pagination", () => {
 
     const { queryByText } = render(<TempoPage />);
     
-    await waitFor(() => expect(api.getTrace).toHaveBeenCalledWith("missing"));
+    await waitFor(() =>
+      expect(api.getTrace).toHaveBeenCalledWith(
+        "missing",
+        expect.any(Object),
+      ),
+    );
     expect(queryByText(/Failed to load trace/)).not.toBeInTheDocument();
 
     const stored = JSON.parse(localStorage.getItem("tempoPageState") || "{}");

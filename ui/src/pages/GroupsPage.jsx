@@ -64,6 +64,11 @@ export default function GroupsPage() {
   const handlePrevious = () => {
     if (currentStep > 0) setCurrentStep((s) => s - 1);
   };
+  const handleStepClick = (stepIndex) => {
+    if (typeof stepIndex !== "number") return;
+    if (stepIndex < 0 || stepIndex > totalSteps - 1) return;
+    setCurrentStep(stepIndex);
+  };
   const handleWizardSubmit = async () => {
     await createGroup();
   };
@@ -392,6 +397,7 @@ export default function GroupsPage() {
                 onNext={handleNext}
                 onPrevious={handlePrevious}
                 onSubmit={handleWizardSubmit}
+                onStepClick={handleStepClick}
                 canProceed={canProceedToNextStep()}
                 isSubmitting={saving}
                 hasErrors={false}
@@ -408,6 +414,7 @@ export default function GroupsPage() {
             onNext={handleNext}
             onPrevious={handlePrevious}
             onSubmit={handleWizardSubmit}
+            onStepClick={handleStepClick}
             canProceed={canProceedToNextStep()}
             isSubmitting={saving}
             hasErrors={false}

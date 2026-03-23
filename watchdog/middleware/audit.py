@@ -14,6 +14,7 @@ You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2
 from __future__ import annotations
 
 import logging
+import uuid
 from urllib.parse import parse_qsl, urlencode
 from typing import Awaitable, Callable
 
@@ -93,6 +94,13 @@ def _extract_request_token(request: Request) -> str | None:
     return bearer or cookie_token
 
 
+def _resolve_request_id(request: Request) -> str:
+    candidate = request.headers.get("x-request-id", "").strip()
+    if candidate:
+        return candidate[:128]
+    return str(uuid.uuid4())
+
+
 def _content_security_policy_for_path(path: str) -> str:
     directives = [
         "default-src 'self'",
@@ -141,6 +149,8 @@ async def security_headers_middleware(request: Request, call_next: Callable[[Req
     path = request.url.path
     request_ip = client_ip(request)
     user_agent = request.headers.get("user-agent")
+    request_id = _resolve_request_id(request)
+    request.state.request_id = request_id
     context_tokens = set_request_audit_context(request_ip, user_agent)
     try:
         response = await call_next(request)
@@ -167,6 +177,7 @@ async def security_headers_middleware(request: Request, call_next: Callable[[Req
     except (ValueError, RuntimeError):
         logger.debug("Skipping middleware audit write for request %s", request.url.path, exc_info=True)
 
+    _set_header_if_missing(response.headers, "X-Request-ID", request_id)
     _set_header_if_missing(response.headers, "X-Content-Type-Options", "nosniff")
     _set_header_if_missing(response.headers, "X-Frame-Options", "DENY")
     _set_header_if_missing(response.headers, "Referrer-Policy", "no-referrer")

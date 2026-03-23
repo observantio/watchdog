@@ -183,19 +183,53 @@ export default function DashboardEditorModal({
       }
     >
       <div>
-        <div className="flex gap-2 mb-4 justify-center">
+        <div
+          className="flex gap-1 mb-4 justify-center bg-sre-bg-alt/80 rounded-xl p-1"
+          role="tablist"
+          aria-label="Dashboard editor mode"
+        >
           <button
             type="button"
-            className={`px-3 py-1 rounded ${editorTab === "form" ? "text-sre-text border-b-2 border-sre-primary" : "bg-transparent text-sre-text-muted"}`}
+            role="tab"
+            aria-selected={editorTab === "form"}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sre-primary/50 inline-flex items-center gap-2 ${
+              editorTab === "form"
+                ? "bg-sre-primary text-white shadow-sm"
+                : "bg-transparent text-sre-text-muted hover:text-sre-text hover:bg-sre-surface/70"
+            }`}
             onClick={() => setEditorTab("form")}
           >
+            <span
+              className={`w-6 h-6 rounded-full inline-flex items-center justify-center ${
+                editorTab === "form"
+                  ? "bg-white/20 text-white"
+                  : "bg-sre-surface text-sre-text-muted"
+              }`}
+            >
+              <span className="material-icons text-[14px]">edit_note</span>
+            </span>
             Form
           </button>
           <button
             type="button"
-            className={`px-3 py-1 rounded ${editorTab === "json" ? "text-sre-text border-b-2 border-sre-primary" : "bg-transparent text-sre-text-muted"}`}
+            role="tab"
+            aria-selected={editorTab === "json"}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sre-primary/50 inline-flex items-center gap-2 ${
+              editorTab === "json"
+                ? "bg-sre-primary text-white shadow-sm"
+                : "bg-transparent text-sre-text-muted hover:text-sre-text hover:bg-sre-surface/70"
+            }`}
             onClick={() => setEditorTab("json")}
           >
+            <span
+              className={`w-6 h-6 rounded-full inline-flex items-center justify-center ${
+                editorTab === "json"
+                  ? "bg-white/20 text-white"
+                  : "bg-sre-surface text-sre-text-muted"
+              }`}
+            >
+              <span className="material-icons text-[14px]">data_object</span>
+            </span>
             JSON
           </button>
         </div>

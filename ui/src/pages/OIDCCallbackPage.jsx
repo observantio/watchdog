@@ -39,7 +39,7 @@ export default function OIDCCallbackPage() {
         await finishOIDCLogin({ code: params.code, state: params.state });
         if (!alive) return;
         globalThis.history.replaceState({}, "", "/");
-        navigate("/", { replace: true });
+        globalThis.location.replace("/");
       } catch (e) {
         if (alive) setError(e?.message || "OIDC login failed");
       }
@@ -53,7 +53,7 @@ export default function OIDCCallbackPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-sre-bg p-4">
-      <Card className="w-full max-w-md p-6">
+      <Card className="w-full max-w-md p-6 !border-0 hover:!border-0">
         {!error ? (
           <div className="flex flex-col items-center gap-3 text-center">
             <Spinner size="lg" />
@@ -63,6 +63,13 @@ export default function OIDCCallbackPage() {
             <p className="text-sre-text-muted text-sm">
               Completing secure OIDC authentication…
             </p>
+            <button
+              type="button"
+              className="text-xs text-sre-primary hover:text-sre-primary-light"
+              onClick={() => globalThis.location.reload()}
+            >
+              Refresh page
+            </button>
           </div>
         ) : (
           <div className="text-center">

@@ -25,6 +25,7 @@ export default function GrafanaContent({
   openDatasourceEditor,
   onDeleteDatasource,
   onToggleDatasourceHidden,
+  onViewDatasourceMetrics,
   getDatasourceIcon,
   onCreateFolder,
   onEditFolder,
@@ -73,6 +74,7 @@ export default function GrafanaContent({
         openDatasourceEditor={openDatasourceEditor}
         onDeleteDatasource={onDeleteDatasource}
         onToggleHidden={onToggleDatasourceHidden}
+        onViewMetrics={onViewDatasourceMetrics}
         getDatasourceIcon={getDatasourceIcon}
       />
     );
@@ -115,6 +117,7 @@ GrafanaContent.propTypes = {
   openDatasourceEditor: PropTypes.func.isRequired,
   onDeleteDatasource: PropTypes.func.isRequired,
   onToggleDatasourceHidden: PropTypes.func,
+  onViewDatasourceMetrics: PropTypes.func,
   onEditDatasourceLabels: PropTypes.func,
   getDatasourceIcon: PropTypes.func.isRequired,
   onCreateFolder: PropTypes.func.isRequired,

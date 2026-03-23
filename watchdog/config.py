@@ -145,6 +145,25 @@ class Config:
 
         self.MAX_QUERY_LIMIT: int = int(os.getenv("MAX_QUERY_LIMIT", "1000"))
         self.DEFAULT_QUERY_LIMIT: int = int(os.getenv("DEFAULT_QUERY_LIMIT", "20"))
+        self.MAX_API_KEYS_PER_USER: int = int(os.getenv("MAX_API_KEYS_PER_USER", "10"))
+
+        self.QUOTA_NATIVE_ENABLED: bool = _to_bool(os.getenv("QUOTA_NATIVE_ENABLED") or None, default=True)
+        self.QUOTA_NATIVE_TIMEOUT_SECONDS: float = float(os.getenv("QUOTA_NATIVE_TIMEOUT_SECONDS", "5.0"))
+        self.LOKI_QUOTA_NATIVE_PATH: str = (os.getenv("LOKI_QUOTA_NATIVE_PATH") or "/loki/api/v1/status/limits").strip()
+        self.TEMPO_QUOTA_NATIVE_PATH: str = (os.getenv("TEMPO_QUOTA_NATIVE_PATH") or "/status/overrides").strip()
+        self.LOKI_QUOTA_NATIVE_LIMIT_FIELD: str = (os.getenv("LOKI_QUOTA_NATIVE_LIMIT_FIELD") or "max_streams_per_user").strip()
+        self.LOKI_QUOTA_NATIVE_USED_FIELD: str = (os.getenv("LOKI_QUOTA_NATIVE_USED_FIELD") or "").strip()
+        self.TEMPO_QUOTA_NATIVE_LIMIT_FIELD: str = (os.getenv("TEMPO_QUOTA_NATIVE_LIMIT_FIELD") or "max_traces_per_user").strip()
+        self.TEMPO_QUOTA_NATIVE_USED_FIELD: str = (os.getenv("TEMPO_QUOTA_NATIVE_USED_FIELD") or "").strip()
+        self.QUOTA_USAGE_WINDOW_SECONDS: int = int(os.getenv("QUOTA_USAGE_WINDOW_SECONDS", "3600"))
+
+        self.QUOTA_PROMETHEUS_ENABLED: bool = _to_bool(os.getenv("QUOTA_PROMETHEUS_ENABLED") or None, default=True)
+        self.QUOTA_PROMETHEUS_TIMEOUT_SECONDS: float = float(os.getenv("QUOTA_PROMETHEUS_TIMEOUT_SECONDS", "5.0"))
+        self.QUOTA_PROMETHEUS_BASE_URL: str = (os.getenv("QUOTA_PROMETHEUS_BASE_URL") or self.MIMIR_URL).strip()
+        self.LOKI_QUOTA_PROM_LIMIT_QUERY: str = (os.getenv("LOKI_QUOTA_PROM_LIMIT_QUERY") or "").strip()
+        self.LOKI_QUOTA_PROM_USED_QUERY: str = (os.getenv("LOKI_QUOTA_PROM_USED_QUERY") or "").strip()
+        self.TEMPO_QUOTA_PROM_LIMIT_QUERY: str = (os.getenv("TEMPO_QUOTA_PROM_LIMIT_QUERY") or "").strip()
+        self.TEMPO_QUOTA_PROM_USED_QUERY: str = (os.getenv("TEMPO_QUOTA_PROM_USED_QUERY") or "").strip()
 
         self.MAX_REQUEST_BYTES: int = int(os.getenv("MAX_REQUEST_BYTES", "1048576"))
         self.MAX_CONCURRENT_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "200"))
@@ -470,6 +489,15 @@ class Config:
             raise ValueError("DEFAULT_QUERY_LIMIT must be greater than 0")
         if self.DEFAULT_QUERY_LIMIT > self.MAX_QUERY_LIMIT:
             raise ValueError("DEFAULT_QUERY_LIMIT cannot exceed MAX_QUERY_LIMIT")
+        if self.MAX_API_KEYS_PER_USER <= 0:
+            raise ValueError("MAX_API_KEYS_PER_USER must be greater than 0")
+
+        if self.QUOTA_NATIVE_TIMEOUT_SECONDS <= 0:
+            raise ValueError("QUOTA_NATIVE_TIMEOUT_SECONDS must be greater than 0")
+        if self.QUOTA_PROMETHEUS_TIMEOUT_SECONDS <= 0:
+            raise ValueError("QUOTA_PROMETHEUS_TIMEOUT_SECONDS must be greater than 0")
+        if self.QUOTA_USAGE_WINDOW_SECONDS <= 0:
+            raise ValueError("QUOTA_USAGE_WINDOW_SECONDS must be greater than 0")
 
         if self.LOKI_FALLBACK_CONCURRENCY <= 0:
             raise ValueError("LOKI_FALLBACK_CONCURRENCY must be greater than 0")

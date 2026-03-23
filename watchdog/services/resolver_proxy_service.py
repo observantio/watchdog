@@ -199,6 +199,7 @@ class ResolverProxyService(BaseProxyService):
             err = HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail="Resolver request timed out",
+                headers={"X-Request-ID": corr},
             )
             self._resolve_inflight_error(owner, inflight_future, err)
             self.write_audit(
@@ -216,6 +217,7 @@ class ResolverProxyService(BaseProxyService):
             err = HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Failed to contact Resolver",
+                headers={"X-Request-ID": corr},
             )
             self._resolve_inflight_error(owner, inflight_future, err)
             self.write_audit(
@@ -244,8 +246,16 @@ class ResolverProxyService(BaseProxyService):
         )
 
         if response.status_code >= 400:
-            detail = self._extract_error_detail(response)
-            err = HTTPException(status_code=response.status_code, detail=detail)
+            detail = (
+                "Resolver upstream error"
+                if response.status_code >= 500
+                else self._extract_error_detail(response)
+            )
+            err = HTTPException(
+                status_code=response.status_code,
+                detail=detail,
+                headers={"X-Request-ID": corr},
+            )
             self._resolve_inflight_error(owner, inflight_future, err)
             raise err
 
@@ -262,6 +272,7 @@ class ResolverProxyService(BaseProxyService):
             err = HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Resolver returned invalid JSON",
+                headers={"X-Request-ID": corr},
             )
             self._resolve_inflight_error(owner, inflight_future, err)
             raise err from exc

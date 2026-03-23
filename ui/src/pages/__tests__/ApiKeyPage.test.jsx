@@ -5,6 +5,7 @@ import { describe, it, vi, beforeEach } from "vitest";
 vi.mock("../../api", () => ({
   listApiKeys: vi.fn(),
   getCurrentUser: vi.fn(),
+  getSystemQuotas: vi.fn(),
   deleteApiKey: vi.fn(),
   replaceApiKeyShares: vi.fn(),
   getUsers: vi.fn(),
@@ -73,6 +74,11 @@ beforeEach(() => {
     org_id: currentUser.api_keys?.find((k) => k.is_default)?.key || "org-default",
   }));
   vi.mocked(api.listApiKeys).mockImplementation(async () => currentUser.api_keys || []);
+  vi.mocked(api.getSystemQuotas).mockResolvedValue({
+    api_keys: { current: 0, max: 10, remaining: 10, status: "ok" },
+    loki: { service: "loki", status: "unavailable", source: "none" },
+    tempo: { service: "tempo", status: "unavailable", source: "none" },
+  });
 });
 
 describe("ApiKeyPage (shared-key UX)", () => {
@@ -200,5 +206,25 @@ describe("ApiKeyPage (gateway host persistence)", () => {
     const modal2 = await screen.findByRole("dialog");
     const input2 = within(modal2).getByPlaceholderText(/http:\/\/localhost/i);
     expect(input2.value).toBe("http://foo:4317");
+  });
+});
+
+describe("ApiKeyPage (quota capacity)", () => {
+  it("disables Add New Key when max key limit is reached", async () => {
+    currentUser.api_keys = [ownedKey];
+    vi.mocked(api.getSystemQuotas).mockResolvedValue({
+      api_keys: { current: 10, max: 10, remaining: 0, status: "ok" },
+      loki: { service: "loki", status: "unavailable", source: "none" },
+      tempo: { service: "tempo", status: "unavailable", source: "none" },
+    });
+
+    const Page = (await import("../ApiKeyPage")).default;
+    render(<Page />);
+
+    const addButton = await screen.findByRole("button", { name: /Add New Key/i });
+    expect(addButton).toBeDisabled();
+    const capacity = await screen.findByText(/Capacity:/i);
+    expect(capacity).toBeInTheDocument();
+    expect(capacity).toHaveTextContent("10 / 10");
   });
 });

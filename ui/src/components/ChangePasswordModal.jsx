@@ -1,6 +1,6 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input } from "./ui";
+import { Modal, Button } from "./ui";
 import { useToast } from "../contexts/ToastContext";
 import HelpTooltip from "./HelpTooltip";
 import * as api from "../api";
@@ -20,6 +20,11 @@ export default function ChangePasswordModal({
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
+  });
+  const [showPassword, setShowPassword] = useState({
+    current: false,
+    next: false,
+    confirm: false,
   });
 
   const slides = [
@@ -103,6 +108,57 @@ export default function ChangePasswordModal({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const renderPasswordField = ({
+    id,
+    fieldKey,
+    label,
+    placeholder,
+    value,
+    onChange,
+    helpText,
+    required = true,
+    minLength = undefined,
+    autoFocus = false,
+  }) => (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <label htmlFor={id} className="text-sm font-medium text-sre-text">
+          {label}
+        </label>
+        <HelpTooltip text={helpText} showOnFocus={false} />
+      </div>
+      <div className="relative">
+        <span className="material-icons pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sre-text-muted text-[18px]">
+          lock
+        </span>
+        <input
+          id={id}
+          type={showPassword[fieldKey] ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={required}
+          minLength={minLength}
+          autoFocus={autoFocus}
+          className="w-full rounded-lg border border-sre-border bg-sre-surface py-2 pl-10 pr-10 text-sre-text placeholder-sre-text-subtle focus:outline-none focus:ring-2 focus:ring-sre-primary focus:border-transparent transition-all duration-200"
+        />
+        <button
+          type="button"
+          onClick={() =>
+            setShowPassword((prev) => ({ ...prev, [fieldKey]: !prev[fieldKey] }))
+          }
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-sre-text-muted hover:text-sre-text hover:bg-sre-surface-light transition-colors"
+          aria-label={showPassword[fieldKey] ? "Hide password" : "Show password"}
+          title={showPassword[fieldKey] ? "Hide password" : "Show password"}
+        >
+          <span className="material-icons text-[18px]">
+            {showPassword[fieldKey] ? "visibility_off" : "visibility"}
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+
   let modalTitle;
   if (showTour) {
     modalTitle = slides[slideIndex]?.title || "Welcome to Watchdog";
@@ -131,10 +187,29 @@ export default function ChangePasswordModal({
       showCloseButton={!!modalOnClose}
       className="bg-sre-bg-card rounded-xl shadow-2xl p-4 w-full mx-auto border border-sre-border/50 animate-slide-up flex flex-col max-w-2xl"
     >
-      {isForced && !showTour && (
-        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500 rounded text-yellow-500 text-sm">
-          You must change your password before continuing. Please choose a
-          secure password with at least 12 characters.
+      {!showTour && (
+        <div
+          className={`mb-4 rounded-lg border p-3 text-sm ${
+            isForced
+              ? "border-yellow-500/60 bg-yellow-500/10 text-yellow-500"
+              : "border-sre-primary/30 bg-sre-primary/10 text-sre-text"
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <span className="material-icons text-base leading-none mt-0.5">
+              {isForced ? "warning" : "lock_person"}
+            </span>
+            <div>
+              <div className="font-semibold">
+                {isForced ? "Password change required" : "Password security"}
+              </div>
+              <div className={isForced ? "text-yellow-500/90" : "text-sre-text-muted"}>
+                {isForced
+                  ? "You must change your password before continuing. Please choose a secure password with at least 12 characters."
+                  : "Use a strong password with at least 12 characters, and avoid reusing passwords across services."}
+              </div>
+            </div>
+          </div>
         </div>
       )}
       {showTour ? (
@@ -190,78 +265,41 @@ export default function ChangePasswordModal({
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {!canSkipCurrentPassword && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <label
-                  htmlFor="currentPassword"
-                  className="block text-sm font-medium text-sre-text"
-                >
-                  Current Password
-                </label>
-                <HelpTooltip
-                  text="Enter your current password to verify your identity before changing it."
-                  showOnFocus={false}
-                />
-              </div>
-              <Input
-                id="currentPassword"
-                type="password"
-                value={formData.currentPassword}
-                onChange={(e) => handleChange("currentPassword", e.target.value)}
-                placeholder="Enter current password"
-                required
-                autoFocus
-              />
-            </div>
+            renderPasswordField({
+              id: "currentPassword",
+              fieldKey: "current",
+              label: "Current Password",
+              placeholder: "Enter current password",
+              value: formData.currentPassword,
+              onChange: (e) => handleChange("currentPassword", e.target.value),
+              helpText:
+                "Enter your current password to verify your identity before changing it.",
+              autoFocus: true,
+            })
           )}
 
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <label
-                htmlFor="newPassword"
-                className="block text-sm font-medium text-sre-text"
-              >
-                New Password
-              </label>
-              <HelpTooltip
-                text="Choose a strong password with at least 12 characters, including uppercase, lowercase, numbers, and special characters."
-                showOnFocus={false}
-              />
-            </div>
-            <Input
-              id="newPassword"
-              type="password"
-              value={formData.newPassword}
-              onChange={(e) => handleChange("newPassword", e.target.value)}
-              placeholder="Enter new password (min 12 characters)"
-              required
-              minLength={12}
-            />
-          </div>
+          {renderPasswordField({
+            id: "newPassword",
+            fieldKey: "next",
+            label: "New Password",
+            placeholder: "Enter new password (min 12 characters)",
+            value: formData.newPassword,
+            onChange: (e) => handleChange("newPassword", e.target.value),
+            helpText:
+              "Choose a strong password with at least 12 characters, including uppercase, lowercase, numbers, and special characters.",
+            minLength: 12,
+          })}
 
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-sre-text"
-              >
-                Confirm New Password
-              </label>
-              <HelpTooltip
-                text="Re-enter your new password to ensure it matches exactly."
-                showOnFocus={false}
-              />
-            </div>
-            <Input
-              id="confirmPassword"
-              type="password"
-              value={formData.confirmPassword}
-              onChange={(e) => handleChange("confirmPassword", e.target.value)}
-              placeholder="Confirm new password"
-              required
-              minLength={12}
-            />
-          </div>
+          {renderPasswordField({
+            id: "confirmPassword",
+            fieldKey: "confirm",
+            label: "Confirm New Password",
+            placeholder: "Confirm new password",
+            value: formData.confirmPassword,
+            onChange: (e) => handleChange("confirmPassword", e.target.value),
+            helpText: "Re-enter your new password to ensure it matches exactly.",
+            minLength: 12,
+          })}
 
           <div className="flex gap-3 justify-end pt-4">
             {!isForced && (

@@ -296,7 +296,6 @@ export default function UsersPage() {
       <Card
         title="Users"
         subtitle={`We've found ${filteredUsers.length} user${filteredUsers.length === 1 ? "" : "s"} from the database${searchQuery ? " (filtered)" : ""}`}
-        className="border-0"
       >
         <CreateUserModal
           isOpen={showCreateModal}

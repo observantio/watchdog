@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from config import config
 from database import get_db_session
 from db_models import ApiKeyShare, Group, HiddenApiKey, User, UserApiKey
 from models.access.api_key_models import ApiKey, ApiKeyCreate, ApiKeyShareUser, ApiKeyUpdate
@@ -342,6 +343,13 @@ def create_api_key(service: "DatabaseAuthService", user_id: str, tenant_id: str,
     service._lazy_init()
     with get_db_session() as db:
         user = _require_user_in_tenant(db, user_id, tenant_id)
+        current_keys_count = (
+            db.query(UserApiKey.id)
+            .filter(UserApiKey.user_id == user_id, UserApiKey.tenant_id == tenant_id)
+            .count()
+        )
+        if current_keys_count >= int(config.MAX_API_KEYS_PER_USER):
+            raise ValueError(f"Maximum API key limit reached ({int(config.MAX_API_KEYS_PER_USER)})")
         normalized_name = _normalize_api_key_name(key_create.name)
         _assert_unique_api_key_name(
             db,

@@ -128,48 +128,53 @@ export default function RcaJobComposer({ onCreate, onDownloadTemplate, creating 
               onChange={(e) => setConfigFile(e.target.files?.[0] || null)}
               className="sr-only p-3"
             />
-            <div className="flex items-center gap-3 rounded-xl bg-sre-surface/40">
-              <label htmlFor="rca-config-yaml-upload" className="w-max">
-                <span className="inline-flex cursor-pointer items-center rounded-lg border border-sre-border bg-sre-surface px-3 py-2 text-sm font-medium text-sre-text transition-all duration-200 hover:border-sre-primary hover:bg-sre-surface-light">
-                  <span
-                    className="material-icons mr-1 text-base leading-none"
-                    aria-hidden="true"
-                  >
-                    upload_file
-                  </span>
-                  Choose YAML File
-                </span>
-              </label>
-              <div className="flex min-w-0 flex-1 items-center text-sm text-sre-text-muted">
+            <div className="rounded-xl border-2 border-dashed border-sre-border bg-sre-surface/30 p-6 text-center transition-colors duration-200 hover:border-sre-primary/70 hover:bg-sre-surface/50">
+              <label
+                htmlFor="rca-config-yaml-upload"
+                className="flex cursor-pointer flex-col items-center justify-center gap-2"
+              >
                 <span
-                  className="material-icons mr-1 text-base leading-none"
+                  className="material-icons text-3xl text-sre-text-muted"
                   aria-hidden="true"
                 >
-                  {configFile ? "description" : "insert_drive_file"}
+                  upload_file
                 </span>
-                <span className="truncate">
-                  {configFile ? configFile.name : "No file chosen"}
+                <span className="inline-flex items-center rounded-lg border border-sre-border bg-sre-surface px-3 py-1.5 text-sm font-medium text-sre-text">
+                  Choose YAML File
                 </span>
-              </div>
-              {configFile && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="w-max"
-                  onClick={() => {
-                    setConfigFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                >
+                <span className="inline-flex min-w-0 items-center gap-1 text-sm text-sre-text-muted">
                   <span
-                    className="material-icons mr-1 text-base leading-none"
+                    className="material-icons text-base leading-none"
                     aria-hidden="true"
                   >
-                    close
+                    {configFile ? "description" : "insert_drive_file"}
                   </span>
-                  Clear
-                </Button>
+                  <span className="max-w-[28rem] truncate">
+                    {configFile ? configFile.name : "No file chosen"}
+                  </span>
+                </span>
+              </label>
+              {configFile && (
+                <div className="mt-3 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-max"
+                    onClick={() => {
+                      setConfigFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                  >
+                    <span
+                      className="material-icons mr-1 text-base leading-none"
+                      aria-hidden="true"
+                    >
+                      close
+                    </span>
+                    Clear
+                  </Button>
+                </div>
               )}
             </div>
             <p className="text-xs text-sre-text-muted">

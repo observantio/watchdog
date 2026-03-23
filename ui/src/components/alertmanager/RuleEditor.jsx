@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
-import { Button, Input, Select } from "../ui";
+import { Button, Input, Select, Textarea } from "../ui";
 import RuleEditorWizard from "./RuleEditorWizard";
 import HelpTooltip from "../HelpTooltip";
 import { useAuth } from "../../contexts/AuthContext";
@@ -91,6 +91,29 @@ export default function RuleEditor({
       !isRuleOwner &&
       (!hasExplicitApiScope || hasHiddenSelectedApiScope),
   );
+  const activeApiScope = useMemo(() => {
+    const visible = (apiKeys || []).filter((k) => !(k?.is_hidden || k?.isHidden));
+    const enabled = visible.find((k) => k?.is_enabled);
+    const fallbackDefault = visible.find((k) => k?.is_default);
+    const fallbackFirst = visible[0];
+    return String(
+      enabled?.key || fallbackDefault?.key || fallbackFirst?.key || "",
+    ).trim();
+  }, [apiKeys]);
+  const metricsOrgScope = useMemo(() => {
+    const explicitScope = selectedExplicitApiScopes[0];
+    if (explicitScope) return String(explicitScope).trim();
+    const normalizedRuleOrg = normalizeRuleOrgId(formData.orgId);
+    if (normalizedRuleOrg) return normalizedRuleOrg;
+    return activeApiScope || undefined;
+  }, [selectedExplicitApiScopes, formData.orgId, activeApiScope]);
+  const metricsScopeLabel = useMemo(() => {
+    if (!metricsOrgScope) return "default";
+    const matched = (apiKeys || []).find(
+      (k) => String(k?.key || "").trim() === String(metricsOrgScope || "").trim(),
+    );
+    return matched?.name || `${String(metricsOrgScope).slice(0, 8)}...`;
+  }, [metricsOrgScope, apiKeys]);
 
   useEffect(() => {
     loadGroups();
@@ -163,7 +186,7 @@ export default function RuleEditor({
     setLoadingMetrics(true);
     setMetricsError(null);
     try {
-      const resp = await listMetricNames(normalizeRuleOrgId(formData.orgId));
+      const resp = await listMetricNames(metricsOrgScope);
       setMetricNames(Array.isArray(resp.metrics) ? resp.metrics : []);
     } catch (e) {
       setMetricsError(e.message || "Failed to load metrics from Mimir");
@@ -325,6 +348,12 @@ export default function RuleEditor({
     }
   };
 
+  const handleStepClick = (stepIndex) => {
+    if (typeof stepIndex !== "number") return;
+    if (stepIndex < 0 || stepIndex > totalSteps - 1) return;
+    setCurrentStep(stepIndex);
+  };
+
   const handleWizardSubmit = async () => {
     const { errors } = validateRuleForm(formData, labelPairs);
     if (Object.keys(errors).length > 0) return;
@@ -357,6 +386,7 @@ export default function RuleEditor({
           onNext={handleNext}
           onPrevious={handlePrevious}
           onSubmit={handleWizardSubmit}
+          onStepClick={handleStepClick}
           canProceed={canProceedToNextStep()}
           isSubmitting={saving}
           hasErrors={hasErrors}
@@ -575,14 +605,15 @@ export default function RuleEditor({
                       PromQL Expression{" "}
                       <HelpTooltip text="Write a PromQL query that defines when this alert should fire. Use the metric explorer below to help build your query." />
                     </label>
-                    <Input
+                    <Textarea
                       value={formData.expr}
                       onChange={(e) =>
                         setFormData({ ...formData, expr: e.target.value })
                       }
                       required
                       placeholder="rate(requests_total[5m]) > 100"
-                      className="w-full font-mono text-base py-3 px-3 border-2 border-sre-border focus:border-sre-primary transition-colors min-h-[60px]"
+                      rows={6}
+                      className="w-full font-mono text-base py-3 px-3 border-2 border-sre-border focus:border-sre-primary transition-colors whitespace-pre leading-relaxed"
                     />
                     {validationErrors.expr && (
                       <p className="text-sm text-red-500 dark:text-red-400 font-medium flex items-center gap-1">
@@ -714,29 +745,30 @@ export default function RuleEditor({
                           Load metric names from Mimir for the selected product
                           and click to insert them into your PromQL expression.
                         </p>
+                        <div className="mt-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/45 bg-indigo-500/15 px-2.5 py-1 text-xs font-semibold text-indigo-300">
+                            <span className="material-icons text-[13px] leading-none">
+                              key
+                            </span>
+                            Scope: {metricsScopeLabel || "Default"}
+                          </span>
+                        </div>
                       </div>
                       <Button
                         type="button"
-                        variant="secondary"
-                        size="lg"
+                        variant="ghost"
+                        size="sm"
                         onClick={loadMetrics}
                         disabled={loadingMetrics}
+                        className="p-1.5 min-w-0 h-8 w-8"
+                        title="Load metrics"
+                        aria-label="Load metrics"
                       >
-                        {loadingMetrics ? (
-                          <>
-                            <span className="material-icons text-base mr-2 animate-spin">
-                              progress_activity
-                            </span>
-                            Loading…
-                          </>
-                        ) : (
-                          <>
-                            <span className="material-icons text-base mr-2">
-                              refresh
-                            </span>
-                            Load metrics
-                          </>
-                        )}
+                        <span
+                          className={`material-icons text-base ${loadingMetrics ? "animate-spin" : ""}`}
+                        >
+                          {loadingMetrics ? "progress_activity" : "refresh"}
+                        </span>
                       </Button>
                     </div>
 
@@ -1364,6 +1396,7 @@ export default function RuleEditor({
           onNext={handleNext}
           onPrevious={handlePrevious}
           onSubmit={handleWizardSubmit}
+          onStepClick={handleStepClick}
           canProceed={canProceedToNextStep()}
           isSubmitting={saving}
           hasErrors={hasErrors}

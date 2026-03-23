@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAutoRefresh } from "../hooks";
 import PageHeader from "../components/ui/PageHeader";
 import AutoRefreshControl from "../components/ui/AutoRefreshControl";
@@ -70,6 +70,8 @@ export default function LokiPage() {
   const [volume, setVolume] = useState([]);
   const [loading, setLoading] = useState(false);
   const [topTerms, setTopTerms] = useState([]);
+  const queryRunIdRef = useRef(0);
+  const activeQueryControllerRef = useRef(null);
 
   const logStats = useMemo(() => {
     const res = queryResult?.data?.result || [];
@@ -250,6 +252,15 @@ export default function LokiPage() {
     loadInitialData();
   }, [loadInitialData]);
 
+  useEffect(
+    () => () => {
+      if (activeQueryControllerRef.current) {
+        activeQueryControllerRef.current.abort();
+      }
+    },
+    [],
+  );
+
   async function loadLabelValues(label) {
     if (!label || labelValuesCache[label]) return;
 
@@ -350,12 +361,14 @@ export default function LokiPage() {
     endNs,
     totalLogs,
     res,
+    signal,
   ) {
     try {
       const volRes = await getLogVolume(volumeQuery, {
         start: Math.round(startNs),
         end: Math.round(endNs),
         step: Math.max(60, Math.floor((rangeMinutes * 60) / 60)),
+        signal,
       });
       const vals = getVolumeValues(volRes);
       if (vals.some((v) => v > 0)) {
@@ -369,6 +382,13 @@ export default function LokiPage() {
   }
 
   async function executeQuery(overrideFilters, overridePattern) {
+    const queryRunId = queryRunIdRef.current + 1;
+    queryRunIdRef.current = queryRunId;
+    if (activeQueryControllerRef.current) {
+      activeQueryControllerRef.current.abort();
+    }
+    const queryController = new AbortController();
+    activeQueryControllerRef.current = queryController;
     setLoading(true);
 
     const effectivePattern =
@@ -409,7 +429,9 @@ export default function LokiPage() {
         start: Math.round(startNs),
         end: Math.round(endNs),
         limit: normalizedLimit,
+        signal: queryController.signal,
       });
+      if (queryRunId !== queryRunIdRef.current) return;
       const safeResult = res || { data: { result: [] } };
       setQueryResult(safeResult);
 
@@ -430,11 +452,20 @@ export default function LokiPage() {
         endNs,
         totalLogs,
         safeResult,
+        queryController.signal,
       );
+      if (queryRunId !== queryRunIdRef.current) return;
     } catch (e) {
+      const aborted =
+        e?.name === "AbortError" ||
+        e?.code === "REQUEST_ABORTED" ||
+        e?.code === "REQUEST_TIMEOUT";
+      if (aborted) return;
       toast.error(e?.message || "Failed to query logs");
     } finally {
-      setLoading(false);
+      if (queryRunId === queryRunIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -573,18 +604,18 @@ export default function LokiPage() {
             title="Log Results"
             subtitle={
               queryResult?.data?.result?.length
-                ? "Showing results"
+                ? `Showing ${queryResult.data.result.length} stream${queryResult.data.result.length === 1 ? "" : "s"}`
                 : "Run a query"
             }
           >
             <div className="mb-4 flex items-center justify-between pb-4 border-b border-sre-border">
-              <div className="flex items-center gap-4">
-                <div className="flex gap-1 bg-sre-bg-alt rounded-lg p-1">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex gap-1 bg-sre-bg-alt rounded-lg p-1 border border-sre-border/60">
                   {["table", "compact", "raw"].map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setViewMode(mode)}
-                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${viewMode === mode ? "bg-sre-primary text-white" : "text-sre-text-muted hover:text-sre-text"}`}
+                      className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${viewMode === mode ? "bg-sre-primary text-white" : "text-sre-text-muted hover:text-sre-text hover:bg-sre-surface"}`}
                     >
                       {mode.charAt(0).toUpperCase() + mode.slice(1)}
                     </button>
@@ -596,7 +627,7 @@ export default function LokiPage() {
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   placeholder="Filter displayed logs..."
-                  className="px-3 py-1 bg-sre-surface border border-sre-border rounded text-sm text-sre-text w-full md:w-72 max-w-md"
+                  className="px-3 py-1.5 bg-sre-surface border border-sre-border rounded-lg text-sm text-sre-text w-full md:w-72 max-w-md focus:outline-none focus:ring-2 focus:ring-sre-primary/50"
                 />
                 <HelpTooltip text="Filter the displayed log results by searching within the log content. Supports multiple keywords separated by spaces." />
               </div>

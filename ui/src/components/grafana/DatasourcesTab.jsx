@@ -108,6 +108,7 @@ export default function DatasourcesTab({
   openDatasourceEditor,
   onDeleteDatasource,
   onToggleHidden,
+  onViewMetrics,
   getDatasourceIcon,
 }) {
   const [query, setQuery] = useState("");
@@ -128,7 +129,7 @@ export default function DatasourcesTab({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="material-icons text-2xl text-sre-primary">
+          <span className="material-icons text-2xl text-sre-text">
             storage
           </span>
           <div>
@@ -301,6 +302,15 @@ export default function DatasourcesTab({
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => onViewMetrics?.(ds)}
+                    title="View Metrics"
+                    className="p-2"
+                  >
+                    <span className="material-icons text-base">functions</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => openDatasourceEditor(ds)}
                     title="Edit"
                     className="p-2"
@@ -378,6 +388,7 @@ DatasourcesTab.propTypes = {
   openDatasourceEditor: PropTypes.func.isRequired,
   onDeleteDatasource: PropTypes.func.isRequired,
   onToggleHidden: PropTypes.func,
+  onViewMetrics: PropTypes.func,
   onEditLabels: PropTypes.func,
   getDatasourceIcon: PropTypes.func.isRequired,
 };

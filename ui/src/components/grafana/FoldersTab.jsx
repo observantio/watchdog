@@ -26,7 +26,7 @@ export default function FoldersTab({
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="material-icons text-2xl text-sre-primary">
+            <span className="material-icons text-2xl text-sre-text">
               folder
             </span>
             <div>

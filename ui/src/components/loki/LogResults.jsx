@@ -158,34 +158,37 @@ export default function LogResults({
 
   return (
     <div className="space-y-4 overflow-auto scrollbar-thin scrollbar-thumb-sre-border scrollbar-track-sre-bg-alt scrollbar-thumb-rounded max-h-[calc(100vh-18rem)] pr-2 md:pr-4">
-      {totalStreams > perPage && (
-        <div className="flex items-center justify-between text-xs text-sre-text-muted">
-          <div>
-            Showing {totalStreams === 0 ? 0 : startIndex + 1}–{endIndex} of{" "}
-            {totalStreams} streams
-          </div>
+      <div className="flex items-center justify-between rounded-lg border border-sre-border/60 bg-sre-bg-alt/60 px-3 py-2 text-xs text-sre-text-muted">
+        <div className="font-medium">
+          Showing {totalStreams === 0 ? 0 : startIndex + 1}–{endIndex} of{" "}
+          {totalStreams} streams
+        </div>
+        {totalStreams > perPage && (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
               aria-label="Previous"
-              className="px-2 py-1 rounded border"
+              className="px-2 py-1 rounded border border-sre-border bg-sre-surface hover:bg-sre-bg-alt disabled:opacity-50"
             >
               Previous
             </button>
+            <span className="text-sre-text-subtle">
+              Page {page} / {totalPages}
+            </span>
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               aria-label="Next"
-              className="px-2 py-1 rounded border"
+              className="px-2 py-1 rounded border border-sre-border bg-sre-surface hover:bg-sre-bg-alt disabled:opacity-50"
             >
               Next
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {visibleStreams.map(({ stream, values: filteredValues }, streamIdx) => {
         const rawStreamKey = normalizeStreamIdentity(stream.stream);
@@ -197,16 +200,16 @@ export default function LogResults({
         return (
           <div
             key={streamKey}
-            className="border border-sre-border rounded-lg overflow-hidden"
+            className="border border-sre-border rounded-lg overflow-hidden bg-sre-surface/65"
           >
             <div className="bg-sre-bg-alt px-4 py-2 border-b border-sre-border">
               <div className="flex items-center justify-between">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 pr-3">
                   {stream.stream &&
                     Object.entries(stream.stream).map(([k, v]) => (
                       <span
                         key={k}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-sre-surface border border-sre-border rounded text-xs font-mono"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-sre-surface border border-sre-border/70 rounded text-xs font-mono"
                       >
                         <span className="text-sre-primary font-semibold">
                           {k}
@@ -218,7 +221,10 @@ export default function LogResults({
                       </span>
                     ))}
                 </div>
-                <Badge variant="default">{filteredValues.length}</Badge>
+                <Badge variant="default" className="text-[10px]">
+                  {filteredValues.length} log
+                  {filteredValues.length === 1 ? "" : "s"}
+                </Badge>
               </div>
             </div>
 
@@ -259,9 +265,9 @@ export default function LogResults({
                     return (
                       <div
                         style={style}
-                        className="px-4 py-2 hover:bg-sre-surface/50 transition-colors text-xs font-mono"
+                        className="px-4 py-2 hover:bg-sre-surface/70 transition-colors text-xs font-mono"
                       >
-                        <span className="text-sre-text-muted mr-3">
+                        <span className="text-sre-text-muted mr-3 tabular-nums">
                           {formatNsToIso(v[0]).substring(11, 19)}
                         </span>
                         <span
@@ -281,7 +287,7 @@ export default function LogResults({
                     return (
                       <div
                         style={style}
-                        className="px-4 py-2 hover:bg-sre-surface/50 transition-colors"
+                        className="px-4 py-2 hover:bg-sre-surface/70 transition-colors"
                       >
                         <pre className="text-xs font-mono text-sre-text whitespace-pre-wrap break-all">
                           {JSON.stringify(
@@ -297,7 +303,7 @@ export default function LogResults({
                   return (
                     <div
                       style={style}
-                      className="px-4 py-3 hover:bg-sre-surface/50 transition-colors"
+                      className="px-4 py-3 hover:bg-sre-surface/70 transition-colors"
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-3">

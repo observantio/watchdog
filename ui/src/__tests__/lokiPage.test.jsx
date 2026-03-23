@@ -113,7 +113,7 @@ describe("LokiPage performance behavior", () => {
     fireEvent.click(runBtn);
 
     await waitFor(() => expect(api.queryLogs).toHaveBeenCalled());
-    expect(getByText(/Streams/i)).toBeInTheDocument();
+    expect(getByText(/^Streams$/i)).toBeInTheDocument();
     expect(getByText(/Total Logs/i)).toBeInTheDocument();
     expect(getByText(/Avg\/stream/i)).toBeInTheDocument();
     expect(getByText(/Services/i)).toBeInTheDocument();

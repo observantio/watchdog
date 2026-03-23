@@ -57,6 +57,11 @@ async def test_error_handlers_and_json_safe_paths():
     async def raw_internal() -> str:
         raise RuntimeError("raw")
 
+    @handle_route_errors(gateway_timeout_detail="timed out")
+    async def gateway_timeout(request: Request) -> str:
+        _ = request
+        raise asyncio.TimeoutError()
+
     with pytest.raises(HTTPException) as bad_req_exc:
         await bad_request()
     assert bad_req_exc.value.status_code == 400
@@ -73,11 +78,19 @@ async def test_error_handlers_and_json_safe_paths():
         type("Exc", (), {"errors": lambda self=None: [{"err": ValueError("bad")}]})(),
     )
     assert validation_response.status_code == 422
-    detail = json.loads(validation_response.body.decode("utf-8"))["detail"]
+    validation_payload = json.loads(validation_response.body.decode("utf-8"))
+    detail = validation_payload["detail"]
     assert detail[0]["err"] == "bad"
+    assert validation_payload["error_code"] == "VALIDATION_ERROR"
 
     general_response = general_exception_handler(_request("/boom"), RuntimeError("boom"))
     assert general_response.status_code == 500
+    assert json.loads(general_response.body.decode("utf-8"))["error_code"] == "INTERNAL_SERVER_ERROR"
+
+    with pytest.raises(HTTPException) as timeout_exc:
+        await gateway_timeout(_request("/timeout", headers=[(b"x-request-id", b"req-1")]))
+    assert timeout_exc.value.status_code == 504
+    assert timeout_exc.value.headers["X-Request-ID"] == "req-1"
 
 
 @pytest.mark.asyncio
@@ -120,6 +133,7 @@ async def test_audit_helpers_and_security_headers(monkeypatch):
     response = await audit_middleware.security_headers_middleware(request, call_next)
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Strict-Transport-Security"].startswith("max-age=")
+    assert response.headers["X-Request-ID"]
     assert "script-src" not in response.headers["Content-Security-Policy"]
     assert any(item[0] == "write" for item in writes)
     assert audit_middleware._extract_request_token(request) == "jwt-token"

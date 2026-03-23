@@ -168,6 +168,7 @@ class NotifierProxyService(BaseProxyService):
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail="Notifier request timed out",
+                headers={"X-Request-ID": corr},
             ) from exc
         except httpx.HTTPError as exc:
             self.write_audit(
@@ -179,6 +180,7 @@ class NotifierProxyService(BaseProxyService):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Failed to contact Notifier",
+                headers={"X-Request-ID": corr},
             ) from exc
 
         elapsed_ms = int((time.time() - start) * 1000)
@@ -198,7 +200,10 @@ class NotifierProxyService(BaseProxyService):
         return Response(
             content=upstream.content,
             status_code=upstream.status_code,
-            headers=self._forwardable_response_headers(upstream.headers),
+            headers={
+                **self._forwardable_response_headers(upstream.headers),
+                "X-Request-ID": corr,
+            },
         )
 
 notifier_proxy_service = NotifierProxyService()

@@ -26,6 +26,7 @@ import {
 import {
   buildRulePayload,
 } from "../utils/alertmanagerRuleUtils";
+import { DEFAULT_FORM } from "../components/alertmanager/ruleEditorUtils";
 
 export default function AlertManagerPage() {
   const { user } = useAuth();
@@ -47,6 +48,7 @@ export default function AlertManagerPage() {
   const [showRuleEditor, setShowRuleEditor] = useState(false);
   const [showSilenceForm, setShowSilenceForm] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  const [ruleSeed, setRuleSeed] = useState(null);
   const [filterSeverity, setFilterSeverity] = useState("all");
   const [filterCorrelationId, setFilterCorrelationId] = useState("all");
   const [filterLabel, setFilterLabel] = useState("");
@@ -221,6 +223,42 @@ export default function AlertManagerPage() {
       handleApiError(e);
       return false;
     }
+  }
+
+  function buildRuleSeedFromExisting(sourceRule) {
+    const annotations = sourceRule?.annotations || {};
+    const notificationChannels = Array.isArray(sourceRule?.notificationChannels)
+      ? sourceRule.notificationChannels
+      : Array.isArray(sourceRule?.notification_channels)
+        ? sourceRule.notification_channels
+        : [];
+    const sharedGroupIds = Array.isArray(sourceRule?.sharedGroupIds)
+      ? sourceRule.sharedGroupIds
+      : Array.isArray(sourceRule?.shared_group_ids)
+        ? sourceRule.shared_group_ids
+        : [];
+    const sourceName = String(sourceRule?.name || "").trim();
+    const sourceOrgId = String(sourceRule?.orgId || sourceRule?.org_id || "").trim();
+
+    return {
+      ...DEFAULT_FORM,
+      name: sourceName ? `${sourceName} Copy` : "Copied Rule",
+      orgId: sourceOrgId,
+      orgIds: sourceOrgId ? [sourceOrgId] : [],
+      expr: String(sourceRule?.expr || ""),
+      duration: String(sourceRule?.duration || DEFAULT_FORM.duration),
+      severity: String(sourceRule?.severity || DEFAULT_FORM.severity),
+      labels: { ...(sourceRule?.labels || {}) },
+      annotations: {
+        summary: String(annotations?.summary || ""),
+        description: String(annotations?.description || ""),
+      },
+      enabled: Boolean(sourceRule?.enabled ?? DEFAULT_FORM.enabled),
+      group: String(sourceRule?.group || DEFAULT_FORM.group),
+      visibility: String(sourceRule?.visibility || DEFAULT_FORM.visibility),
+      notificationChannels: notificationChannels.filter(Boolean),
+      sharedGroupIds: sharedGroupIds.filter(Boolean),
+    };
   }
 
   async function handleDeleteRule(ruleId) {
@@ -581,7 +619,7 @@ export default function AlertManagerPage() {
     <div className="animate-fade-in">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-sre-text mb-2 flex items-center gap-2">
-          <span className="material-icons text-3xl text-sre-primary">
+          <span className="material-icons text-3xl text-sre-text">
             notifications_active
           </span>{" "}
           Alerts &amp; Rules
@@ -946,7 +984,7 @@ export default function AlertManagerPage() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="material-icons text-2xl text-sre-primary">
+                    <span className="material-icons text-2xl text-sre-text">
                       rule
                     </span>
                     <div>
@@ -988,6 +1026,7 @@ export default function AlertManagerPage() {
                       <Button
                         onClick={() => {
                           setEditingRule(null);
+                          setRuleSeed(null);
                           setShowRuleEditor(true);
                         }}
                         size="sm"
@@ -1287,6 +1326,22 @@ export default function AlertManagerPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
+                                  setEditingRule(null);
+                                  setRuleSeed(buildRuleSeedFromExisting(rule));
+                                  setShowRuleEditor(true);
+                                }}
+                                className="p-2"
+                                title="Create from this rule"
+                              >
+                                <span className="material-icons text-base">
+                                  content_copy
+                                </span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setRuleSeed(null);
                                   setEditingRule(rule);
                                   setShowRuleEditor(true);
                                 }}
@@ -1340,6 +1395,7 @@ export default function AlertManagerPage() {
                     <Button
                       onClick={() => {
                         setEditingRule(null);
+                        setRuleSeed(null);
                         setShowRuleEditor(true);
                       }}
                     >
@@ -1357,7 +1413,7 @@ export default function AlertManagerPage() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="material-icons text-2xl text-sre-primary">
+                    <span className="material-icons text-2xl text-sre-text">
                       volume_off
                     </span>
                     <div>
@@ -1722,13 +1778,20 @@ export default function AlertManagerPage() {
         onClose={() => {
           setShowRuleEditor(false);
           setEditingRule(null);
+          setRuleSeed(null);
         }}
-        title={editingRule ? "Edit Alert Rule" : "Create Alert Rule"}
+        title={
+          editingRule
+            ? "Edit Alert Rule"
+            : ruleSeed
+              ? "Create Alert Rule (Copied)"
+              : "Create Alert Rule"
+        }
         size="lg"
         closeOnOverlayClick={false}
       >
         <RuleEditor
-          rule={editingRule}
+          rule={editingRule || ruleSeed}
           channels={channels}
           apiKeys={apiKeys}
           availableCorrelationIds={correlationIdOptions}
@@ -1737,12 +1800,14 @@ export default function AlertManagerPage() {
             if (ok) {
               setShowRuleEditor(false);
               setEditingRule(null);
+              setRuleSeed(null);
             }
             return ok;
           }}
           onCancel={() => {
             setShowRuleEditor(false);
             setEditingRule(null);
+            setRuleSeed(null);
           }}
         />
       </Modal>

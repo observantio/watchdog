@@ -5,6 +5,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 vi.mock("../../ui", () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   Input: (props) => <input {...props} />,
+  Textarea: (props) => <textarea {...props} />,
   Select: ({ children, onChange, ...props }) => (
     <select {...props} onChange={onChange}>
       {children}

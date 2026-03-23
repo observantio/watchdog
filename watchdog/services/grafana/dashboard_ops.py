@@ -624,7 +624,6 @@ async def create_dashboard(
                 service._raise_http_from_grafana_error(retry_exc)
         else:
             service._raise_http_from_grafana_error(exc)
-        return None
 
     if not result:
         return None

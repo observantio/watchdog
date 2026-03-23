@@ -3,6 +3,80 @@ import { API_BASE } from "./utils/constants";
 let authToken = null;
 let setupToken = null;
 let userOrgIds = [];
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+const LOKI_TEMPO_TIMEOUT_MS = 30000;
+const RESOLVER_TIMEOUT_MS = 45000;
+const GRAFANA_TIMEOUT_MS = 20000;
+const DEFAULT_IDEMPOTENT_RETRY_COUNT = 1;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getPathTimeoutMs(path) {
+  if (path.includes("/api/resolver")) return RESOLVER_TIMEOUT_MS;
+  if (path.includes("/api/loki") || path.includes("/api/tempo")) {
+    return LOKI_TEMPO_TIMEOUT_MS;
+  }
+  if (path.includes("/api/grafana")) return GRAFANA_TIMEOUT_MS;
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+function createTimeoutSignal(signal, timeoutMs) {
+  const controller = new AbortController();
+  let timeoutId = null;
+  let onAbort = null;
+  let timedOut = false;
+
+  if (typeof timeoutMs === "number" && timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+    } else {
+      onAbort = () => controller.abort(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    cleanup: () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+function normalizeMethod(opts) {
+  return String(opts?.method || "GET").toUpperCase();
+}
+
+function isIdempotentMethod(method) {
+  return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+function shouldRetryRequest({
+  method,
+  attempt,
+  maxRetries,
+  isTimeout,
+  isAbort,
+  status,
+}) {
+  if (attempt >= maxRetries) return false;
+  if (!isIdempotentMethod(method)) return false;
+  if (isAbort && !isTimeout) return false;
+  if (isTimeout) return true;
+  if (status === 429 || status === 503 || status === 504) return true;
+  return false;
+}
 
 export function setSetupToken(token) {
   setupToken = token;
@@ -31,15 +105,97 @@ export function getUserOrgIds() {
 }
 
 async function requestWithHeaders(path, opts = {}, headers = {}) {
-  const merged = { ...headers, ...opts.headers };
+  const {
+    timeoutMs,
+    dispatchApiErrors = true,
+    handleSessionExpiry = true,
+    signal: externalSignal,
+    maxRetries,
+    ...fetchOpts
+  } = opts;
+  const merged = { ...headers, ...fetchOpts.headers };
   if (authToken) {
     merged["Authorization"] = `Bearer ${authToken}`;
   }
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    credentials: "include",
-    headers: merged,
-  });
+  const timeout = timeoutMs ?? getPathTimeoutMs(path);
+  const method = normalizeMethod(fetchOpts);
+  const allowedRetries =
+    maxRetries === undefined
+      ? isIdempotentMethod(method)
+        ? DEFAULT_IDEMPOTENT_RETRY_COUNT
+        : 0
+      : Math.max(0, Number(maxRetries) || 0);
+  let res;
+  let attempt = 0;
+  while (true) {
+    const requestSignal = createTimeoutSignal(externalSignal, timeout);
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...fetchOpts,
+        method,
+        credentials: "include",
+        headers: merged,
+        signal: requestSignal.signal,
+      });
+      requestSignal.cleanup();
+    } catch (error) {
+      const timedOut = requestSignal.didTimeout();
+      requestSignal.cleanup();
+      const isAbort = error?.name === "AbortError";
+      if (
+        shouldRetryRequest({
+          method,
+          attempt,
+          maxRetries: allowedRetries,
+          isTimeout: timedOut,
+          isAbort,
+        })
+      ) {
+        attempt += 1;
+        await sleep(120 * attempt);
+        continue;
+      }
+
+      const message = timedOut
+        ? `Request timed out after ${timeout}ms`
+        : error?.message || "Network request failed";
+      const err = new Error(message);
+      err.cause = error;
+      err.status = timedOut ? 408 : undefined;
+      err.code = timedOut
+        ? "REQUEST_TIMEOUT"
+        : isAbort
+          ? "REQUEST_ABORTED"
+          : "NETWORK_ERROR";
+      if (dispatchApiErrors) {
+        globalThis.window?.dispatchEvent(
+          new CustomEvent("api-error", {
+            detail: {
+              status: err.status || 0,
+              body: { message },
+              path,
+              shouldExpireSession: false,
+            },
+          }),
+        );
+      }
+      throw err;
+    }
+
+    if (
+      res.ok ||
+      !shouldRetryRequest({
+        method,
+        attempt,
+        maxRetries: allowedRetries,
+        status: res.status,
+      })
+    ) {
+      break;
+    }
+    attempt += 1;
+    await sleep(120 * attempt);
+  }
   if (!res.ok) {
     const text = await res.text();
     let body;
@@ -54,21 +210,26 @@ async function requestWithHeaders(path, opts = {}, headers = {}) {
     const shouldExpireSessionOn401 =
       path === "/api/auth/me" || path === "/api/auth/refresh";
 
-    globalThis.window.dispatchEvent(
-      new CustomEvent("api-error", {
-        detail: {
-          status: res.status,
-          body,
-          path,
-          shouldExpireSession: res.status === 401 && shouldExpireSessionOn401,
-        },
-      }),
-    );
+    if (dispatchApiErrors) {
+      globalThis.window?.dispatchEvent(
+        new CustomEvent("api-error", {
+          detail: {
+            status: res.status,
+            body,
+            path,
+            shouldExpireSession:
+              res.status === 401 &&
+              shouldExpireSessionOn401 &&
+              handleSessionExpiry,
+          },
+        }),
+      );
+    }
 
-    if (res.status === 401 && !isAuthLoginEndpoint) {
+    if (res.status === 401 && !isAuthLoginEndpoint && handleSessionExpiry) {
       if (shouldExpireSessionOn401) {
         authToken = null;
-        globalThis.window.dispatchEvent(
+        globalThis.window?.dispatchEvent(
           new CustomEvent("session-expired", {
             detail: { status: 401, path, shouldExpireSession: true },
           }),
@@ -80,6 +241,7 @@ async function requestWithHeaders(path, opts = {}, headers = {}) {
       body?.message || body?.detail || text || res.statusText,
     );
     err.status = res.status;
+    err.code = `HTTP_${res.status}`;
     err.body = body;
     throw err;
   }
@@ -131,6 +293,13 @@ export async function fetchSystemMetrics() {
   return request("/api/system/metrics");
 }
 
+export async function getSystemQuotas(orgId = null) {
+  const params = new URLSearchParams();
+  if (orgId) params.set("orgId", String(orgId));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return request(`/api/system/quotas${qs}`);
+}
+
 export async function login(username, password, mfa_code) {
   const payload = { username, password };
   if (mfa_code) payload.mfa_code = mfa_code;
@@ -144,25 +313,14 @@ export async function refreshSession() {
 export async function enrollMFA() {
   if (authToken) return requestJson("/api/auth/mfa/enroll", { method: "POST" });
   if (!setupToken) throw new Error("Not authenticated");
-  const res = await fetch(`${API_BASE}/api/auth/mfa/enroll`, {
-    method: "POST",
-    credentials: "include",
-    headers: { Authorization: `Bearer ${setupToken}` },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let body;
-    try {
-      body = text?.startsWith("{") ? JSON.parse(text) : { message: text };
-    } catch {
-      body = { message: text };
-    }
-    const msg = body.message || body.detail || text || res.statusText;
-    const err = new Error(msg);
-    err.body = body;
-    throw err;
-  }
-  return await res.json();
+  return requestWithHeaders(
+    "/api/auth/mfa/enroll",
+    {
+      method: "POST",
+      handleSessionExpiry: false,
+    },
+    { Authorization: `Bearer ${setupToken}` },
+  );
 }
 
 export async function verifyMFA(code) {
@@ -172,29 +330,23 @@ export async function verifyMFA(code) {
       payload: { code },
     });
   if (!setupToken) throw new Error("Not authenticated");
-  const res = await fetch(`${API_BASE}/api/auth/mfa/verify`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      Authorization: `Bearer ${setupToken}`,
-      "Content-Type": "application/json",
+  return requestWithHeaders(
+    "/api/auth/mfa/verify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+      handleSessionExpiry: false,
     },
-    body: JSON.stringify({ code }),
+    { Authorization: `Bearer ${setupToken}` },
+  );
+}
+
+export async function getCurrentUserNoRedirect() {
+  return requestWithHeaders("/api/auth/me", {
+    dispatchApiErrors: false,
+    handleSessionExpiry: false,
   });
-  if (!res.ok) {
-    const text = await res.text();
-    let body;
-    try {
-      body = text?.startsWith("{") ? JSON.parse(text) : { message: text };
-    } catch {
-      body = { message: text };
-    }
-    const msg = body.message || body.detail || text || res.statusText;
-    const err = new Error(msg);
-    err.body = body;
-    throw err;
-  }
-  return await res.json();
 }
 
 export async function disableMFA({ current_password, code } = {}) {
@@ -263,30 +415,6 @@ export async function register(username, email, password, full_name) {
 
 export async function getCurrentUser() {
   return request("/api/auth/me");
-}
-
-export async function getCurrentUserNoRedirect() {
-  const res = await fetch(`${API_BASE}/api/auth/me`, {
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let body;
-    try {
-      body = text?.startsWith("{") ? JSON.parse(text) : { message: text };
-    } catch {
-      body = { message: text || res.statusText };
-    }
-    const err = new Error(
-      body?.message || body?.detail || text || res.statusText,
-    );
-    err.status = res.status;
-    err.body = body;
-    throw err;
-  }
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return await res.json();
-  return await res.text();
 }
 
 export async function updateCurrentUser(updates) {
@@ -726,6 +854,7 @@ export async function queryLogs({
   end,
   direction = "backward",
   step,
+  signal,
 }) {
   const normalizedLimit = Math.max(1, Number(limit) || 100);
   const params = new URLSearchParams();
@@ -735,7 +864,7 @@ export async function queryLogs({
   if (end) params.append("end", end);
   if (direction) params.append("direction", direction);
   if (step) params.append("step", step);
-  return request(`/api/loki/query?${params.toString()}`);
+  return request(`/api/loki/query?${params.toString()}`, { signal });
 }
 export async function getLabels() {
   return request("/api/loki/labels");
@@ -769,13 +898,16 @@ export async function aggregateLogs(query, { start, end, step = 60 } = {}) {
   if (end) params.append("end", end);
   return request(`/api/loki/aggregate?${params.toString()}`);
 }
-export async function getLogVolume(query, { start, end, step = 300 } = {}) {
+export async function getLogVolume(
+  query,
+  { start, end, step = 300, signal } = {},
+) {
   const params = new URLSearchParams();
   params.append("query", query);
   params.append("step", step.toString());
   if (start) params.append("start", start);
   if (end) params.append("end", end);
-  return request(`/api/loki/volume?${params.toString()}`);
+  return request(`/api/loki/volume?${params.toString()}`, { signal });
 }
 
 export async function searchTraces({
@@ -787,6 +919,7 @@ export async function searchTraces({
   end,
   limit = 100,
   fetchFull = false,
+  signal,
 }) {
   const qs = [];
   if (service) qs.push(`service=${encodeURIComponent(service)}`);
@@ -797,13 +930,13 @@ export async function searchTraces({
   if (end) qs.push(`end=${end}`);
   qs.push(`limit=${limit}`);
   qs.push(`fetchFull=${fetchFull ? "true" : "false"}`);
-  return request(`/api/tempo/traces/search?${qs.join("&")}`);
+  return request(`/api/tempo/traces/search?${qs.join("&")}`, { signal });
 }
-export async function fetchTempoServices() {
-  return request("/api/tempo/services");
+export async function fetchTempoServices({ signal } = {}) {
+  return request("/api/tempo/services", { signal });
 }
-export async function getTrace(traceID) {
-  return request(`/api/tempo/traces/${encodeURIComponent(traceID)}`);
+export async function getTrace(traceID, { signal } = {}) {
+  return request(`/api/tempo/traces/${encodeURIComponent(traceID)}`, { signal });
 }
 
 export async function createRcaAnalyzeJob(payload) {

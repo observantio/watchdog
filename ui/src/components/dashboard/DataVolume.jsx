@@ -10,7 +10,7 @@ export function DataVolume({ loadingLogs, logVolumeSeries }) {
           <Spinner size="sm" /> Loading logs...
         </div>
       ) : (
-        <LogVolume volume={logVolumeSeries} />
+        <LogVolume volume={logVolumeSeries} embedded />
       )}
     </div>
   );

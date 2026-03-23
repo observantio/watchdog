@@ -3,9 +3,7 @@ import PropTypes from "prop-types";
 
 export default function LogQuickFilters({
   labelValuesCache = {},
-  topTerms = [],
   onSelectLabelValue = () => {},
-  onSelectPattern = () => {},
 }) {
   const hasLabels = Object.keys(labelValuesCache || {}).length > 0;
 
@@ -43,48 +41,6 @@ export default function LogQuickFilters({
             ),
         )}
 
-        {hasLabels && (
-          <div>
-            <div className="text-xs text-sre-text-muted mb-2 font-medium">
-              Text Search
-            </div>
-            <div className="space-y-1">
-              {topTerms?.length > 0 ? (
-                topTerms.map((t) => (
-                  <button
-                    key={t.term}
-                    onClick={() => onSelectPattern(t.term)}
-                    className="w-full flex items-center justify-between px-3 py-2 bg-sre-surface border border-sre-border rounded-lg hover:border-sre-primary transition-colors text-left group"
-                    title={`Use "${t.term}" as a quick text search (seen ${t.count} times)`}
-                  >
-                    <span className="text-sm text-sre-text flex items-center">
-                      <span
-                        className={`material-icons text-base mr-2 ${t.iconClass || "text-sre-text"}`}
-                      >
-                        {t.icon || "search"}
-                      </span>
-                      &quot;{t.term}&quot;
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-sre-text-muted">
-                        {t.count}
-                      </span>
-                      <span className="material-icons text-sre-text-muted text-sm group-hover:text-sre-primary transition-colors">
-                        arrow_forward
-                      </span>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="text-xs text-sre-text-muted">
-                  No text examples found from recent results. Run a query to
-                  populate suggestions.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {!hasLabels && (
           <div className="text-center py-4 text-sm text-sre-text-muted">
             <span className="material-icons text-2xl mb-2 opacity-50">
@@ -101,14 +57,5 @@ export default function LogQuickFilters({
 
 LogQuickFilters.propTypes = {
   labelValuesCache: PropTypes.objectOf(PropTypes.arrayOf(PropTypes.string)),
-  topTerms: PropTypes.arrayOf(
-    PropTypes.shape({
-      term: PropTypes.string.isRequired,
-      count: PropTypes.number.isRequired,
-      iconClass: PropTypes.string,
-      icon: PropTypes.string,
-    }),
-  ),
   onSelectLabelValue: PropTypes.func,
-  onSelectPattern: PropTypes.func,
 };

@@ -7,6 +7,7 @@ repos:
         entry: bash -lc 'cd watchdog && python -m pytest -q'
         pass_filenames: false
         files: ^watchdog/.*\.py$
+        exclude: (^|/)tests/
         types: [python]
 
       - id: gateway-auth-unit-tests
@@ -15,35 +16,16 @@ repos:
         entry: bash -lc 'cd gatekeeper && python -m pytest -q'
         pass_filenames: false
         files: ^gatekeeper/.*\.py$
+        exclude: (^|/)tests/
         types: [python]
 
       - id: watchdog-mypy
         name: Watchdog mypy
         language: system
         entry: >-
-          bash -lc '
-          APP_ENV=development
-          ENVIRONMENT=development
-          VAULT_ENABLED=false
-          DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog
-          NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier
-          RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver
-          CORS_ORIGINS=http://localhost:3000
-          CORS_ALLOW_CREDENTIALS=true
-          JWT_AUTO_GENERATE_KEYS=true
-          GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789
-          NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789
-          NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789
-          NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890
-          NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890
-          RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789
-          RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789
-          RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890
-          RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890
-          INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789
-          PYTHONPATH=$PWD/watchdog
-          mypy --config-file "$PWD/watchdog/mypy.ini" "$@"' --
+          bash -lc 'APP_ENV=development; ENVIRONMENT=development; VAULT_ENABLED=false; DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog; NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier; RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver; CORS_ORIGINS=http://localhost:3000; CORS_ALLOW_CREDENTIALS=true; JWT_AUTO_GENERATE_KEYS=true; GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789; NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789; NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789; NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890; NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890; RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789; RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789; RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890; RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890; INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789; cd watchdog; set -- $(printf "%s\n" "$@" | sed "s#^watchdog/##"); PYTHONPATH=$PWD mypy --config-file "$PWD/mypy.ini" "$@"' --
         files: ^watchdog/.*\.py$
+        exclude: (^|/)tests/
         types: [python]
 
       - id: watchdog-pylint
@@ -53,35 +35,16 @@ repos:
           bash -lc 'export APP_ENV=development ENVIRONMENT=development VAULT_ENABLED=false DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver CORS_ORIGINS=http://localhost:3000 CORS_ALLOW_CREDENTIALS=true JWT_AUTO_GENERATE_KEYS=true GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789 NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789 NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789 NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890 NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890 RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789 RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789 RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890 RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890 INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789 PYTHONPATH=$PWD/watchdog &&
           pylint --rcfile "$PWD/watchdog/.pylintrc" "$@"' --
         files: ^watchdog/.*\.py$
+        exclude: (^|/)tests/
         types: [python]
 
       - id: gatekeeper-mypy
         name: Gatekeeper mypy
         language: system
         entry: >-
-          bash -lc '
-          APP_ENV=development
-          ENVIRONMENT=development
-          VAULT_ENABLED=false
-          DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog
-          NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier
-          RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver
-          CORS_ORIGINS=http://localhost:3000
-          CORS_ALLOW_CREDENTIALS=true
-          JWT_AUTO_GENERATE_KEYS=true
-          GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789
-          NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789
-          NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789
-          NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890
-          NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890
-          RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789
-          RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789
-          RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890
-          RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890
-          INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789
-          PYTHONPATH=$PWD/gatekeeper
-          mypy --config-file "$PWD/gatekeeper/mypy.ini" "$@"' --
+          bash -lc 'APP_ENV=development; ENVIRONMENT=development; VAULT_ENABLED=false; DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/watchdog; NOTIFIER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/notifier; RESOLVER_DATABASE_URL=postgresql://ci_user:ci_password_123@localhost:5432/resolver; CORS_ORIGINS=http://localhost:3000; CORS_ALLOW_CREDENTIALS=true; JWT_AUTO_GENERATE_KEYS=true; GATEWAY_INTERNAL_SERVICE_TOKEN=ci_gateway_internal_service_token_123456789; NOTIFIER_EXPECTED_SERVICE_TOKEN=ci_notifier_expected_service_token_123456789; NOTIFIER_SERVICE_TOKEN=ci_notifier_service_token_123456789; NOTIFIER_CONTEXT_VERIFY_KEY=ci_notifier_context_verify_key_12345678901234567890; NOTIFIER_CONTEXT_SIGNING_KEY=ci_notifier_context_signing_key_12345678901234567890; RESOLVER_EXPECTED_SERVICE_TOKEN=ci_resolver_expected_service_token_123456789; RESOLVER_SERVICE_TOKEN=ci_resolver_service_token_123456789; RESOLVER_CONTEXT_VERIFY_KEY=ci_resolver_context_verify_key_12345678901234567890; RESOLVER_CONTEXT_SIGNING_KEY=ci_resolver_context_signing_key_12345678901234567890; INBOUND_WEBHOOK_TOKEN=ci_inbound_webhook_token_123456789; cd gatekeeper; set -- $(printf "%s\n" "$@" | sed "s#^gatekeeper/##"); PYTHONPATH=$PWD mypy --config-file "$PWD/mypy.ini" "$@"' --
         files: ^gatekeeper/.*\.py$
+        exclude: (^|/)tests/
         types: [python]
 
       - id: ui-lint

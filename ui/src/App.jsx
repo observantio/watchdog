@@ -31,6 +31,7 @@ const ApiKeyPage = lazy(() => import("./pages/ApiKeyPage"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
 const AuditCompliancePage = lazy(() => import("./pages/AuditCompliancePage"));
 const RCAPage = lazy(() => import("./pages/RCAPage"));
+const QuotasPage = lazy(() => import("./pages/QuotasPage"));
 
 function PageLoader() {
   return (
@@ -148,6 +149,11 @@ function AppContent() {
       path: "/audit-compliance",
       element: <AuditCompliancePage />,
       permissions: ["read:audit_logs"],
+    },
+    {
+      path: "/quotas",
+      element: <QuotasPage />,
+      permissions: ["read:agents"],
     },
   ];
 

@@ -12,21 +12,25 @@ const NAV_ITEM_LIST = Object.values(NAV_ITEMS);
 
 function NavItem({ item, isMobile = false, incidentSummary = null }) {
   const baseClasses = isMobile
-    ? "rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-2 transition-all px-3 py-1.5"
-    : "px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2";
+    ? "rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-2 transition-all px-3 py-1.5 border border-transparent"
+    : "px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-2 border-b-2 border-transparent";
   const incidentsWithBadges = item.path === "/incidents" && incidentSummary;
   const classesWithBadges = incidentsWithBadges
     ? `${baseClasses} relative`
     : baseClasses;
+  const activeClasses = isMobile
+    ? "text-sre-primary bg-sre-primary/10 border-sre-primary/50"
+    : "text-sre-primary border-sre-primary bg-sre-primary/5";
+  const inactiveClasses = isMobile
+    ? "text-sre-text-muted hover:text-sre-text hover:bg-sre-surface-light hover:border-sre-border/70"
+    : "text-sre-text-muted hover:text-sre-text hover:border-sre-border";
 
   return (
     <NavLink
       to={item.path}
       className={({ isActive }) =>
         `${classesWithBadges} ${
-          isActive
-            ? "bg-sre-primary/10 text-sre-primary shadow-glow-sm"
-            : "text-sre-text-muted hover:text-sre-text hover:bg-sre-surface-light"
+          isActive ? activeClasses : inactiveClasses
         }`
       }
     >
@@ -444,6 +448,24 @@ function UserMenu({ user, logout, hasPermission, openChangePassword }) {
                 policy
               </span>{" "}
               Audit
+            </NavLink>
+          )}
+
+          {hasPermission("read:agents") && (
+            <NavLink
+              to="/quotas"
+              role="menuitem"
+              tabIndex={0}
+              className="block px-3 py-2 text-sm text-sre-text hover:bg-sre-surface/50"
+              onClick={() => setOpen(false)}
+            >
+              <span
+                className="material-icons text-sm leading-none align-middle mr-2 text-sre-text-muted"
+                aria-hidden
+              >
+                data_thresholding
+              </span>{" "}
+              Quotas
             </NavLink>
           )}
 

@@ -30,6 +30,9 @@ export default class ErrorBoundary extends React.Component {
       if (this.props.fallback) {
         return this.props.fallback;
       }
+      const showErrorDetails = Boolean(import.meta?.env?.DEV);
+      const errorMessage = this.state.error?.toString?.() || "Unknown error";
+      const stack = this.state.errorInfo?.componentStack || "";
 
       return (
         <div className="min-h-screen flex items-center justify-center p-4 bg-sre-bg">
@@ -46,15 +49,14 @@ export default class ErrorBoundary extends React.Component {
                     refreshing the page.
                   </p>
 
-                  {this.state.error && (
+                  {this.state.error && showErrorDetails && (
                     <details className="mt-4">
                       <summary className="cursor-pointer text-sm font-semibold mb-2">
                         Error Details
                       </summary>
                       <pre className="text-xs bg-sre-bg-alt p-4 rounded border border-sre-border overflow-auto max-h-64">
-                        {this.state.error.toString()}
-                        {this.state.errorInfo &&
-                          `\n\n${this.state.errorInfo.componentStack}`}
+                        {errorMessage}
+                        {stack ? `\n\n${stack}` : ""}
                       </pre>
                     </details>
                   )}
