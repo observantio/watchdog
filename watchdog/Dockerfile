@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
@@ -16,10 +17,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY --from=builder /wheels /wheels
-
-RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/* && \
-    rm -rf /wheels && \
+RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
+    pip install --no-cache-dir --no-index --find-links=/wheels /wheels/* && \
     apt-get update && apt-get install -y --no-install-recommends gosu && \
     apt-get purge -y --auto-remove && \
     rm -rf /var/lib/apt/lists/*
